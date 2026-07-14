@@ -39,20 +39,39 @@
     traitVariance, speciesCount, extinctionEvents, behaviorNovelty).
   - Formulas exactly per spec:
     - `traitVariance` = mean over functional trait genes of per-gene population
-      variance of the **expressed** value, normalized per gene.
-    - `speciesCount` = cluster count under the genetic-distance metric (Phase 0.5
-      `distance`), threshold clustering, recomputed ~every 500 ticks.
+      variance of the **expressed** value, normalized **per gene by that gene's legal
+      range** (from the trait's clamp bounds in `constants.ts`), so each gene
+      contributes comparably. Enumerate "functional trait genes" as the `Genome`
+      trait fields excluding neutral `hue`.
+    - `speciesCount` = number of clusters, recomputed ~every 500 ticks, via a
+      **fixed clustering algorithm: single-linkage connected components** — build a
+      graph over living creatures with an edge between any pair whose
+      `distance(a,b) < SPECIES_COMPAT_THRESHOLD` (the **same** constant that gates
+      mate compatibility, Phase 0.1.1), then count connected components (union-find,
+      index-based over the stable ID array). Single-linkage is chosen because it
+      matches the biology: species = who *can* interbreed, and interbreeding is
+      transitive-by-chaining under the compatibility threshold. This is fixed here so
+      two implementers cannot get different counts.
     - `populationVariance` — a *reward* signal (high = good oscillation); document
       it so the sweep's ranking function does not penalize it (SPEC.md: stagnant
       worlds must score *bad*).
-    - `behaviorNovelty` — starting proxy: variance/entropy of realized
-      action-distributions across the population (SPEC.md acknowledges this is the
-      hardest; the proxy is the v1 definition).
+    - `behaviorNovelty` — **SPEC.md §Open Questions explicitly defers the precise
+      formula.** Implement the named v1 proxy and mark it as provisional in code:
+      per creature, accumulate a normalized histogram over the 7 actions (fraction of
+      ticks in a trailing window each action fired); the metric is the **mean
+      pairwise Jensen–Shannon divergence** across the population's action histograms
+      (a single scalar in `[0,1]`, higher = more behavioral diversity). Pick
+      Jensen–Shannon (not "variance or entropy") so the choice is unambiguous;
+      document that this proxy may be revisited (it is the one metric the spec leaves
+      open, so it is allowed to change without invalidating anything).
   - Pure, index-based iteration, no `Set`/`Object.keys`.
 - **Verify:** `tests/sim/stats.test.ts`: on hand-built fixtures, each metric
-  returns the expected value (e.g. a monoculture world → near-zero traitVariance;
-  a two-cluster world → speciesCount 2; a flat population → near-zero
-  populationVariance). Determinism: same world → same metrics.
+  returns the expected value — a monoculture world → near-zero traitVariance; two
+  groups separated by `> SPECIES_COMPAT_THRESHOLD` with intra-group distances below
+  it → speciesCount exactly 2 (and a chain of creatures each within threshold of the
+  next → speciesCount 1, proving single-linkage); a flat population → near-zero
+  populationVariance; identical action histograms → behaviorNovelty 0. Determinism:
+  same world → same metrics.
 
 ## Task 1.2: History accumulation + downsampling shape
 
@@ -63,8 +82,11 @@
   Phase 0.9) so this fills it in without a migration.
 - **How:**
   - In `sim/stats.ts` (or a small `sim/history.ts`), accumulate per-sample
-    population, per-gene trait means/variances, species count, and an event log
-    `{ tick, event }` for extinctions/notable events (SPEC.md §Offline Catch-up).
+    population, per-gene trait means/variances, species count, and the **`sim/`
+    event log with `{ tick, event }` entries** (deterministic; **no `realTime`** —
+    Phase 5 attaches wall-clock time worker-side, and Phase 5A.3 defines the typed
+    `event` union + firing thresholds). This is the **one** event log; Phase 5 does
+    not build a second one, it consumes and time-annotates this one.
   - Full detail for a recent window; **downsample older history** to 1 point /
     1,000 ticks; prune dead lineage branches to ancestors-of-living + summaries
     (SPEC.md §Lineage). Shape must match the Phase 0.9 serialized schema.

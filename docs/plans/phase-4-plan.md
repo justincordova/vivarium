@@ -40,8 +40,21 @@
   - `think(brain, senses, memory)`: forward pass over the fixed skeleton (18→10,
     10→10 recurrent, 10→7 = 350 arrows). Masked accumulation
     `sum += input * weights[k] * enabled[k]` using the **derived** mean-weights /
-    OR-masks (Phase 0.6 cache). Recurrence feeds last tick's hidden layer back via
-    the hidden→hidden group.
+    OR-masks (call `deriveExpressed` / read the Phase 0.6 cache).
+  - **`memory` = the creature's `hidden` vector from the *previous* tick** (the
+    `Creature.hidden: Float32Array(HIDDEN)` field added in Phase 0.1.2; the tick loop
+    already threads it in and stores the result back — Phase 0.8.1). Exact recurrence
+    composition (fixed, so it is deterministic and single-valued):
+    1. For each hidden neuron `h`, accumulate its pre-activation as
+       **`Σ(senses[i] · w · en) over the sensors→hidden group + Σ(memory[j] · w · en)
+       over the hidden→hidden group`** — both groups sum into the *same*
+       pre-activation accumulator for `h`.
+    2. `newHidden[h] = tanhApprox(preActivation[h])`.
+    3. Actions: `act[a] = tanhApprox(Σ(newHidden[h] · w · en) over hidden→actions)`.
+    4. Return `{ actions, hidden: newHidden }`; the tick loop writes `newHidden` back
+       to `creature.hidden` for next tick. So recurrence uses the **previous tick's
+       post-activation** hidden vector, read before this tick's activation — no
+       within-tick self-reference, fully determinate.
   - **Activation:** the pinned rational tanh approximation named in `constants.ts`
     (Phase 0.1) — never `Math.tanh` (SPEC.md §Determinism, §"Activation function
     (pinned)").

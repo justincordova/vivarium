@@ -38,12 +38,28 @@ and never blocks; the app renders a live world.
   compile against it.
 - **How:** Implement the sketch in SPEC.md §Architecture verbatim as the starting
   point: `Command` = init/play/pause/speed/inspect/snapshot; `Event` =
-  frame/stats/creature/snapshot/catchupProgress. Frame carries lean typed arrays
-  (positions, hues, sizes, energy — only what `render/` needs), never full
-  `Creature` objects. Include the `init` command (the Data Flow prose omits it;
-  the sketch includes it — the sketch is canonical).
+  frame/stats/creature/snapshot/catchupProgress. Include the `init` command (the
+  Data Flow prose omits it; the sketch includes it — the sketch is canonical).
+- **The `frame` snapshot must carry every field `render/palette.ts` (Task 2B.1)
+  consumes** — not just position. Per the SPEC.md appearance table, the palette
+  reads: position, `hue`, `size`, current energy (saturation), `diet` (shape),
+  `armor` + `toxicity` (spikes/ornaments), and `age` (outline ring). Enumerate the
+  frame as parallel lean typed arrays: `positions`, `headings`, `hues`, `sizes`,
+  `energies`, `diets`, `armors`, `toxicities`, `ages` (+ a plants array and a
+  corpses array). These are all *expressed* scalars (means of the diploid alleles),
+  computed worker-side; never post full `Creature` objects. This resolves the
+  cross-task gap: the frame as enumerated here fully feeds the palette in 2B.1.
+- **Define `TraitBins` and the `stats` message shape.** SPEC.md's sketch types
+  `stats` as `{ population: number[]; traits: TraitBins }` but never defines either.
+  Decide: `population: number[]` is population count **per species cluster** (index
+  = cluster id from Phase 1 speciesCount), and `TraitBins` is `Record<geneName,
+  number[]>` — a histogram (fixed bucket count, a named constant) of each functional
+  trait gene's expressed value across the population. Both are computed in
+  `stats.ts`; the worker forwards them.
 - **Verify:** `pnpm build` typechecks both `worker/` and a stub main importing
-  `protocol.ts`.
+  `protocol.ts`; a type-level check confirms the `frame` payload includes every
+  field `render/palette.ts`'s input type requires (palette input type and frame
+  type share one source-of-truth interface).
 
 ### Task 2A.2: `worker/sim.worker.ts`
 
@@ -54,9 +70,11 @@ and never blocks; the app renders a live world.
 - **How:**
   - On `init{seed, config}`: `createWorld` (Phase 0.7), start a tick loop paced by
     `ticksPerFrame`/`MS_PER_TICK`.
-  - Each frame: build a lean typed-array snapshot (only render-needed fields) and
-    `postMessage` a `frame` Event; every N ticks post a `stats` Event
-    (world-health from Phase 1 `stats.ts`).
+  - Each frame: build the lean typed-array snapshot with **exactly the fields
+    enumerated in Task 2A.1** (positions/headings/hues/sizes/energies/diets/armors/
+    toxicities/ages + plants + corpses, all expressed scalars) and `postMessage` a
+    `frame` Event; every N ticks post a `stats` Event (world-health + `population`/
+    `TraitBins` from Phase 1 `stats.ts`).
   - `play`/`pause`/`speed` control the loop; `inspect{id}` replies with one full
     `Creature`; `snapshot` replies with a serialized world (Phase 0.9).
   - Imports only from `src/sim/` (+ `protocol.ts`). Never imports `render`/`ui`.

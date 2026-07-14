@@ -100,15 +100,39 @@ active; lefthook runs `biome check` pre-commit.
     `TRAIT_MUT_SIGMA` (per-gene), `HUE_MUT_RATE`, `HUE_DRIFT`, `MUT_GLOBAL`.
   - Energy/water: `LIGHT_DECAY`, `CORPSE_DECAY_FRACTION`, `PLANT_GROWTH_MAX`,
     `LIGHT_THRESHOLD`, `FERTILITY_THRESHOLD`.
+  - Healing (SPEC.md §"Health regeneration"): `HEAL_ENERGY_THRESHOLD` (regen only
+    above this energy), `HEAL_RATE` (health/tick), `HEAL_COST` (energy per health
+    point healed). Without these, Task 0.8.1 healing cannot be implemented.
+  - Species / density (SPEC.md §"What counts as mate", §Density-dependent removal):
+    `SPECIES_COMPAT_THRESHOLD` (genetic-distance cutoff for mate classification,
+    the `mate` gate, and speciesCount clustering — one shared constant),
+    `DENSITY_RADIUS` (the fixed radius `localDensity(pos)` queries).
+  - Gated-action thresholds (SPEC.md §Actions "Gated actions fire when their output
+    exceeds a threshold"): `EAT_THRESHOLD`, `DRINK_THRESHOLD`, `ATTACK_THRESHOLD`,
+    `MATE_THRESHOLD`, `EMIT_THRESHOLD`.
+  - Rule-policy fractions (consumed by the `RuleBasedBrain.think` policy, Task
+    0.6.1): `HUNGRY_FRAC` (energy fraction below which a creature seeks food),
+    `THIRSTY_FRAC` (hydration fraction below which it seeks water).
   - Plant/creature maxima referents: `maxHealth`/`maxEnergy`/`maxHydration`
     coefficients, sensor normalizers (`TEMP_MIN/MAX`, `LIGHT_SENSOR_MAX`,
     `SCENT_SENSOR_MAX`, `WATER_CELL_MAX`, `FERTILITY_CELL_MAX`).
   - Contests: `REACH_BASE`, `REACH_PER_SIZE`, `k_speed`, `k_angle`.
+  - **Distance-metric coefficients** (SPEC.md §"Genetic distance"): the weights on
+    the Euclidean-over-expressed-weights term and the Hamming-over-expressed-masks
+    term (`DIST_WEIGHT_COEF`, `DIST_MASK_COEF`). These are load-bearing for
+    determinism and `speciesCount`; enumerate them as named literals now.
+  - **Pinned activation** (SPEC.md §"Activation function (pinned)"): the exact
+    rational-approximation-of-`tanh` coefficients as named literals. The *specific*
+    rational form is an implementation decision to be fixed here and never changed
+    (changing it invalidates saved brains); pick one closed form (e.g. a Padé/
+    rational approximant), commit it as `TANH_APPROX_*` constants, and document that
+    it is frozen.
   - Reach/sense are distinct (SPEC.md §Contests). Keep each value a plain literal;
     do not compute.
 - **Verify:** `pnpm build` typechecks. A `tests/sim/constants.test.ts` asserts
   sanity relationships that must hold structurally (e.g. `ARROWS === SENSORS*HIDDEN
-  + HIDDEN*HIDDEN + HIDDEN*ACTIONS`, i.e. `350 === 180+100+70`).
+  + HIDDEN*HIDDEN + HIDDEN*ACTIONS`, i.e. `350 === 180+100+70`); and that every
+  constant referenced by a later task exists (a presence check over the names above).
 
 ### Task 0.1.2: `src/sim/types.ts`
 
@@ -121,13 +145,28 @@ active; lefthook runs `biome check` pre-commit.
     `maxAge`).
   - `Creature` (id, `parentId` — SPEC.md §Lineage, position/heading, velocity,
     energy, hydration, health, age, genome, brain, derived-weights cache marked
-    non-serialized), `Plant`, `Corpse` (energy but **no** hydration field —
-    SPEC.md §Removal), field arrays.
+    non-serialized, **plus `hidden: Float32Array(HIDDEN)`** — the per-creature
+    recurrent hidden-state vector). `Plant`, `Corpse` (energy but **no** hydration
+    field — SPEC.md §Removal), field arrays.
+  - **Recurrent memory is real per-creature state, and it IS serialized.**
+    `BrainOps.think(brain, senses, memory)` takes last tick's hidden layer
+    (SPEC.md §Brain Design: memory = the hidden→hidden group; §Tick Loop line
+    "senses + recurrent memory"). That vector must persist across ticks per
+    creature and survive save/load, or the determinism + serialization-roundtrip
+    properties break. So `Creature.hidden` is a serialized field (unlike the
+    derived-weights cache, which is *not* serialized because it is a pure function
+    of the homologs — the hidden vector is *not* a pure function of anything stored,
+    it is genuine runtime state). In Phase 0 the rule-based policy ignores it, but
+    the field exists from commit one (like the brain arrays) so Phase 4 needs no
+    schema change.
   - `World` (creatures/plants/corpses as arrays + a stable ID array,
     `solarReservoir` as mutable integer, the gridded fields with ledger-bearing
     fields as `Int32Array`/`Uint32Array` and modulator fields as `Float32Array`
     per SPEC.md §Space & Fields, per-sub-stream RNG state, tick counter,
-    `lastSavedRealTime`, event log).
+    `lastSavedRealTime`, event log). **Event-log entries are deterministic `sim/`
+    data: `{ tick, event }` only — no wall-clock `realTime` inside `sim/`** (that
+    would break determinism; the worker attaches `realTime` outside `sim/` — see
+    Phase 5).
   - `Config` (world dims, grid resolution, initial `solarReservoir` size, all
     tunables, RNG sub-stream layout — SPEC.md §Persistence: self-describing save).
   - `enum Sensor` (0–17) and `enum Action` (0–6) matching the exact indices in
@@ -244,14 +283,24 @@ property tests pass.
     reproduction is asexual v1).
   - `distance(a, b)` on the **expressed** brain (mean weights, OR-ed masks):
     Euclidean over expressed weights + Hamming over expressed masks, weighted by
-    the `constants.ts` coefficients (SPEC.md §"Genetic distance").
-  - Expressed-value helpers: trait mean-of-alleles; brain derived
-    `weights`/`enabled` (mean / OR) — used by both distance and the brain cache.
+    `DIST_WEIGHT_COEF`/`DIST_MASK_COEF` from `constants.ts` (SPEC.md §"Genetic
+    distance"). Operates on the expressed brain **only** (not trait genes).
+  - **Expressed-brain derivation lives HERE (single owner).** `deriveExpressed(hA,
+    hB, mA, mB) → { weights, enabled }` computes `weights[k] = (hA[k]+hB[k])/2` and
+    `enabled[k] = mA[k] | mB[k]` (mean / **dominant-enabled OR**, SPEC.md §"Enable-bit
+    diploidy" — OR, never AND). This is the one implementation of the derivation;
+    `distance` uses it, and the brain cache in Task 0.6.1 **calls this function**
+    (it does not reimplement it). This resolves ownership: 0.5 owns the pure
+    derivation, 0.6 owns the *caching* of its result. `trait-expression` helper
+    (mean-of-alleles) also lives here.
 - **Verify:** `tests/sim/genetics.test.ts` (fast-check): **sexual Inheritance** —
-  every child allele came from one of two parents (pre-mutation); **clonal
-  Inheritance** — every plant-seed allele equals the single parent's allele
-  (pre-mutation); **distance** — `distance(a,b)===distance(b,a)` and
-  `distance(a,a)===0`.
+  for **every gene allele** in the child (brain weight/enable homologs **and** every
+  trait gene allele **and** `hue`), the value came from one of the two parents,
+  pre-mutation (SPEC.md §Testing: the property is over *every* gene allele, not just
+  brain arrays); **clonal Inheritance** — every plant-seed allele equals the single
+  parent's allele (pre-mutation); **distance** — `distance(a,b)===distance(b,a)` and
+  `distance(a,a)===0`; `deriveExpressed` uses OR (a homolog-A-off/homolog-B-on arrow
+  reads enabled).
 
 ---
 
@@ -285,20 +334,48 @@ re-derives on drift and is not serialized.
     save format, and species distance are already exercising the real brain arrays
     in Phase 0. Do **not** stub the brain arrays out for Phase 0 — that would force
     a save-invalidating rewrite at Phase 4.
-  - `RuleBasedBrain.think(senses)` — a fixed formula policy (SPEC.md §Initial
-    Conditions: "enough to move toward food and toward mates"): steer toward
-    nearest-food/mate angle, accelerate when hungry, fire `eat`/`drink`/`mate`
-    when gated conditions met. Reads senses only; **ignores the brain weight
-    arrays**. No learning; deterministic given senses.
-  - Implement the derived-weights cache contract even though rule-based brains
-    don't use weights, so the interface/serialization shape is stable for Phase 4:
-    cache is a pure function of homologs, `dirty` flag triggers re-derive, cache
-    is **not** serialized (SPEC.md §"Brain weight expression").
-  - Pin the tanh rational approximation as a named function here (used by
-    `PatchbayBrain` later; harmless for rule-based).
-- **Verify:** `tests/sim/brain.test.ts`: same senses → identical outputs across
-  two calls; `think` never reads `Math.random`; serialize/deserialize a brain and
-  confirm the derived cache is absent from the blob and re-derived on load.
+  - `RuleBasedBrain.think(senses, memory)` — a **fully-specified deterministic
+    formula policy**. It must be pinned to exact arithmetic (the determinism gate
+    requires bit-identical output) and must be able to emit **all 7 actions** so the
+    contest/corpse resolve path (built in 0.8.1) is actually exercised by Phase 0's
+    conservation/determinism gates — a policy that never fires `attack` leaves that
+    path as dead, untested code. Concrete policy (reads sensor indices per §Sensors;
+    thresholds are the gated-action constants from 0.1.1):
+    - **turn** (output 0) = the signed angle to the highest-priority target,
+      clamped to `[−1,1]`. Priority order (fixed): if a threat is within
+      `senseRadius` (sensor 7 < 1) **and** own energy (sensor 1) is not critical →
+      steer *away* from threat angle (sensor 8); else if hungry (sensor 1 <
+      `HUNGRY_FRAC`) and food perceived (sensor 5 < 1) → steer *toward* food angle
+      (sensor 6); else if able to mate (sensor 1 > `MATE_THRESHOLD`) and mate
+      perceived (sensor 9 < 1) → steer toward mate angle (sensor 10); else go
+      straight (0).
+    - **accelerate** (output 1) = `1` when pursuing/fleeing a target, `0` otherwise.
+    - **eat** (output 2) fires when food is in reach (sensor 5 near 0) and hungry.
+    - **drink** (output 3) fires when hydration (sensor 2) < `THIRSTY_FRAC` and
+      local water (sensor 14) present.
+    - **attack** (output 4) fires when a **threat-classified** target is in reach
+      and this creature is the stronger party (self attack power ≥ target) — a
+      simple aggressor rule so predation actually occurs and the contest path runs.
+    - **mate** (output 5) fires when a compatible mate is in reach (sensor 9 near 0)
+      and energy > `MATE_THRESHOLD`.
+    - **emit scent** (output 6) fires at low constant intensity when a threat is
+      near (so the scent field and sensors 16/17 are exercised).
+    - Thresholds/fractions (`HUNGRY_FRAC`, `THIRSTY_FRAC`, the gated-action
+      thresholds) are the named constants enumerated in Task 0.1.1. Ignores the
+      brain weight arrays. No learning; deterministic.
+  - The derived-weights cache: **call `deriveExpressed` from `genetics.ts` (Task
+    0.5.1)** — do not reimplement the mean/OR here. `brain.ts` owns only the
+    *caching*: store the derived pair on the creature, a `dirty` flag set by drift
+    triggers a re-derive before the next `think`, and the cache is **not** serialized
+    (re-derived on load — SPEC.md §"Brain weight expression").
+  - Pin the tanh rational approximation as a named function here that reads the
+    `TANH_APPROX_*` constants (Task 0.1.1); used by `PatchbayBrain` later, harmless
+    for rule-based.
+- **Verify:** `tests/sim/brain.test.ts`: same senses+memory → identical outputs
+  across two calls; the policy emits each of the 7 actions on an appropriate
+  fixture (including `attack`, so the contest path has coverage); `think` never
+  reads `Math.random`; serialize/deserialize a brain and confirm the derived cache
+  is absent from the blob and re-derived on load.
 
 ---
 
@@ -366,7 +443,17 @@ the free serialize→deserialize→tick equivalence holds (co-gated with 0.9).
         decay to reservoir.
   - **Every** energy/water transfer goes through the `energy.ts` helpers so
     nothing mints/destroys. Metabolic/heat/senescence costs route to
-    `solarReservoir`; healing deducts `creature.energy` and credits reservoir.
+    `solarReservoir`.
+  - **Healing** (SPEC.md §"Health regeneration"): only when `creature.energy >
+    HEAL_ENERGY_THRESHOLD`; regenerate `HEAL_RATE` health/tick capped at
+    `maxHealth`, deduct `HEAL_RATE × HEAL_COST` energy and credit `solarReservoir`
+    by the same amount; **a heal the creature cannot afford does not occur** (below
+    threshold or insufficient energy → no regen). Uses the constants added in 0.1.1.
+  - **Recurrent memory:** after each `think`, store the produced hidden vector into
+    `creature.hidden` so the next tick's `think(brain, senses, creature.hidden)`
+    reads last tick's hidden layer. (Rule-based `think` ignores it but still returns
+    a hidden vector — a zero vector is fine — so the plumbing is identical for the
+    Phase 4 swap.)
   - Increment age; apply soft senescence + hard `maxLifespan` ceiling.
   - Index-based iteration throughout; no `Set`/`Object.keys`.
 - **Verify:** `tests/sim/determinism.test.ts` (fast-check over seeds): two
@@ -393,10 +480,17 @@ the free serialize→deserialize→tick equivalence holds (co-gated with 0.9).
 - **How:**
   - `serialize(world)` writes `version: 1`, world dims, grid resolution, all
     tunable constants, RNG sub-stream **layout and live state**, `solarReservoir`,
-    all compartments, `lastSavedRealTime`, event log, downsampled-history shape
-    (SPEC.md §Lineage — part of the v1 schema now so adding it later isn't a
-    migration).
-  - **Do not** serialize the derived brain cache; `deserialize` re-derives it.
+    all compartments, `lastSavedRealTime`, event log (`{ tick, event }` entries —
+    **no `realTime`** inside `sim/`), downsampled-history shape (SPEC.md §Lineage —
+    part of the v1 schema now so adding it later isn't a migration).
+  - **Per-creature fields that MUST be serialized** (or the roundtrip/determinism
+    property fails): `parentId` (SPEC.md §Lineage "from commit one"), the diploid
+    brain arrays (`weightsA/B`, `enabledA/B`), and the recurrent `hidden` vector
+    (genuine runtime state, Task 0.1.2). Explicitly enumerate these — do not let the
+    "all compartments" phrasing silently drop them.
+  - **Do not** serialize the derived brain cache; `deserialize` re-derives it via
+    `deriveExpressed` (it is a pure function of the homologs). The `hidden` vector is
+    **not** a cache — it is serialized.
   - Every field individually optional/defaulted; add empty `migrate_v…` scaffold
     and a `deserialize` version dispatch (SPEC.md §"Save-migration policy").
   - Pure — lives in `sim/`, no DOM/IndexedDB (those are worker/Phase 5 concerns).

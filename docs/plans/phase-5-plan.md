@@ -64,17 +64,37 @@ leads with drama. This completes the DoD.
 
 ### Task 5A.3: Event log + "while you were away" report
 
-- **What:** The event log `{ tick, realTime, event }` and a report UI that leads
-  with drama.
+- **What:** The typed event log and a report UI that leads with drama.
 - **Why:** SPEC.md §Offline Catch-up: "the retention mechanic."
 - **How:**
   - **Load `frontend-design` skill first.**
-  - Maintain the event log (extinctions, lineage doublings, new dominant species)
-    in `stats.ts`/history, serialized alongside the snapshot.
-  - After catch-up, render a report: "Generation N. The northern herbivores are
-    extinct. A new predator lineage doubled in size." Grayscale, monospace numbers.
-- **Verify:** After a catch-up that includes an extinction, the report surfaces it
-  with generation + drama; no catch-up → no report.
+  - **`realTime` must NOT live in `sim/`.** The `sim/` event log (built in Phase 0,
+    serialized in the `version:1` schema) stores **deterministic entries only:
+    `{ tick, event }`** — a wall-clock timestamp inside `sim/` would break the
+    determinism + roundtrip properties. The **worker** (outside `sim/`) attaches
+    `realTime` when it observes an event, keeping a parallel `{ tick, realTime }`
+    map in worker-owned (non-`sim/`) state or reconstructing real-time from `tick` ×
+    `MS_PER_TICK` + `lastSavedRealTime`. The report reads `sim/`'s `{tick,event}` +
+    the worker's real-time association. This resolves the determinism contradiction:
+    `sim/` stays pure and reproducible; `realTime` is presentation, not simulation.
+  - **Define the event entry type (a discriminated union) and firing thresholds** —
+    these are `sim/` logic (deterministic) even though the report is UI:
+    - `{ kind: 'extinction', tick, species }` — fires when a species cluster's
+      population drops to 0 (using Phase 1 `speciesCount` clusters).
+    - `{ kind: 'lineageBoom', tick, species, factor }` — fires when a cluster's
+      population ≥ doubles versus its value `BOOM_WINDOW` ticks ago (a named
+      constant).
+    - `{ kind: 'newDominant', tick, species }` — fires when a different cluster
+      becomes the largest by population fraction and holds it for `DOMINANCE_WINDOW`
+      ticks.
+    - Enumerate these kinds + thresholds so the log is not free-form prose.
+  - After catch-up, render a report from the log: "Generation N. The northern
+    herbivores are extinct. A new predator lineage doubled in size." Grayscale,
+    monospace numbers.
+- **Verify:** `tests/sim/events.test.ts`: a scripted extinction/boom/dominance
+  fixture fires exactly the expected entries at the expected ticks (deterministic,
+  in `sim/`); the serialized log contains no `realTime` field; the report (worker+UI)
+  surfaces drama after a catch-up that includes an event; no catch-up → no report.
 
 ### Task 5A.4: URL-hash shareable world + file export
 
