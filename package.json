@@ -1,0 +1,25 @@
+{
+  "name": "vivarium",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Evolutionary ecosystem simulator — browser-based, client-side, deterministic.",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "bench": "vitest bench",
+    "lint": "biome check .",
+    "format": "biome format --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.3",
+    "@types/node": "^26.1.1",
+    "fast-check": "^4.9.0",
+    "lefthook": "^2.1.10",
+    "typescript": "^5.7.3",
+    "vite": "^8.1.4",
+    "vitest": "^4.1.10"
+  },
+  "packageManager": "pnpm@11.7.0"
+}

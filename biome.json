@@ -1,0 +1,67 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.3/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": false
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended"
+    }
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double"
+    }
+  },
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["src/sim/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "react": "sim/ must import nothing. Purity is load-bearing (SPEC.md).",
+                  "react-dom": "sim/ must import nothing. Purity is load-bearing (SPEC.md).",
+                  "zustand": "sim/ must import nothing. Purity is load-bearing (SPEC.md).",
+                  "vite": "sim/ must import nothing. Purity is load-bearing (SPEC.md)."
+                }
+              }
+            },
+            "noRestrictedGlobals": {
+              "level": "error",
+              "options": {
+                "deniedGlobals": {
+                  "window": "No DOM in sim/ (SPEC.md purity rule).",
+                  "document": "No DOM in sim/ (SPEC.md purity rule)."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

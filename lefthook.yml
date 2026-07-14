@@ -1,0 +1,6 @@
+# Pre-commit runs biome check only. Tests belong in CI, not the commit path
+# (SPEC.md §Tooling).
+pre-commit:
+  commands:
+    biome:
+      run: pnpm biome check --no-errors-on-unmatched --staged
