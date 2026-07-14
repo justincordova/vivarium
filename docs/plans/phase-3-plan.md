@@ -31,19 +31,44 @@
   wires against a stable contract.
 - **How:** Extend `worker/protocol.ts`:
   - `{ t: 'step'; ticks: number }` (single/N-step while paused).
-  - `{ t: 'spawn'; genome; pos }`, `{ t: 'delete'; id }`.
-  - `{ t: 'editGenome'; id; patch }` (live genome edit).
-  - `{ t: 'paint'; field; cell; value }` (terrain/field paint, e.g. drought =
-    lower water/fertility).
+  - `{ t: 'spawn'; genome; pos }`, `{ t: 'delete'; id }`. A spawned creature's
+    `hidden` and `ruleState` init to the pinned defaults (zeros / no target) per the
+    Phase 0 Conventions block.
+  - `{ t: 'editGenome'; id; patch }` where **`patch` is a typed, per-allele edit**:
+    `{ gene: string; allele: 0 | 1; value: number }` for trait/hue genes, or
+    `{ arrow: number; homolog: 'A' | 'B'; weight?: number; enabled?: 0|1 }` for brain
+    arrows. Editing a homolog marks the derived-weights pair dirty (re-derive). An
+    edit **resets `hidden` to zeros** (stale recurrent state against a changed brain
+    is undefined; zeroing is the pinned choice).
+  - `{ t: 'paint'; field; cell; delta }` — `delta` is a signed quantum change, and
+    **painting a ledger field MOVES quanta, never mints/destroys**: for
+    `fertility`/`light`, quanta move to/from `solarReservoir`. **For `water` there is
+    no reservoir** (SPEC.md §Water: only `waterField` + `hydration`), so a water paint
+    is a **local redistribution within the brush neighborhood**: lowering the center
+    cell raises a ring of adjacent cells by the same total (and vice versa). The water
+    visibly *moves* on screen, stays in the visible field, and `totalWater` holds
+    exactly. **No global "reserve" cell** — a phantom off-map compartment would be a
+    disguised sink (water vanishing into a null zone) and is explicitly rejected.
+    Because beta has no atmosphere compartment (SPEC.md §Water: clouds/rain out of
+    beta), *net* water removal is not representable; the water tool is therefore
+    labeled **"move water," not "remove water"** in the UI. Modulator fields
+    (temperature/scent) are not ledgered and may be set directly.
   - `{ t: 'setParam'; key; value }` (drag a slider → change a *(tunable)* constant
-    live; includes `MUT_GLOBAL` for the DoD mutation-rate slider).
+    live; includes `MUT_GLOBAL` for the DoD mutation-rate slider). **All UI-mutable
+    tunables are read by `tick()` from `world.config`, never imported directly from
+    `constants.ts`** — so `setParam` writes `world.config[key]` and the sim reads it
+    there. This is load-bearing for both determinism (a seed's trajectory is defined
+    by its config, which is serialized) and Laboratory forking (Phase 5D). Note:
+    live `setParam`/any god-power **detaches the world from its shareable URL** (the
+    URL encodes only the *initial* config); this is expected — state it in the UI.
   - Worker applies each inside the tick boundary (never mid-resolve) so
-    determinism/conservation are preserved; a spawn/paint injects energy from the
-    correct compartment (never mints — routes through `solarReservoir`/fields per
-    the Energy ledger).
+    determinism/conservation are preserved; spawn/paint move energy/water from the
+    correct compartment (never mint).
 - **Verify:** `pnpm build` typechecks; a harness sends each command and observes
-  the expected World change in the next `frame`/`stats`; conservation assertion
-  still holds the tick after a spawn/paint (no minting).
+  the expected World change in the next `frame`/`stats`; **`totalEnergy` and
+  `totalWater` both still hold exactly** the tick after a spawn/paint/editGenome
+  (including a water paint — proving redistribution, not minting); a `setParam`
+  changes sim behavior and the new value appears in the serialized `world.config`.
 
 ## Task 3.2: Inspector (`ui/Inspector.tsx`)
 

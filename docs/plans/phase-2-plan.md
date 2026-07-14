@@ -51,11 +51,18 @@ and never blocks; the app renders a live world.
   cross-task gap: the frame as enumerated here fully feeds the palette in 2B.1.
 - **Define `TraitBins` and the `stats` message shape.** SPEC.md's sketch types
   `stats` as `{ population: number[]; traits: TraitBins }` but never defines either.
-  Decide: `population: number[]` is population count **per species cluster** (index
-  = cluster id from Phase 1 speciesCount), and `TraitBins` is `Record<geneName,
-  number[]>` — a histogram (fixed bucket count, a named constant) of each functional
-  trait gene's expressed value across the population. Both are computed in
-  `stats.ts`; the worker forwards them.
+  Decide:
+  - `population: number[]` is population count **per stable founder-lineage-root
+    key** (the `parentId` ancestry root, per Phase 1.1's cluster-identity note) —
+    **not** per raw cluster label (labels aren't stable across the ~500-tick
+    recomputes) and **not** by hue (hue drifts/collides). Series that
+    appear/disappear are handled by the consumer (charts tolerate sparse series).
+  - `TraitBins` is `Record<geneName, number[]>` — a histogram with **`TRAIT_BINS`
+    buckets (named constant) over each gene's legal clamp range** (the same
+    normalization basis `traitVariance` uses, Phase 1.1), **not** the observed
+    per-frame min/max (which would make the charts rescale and jump every frame).
+    Fixed domain = comparable, stable charts.
+  Both are computed in `stats.ts`; the worker forwards them.
 - **Verify:** `pnpm build` typechecks both `worker/` and a stub main importing
   `protocol.ts`; a type-level check confirms the `frame` payload includes every
   field `render/palette.ts`'s input type requires (palette input type and frame

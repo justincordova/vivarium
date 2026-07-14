@@ -71,6 +71,16 @@
   test asserts output matches the rational approx, not `Math.tanh`); recurrence
   actually feeds hidden state forward (a memory-dependent output differs across two
   ticks with identical senses); disabled arrows contribute zero.
+  - **Golden-vector forward-pass test (enforces fixed accumulation order — the one
+    thing a value-check cannot).** A single-machine "is it deterministic" check
+    passes for *any* fixed summation order, so it cannot detect an accidental
+    reorder that would break cross-engine reachability (SPEC §Determinism point 4,
+    the four decisions that preserve the cross-engine door). Add a test that pins
+    `think` for a fixed brain + fixed senses/memory against a **hard-coded golden
+    output vector**, computed by an independent reference summing in the specified
+    index order. Any reorder (even a "harmless" one) changes low FP bits and fails.
+    This is the *only* real enforcement of the ordering rule the spec calls
+    load-bearing.
 
 ## Task 4.2: Wire the active brain implementation (config switch)
 
@@ -88,8 +98,11 @@
     §Initial Conditions).
 - **Verify:** Switching `brainKind` and re-initializing runs a patchbay world;
   determinism + conservation property tests still pass under `brainKind:'patchbay'`
-  (re-run the Phase 0.8 suite with the flag set); an old rule-based save migrates
-  and loads.
+  (re-run the Phase 0.8 suite with the flag set); an old rule-based save migrates,
+  loads, **and stays deterministic + conservative for N ticks under the patchbay
+  brain** — the first time real `hidden`/forward-pass dynamics run against
+  inherited-but-never-exercised brain arrays, so it needs explicit coverage, not just
+  "it loads."
 
 ## Task 4.3: A/B comparison on the same seed
 
@@ -107,6 +120,44 @@
 - **Verify:** `scripts/compare.ts --seed S` produces two comparable world-health
   tracks; the comparison is reproducible; a written note records whether patchbay
   brains produce richer emergent behavior than the rule baseline.
+  - **Measure brain heritability, WITH a decision threshold** (this is the strongest
+    remaining risk to the whole project, so it gets a gate, not just a readout).
+    Because expression is mean-of-alleles but inheritance is meiotic per-arrow
+    segregation, a child inherits a *resampled* expressed brain, not its parents' —
+    injecting per-generation phenotypic variance from inheritance alone. If that
+    variance is large, selection fights inheritance noise and "behavior evolves"
+    (SPEC §Vision: "produces things the author did not anticipate") may not hold at
+    the mechanism level. **Metric:** mean parent↔child expressed-brain `distance` as
+    a fraction of the population's mean pairwise expressed-brain distance.
+    **Gate:** if that ratio exceeds `HERITABILITY_MAX` (a named threshold, e.g. ~0.5
+    — a child more than half-as-far from its parents as two random creatures are from
+    each other), behavior cannot reliably accumulate, and the **per-locus linkage
+    version-bump moves in-scope now** (it is otherwise deferred). Record the number
+    in the findings note either way. This converts "hope it works" into a measured
+    success criterion before the whole stack is trusted.
+
+## Task 4.3b: Re-derive `MAX_OFFLINE_TICKS` from worst-case realistic tick cost
+
+- **What:** Re-run the tick bench with `brainKind:'patchbay'` on a **worst-case
+  evolved world**, and re-set `MAX_OFFLINE_TICKS`.
+- **Why:** `MAX_OFFLINE_TICKS` is a **worst-case** promise (<20s catch-up), so it
+  must be derived from the *most expensive realistic* tick, not the cheapest. Phase
+  1.4 benched the cheap rule policy on fresh founders — an over-estimate of
+  post-brain throughput on two counts: (1) the 350-arrow forward pass is far heavier
+  than the rule policy, and (2) **enable density climbs over evolutionary time**
+  (newborns ~15% enabled, but evolution can pin toward 0.9+; the masked-accumulation
+  cost scales with it), so a gen-100k brain-world ticks slower than fresh founders.
+  The constant is serialized, so re-deriving is safe and non-breaking.
+- **How:** `pnpm bench` with the patchbay brain active on an **evolved, high-
+  `mean(enabled)` world** (e.g. a gen-2000+ snapshot, or one deliberately grown to
+  high enable density) — not fresh founders. Recompute `MAX_OFFLINE_TICKS` so
+  worst-case catch-up stays < ~20s at that rate; update the constant + comment. Note
+  the derivation is **grid-resolution-specific** (SPEC §Space & Fields calls grid
+  resolution a "catch-up-speed knob") — the comment records the grid resolution it
+  was measured at.
+- **Verify:** the documented inequality `MAX_OFFLINE_TICKS × (evolved patchbay
+  ms/tick) < 20s` holds; a comment records the rule-era rate, the evolved-patchbay
+  rate, and the grid resolution.
 
 ## Task 4.4: Run the two swap-decision instruments
 
@@ -121,9 +172,15 @@
   - **Enable density:** track `mean(enabled)` over a long patchbay run. Interpret
     per spec: climbs to 0.9+ and pins → evolution wants every arrow (ceiling
     binds); plateaus ~0.4 → capacity was never the constraint.
-  - **Enlargement experiment:** same seed, 10 hidden vs. 20 hidden (a `HIDDEN`
-    config override). World-health improves meaningfully → the ceiling binds;
-    indistinguishable → NEAT buys nothing.
+  - **Enlargement experiment:** same seed, 10 hidden vs. 20 hidden. **Note: changing
+    `HIDDEN` reshapes the genome geometry** (arrow count `SENSORS·HIDDEN +
+    HIDDEN·HIDDEN + HIDDEN·ACTIONS` and the `hidden` vector length both change), so a
+    HIDDEN=10 save **cannot** migrate into a HIDDEN=20 build — this is not a weight
+    change. Run the enlargement experiment on **fresh worlds only** (same seed, fresh
+    `createWorld` at each HIDDEN); do not attempt to load a gen-N snapshot across a
+    HIDDEN change. `HIDDEN` is a world-creation geometry parameter, not a live knob.
+    World-health improves meaningfully → the ceiling binds; indistinguishable → NEAT
+    buys nothing.
   - Record both results in a short findings note (e.g. `docs/findings/phase-4-brain-capacity.md`).
 - **Verify:** Both experiments run reproducibly and produce the two signals;
   the findings note states the verdict (keep patchbay / consider NEAT). No code

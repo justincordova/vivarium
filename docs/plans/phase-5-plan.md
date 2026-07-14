@@ -39,10 +39,13 @@ leads with drama. This completes the DoD.
 - **Why:** DoD: "closes the tab, and finds their world waiting tomorrow." SPEC.md
   §Persistence: rotating `world:a`/`world:b` + `meta` so a crash mid-write loses
   one autosave, not the world.
-- **How:** In the worker (owns the World), autosave on an interval (~30s sim time)
-  **and** on `visibilitychange`; **never** `beforeunload` (SPEC.md §Persistence).
-  Serialize via Phase 0.9 `serialize()`. Store `lastSavedRealTime`. Write to the
-  older slot, then flip `meta`. UI prefs → localStorage; nothing in cookies.
+- **How:** In the worker (owns the World), autosave on a **wall-clock interval of
+  ~30s** (real seconds, via a worker timer — not sim ticks; "30s sim time" in the
+  spec is disambiguated here to real time so autosave frequency is independent of
+  `MS_PER_TICK`/speed) **and** on `visibilitychange`; **never** `beforeunload`
+  (SPEC.md §Persistence). Serialize via Phase 0.9 `serialize()`. Store
+  `lastSavedRealTime`. Write to the older slot, then flip `meta`. UI prefs →
+  localStorage; nothing in cookies.
 - **Verify:** Reload the page → world restores from the newest valid slot; simulate
   a mid-write crash (abort between write and meta-flip) → the prior slot still
   loads; `idb` holds the two slots + meta.
@@ -54,13 +57,27 @@ leads with drama. This completes the DoD.
 - **Why:** SPEC.md §Offline Catch-up: nothing runs while closed; catch-up is
   literally calling `tick()` N times; the cap keeps worst case < ~20s.
 - **How:** Exactly the spec snippet: `ticksOwed = min(floor((now −
-  lastSavedRealTime)/MS_PER_TICK), MAX_OFFLINE_TICKS)`; loop `tick`. Stripped:
+    lastSavedRealTime)/MS_PER_TICK), MAX_OFFLINE_TICKS)`; loop `tick`. Stripped:
   no rendering, stats every 100th tick, lineage as aggregate counts, post
   `catchupProgress` every ~5,000 ticks. A **toggle** disables catch-up (SPEC.md).
+  **The stripping must not change what `tick()` computes** — stats/lineage sampling
+  are read-only observers; they must not consume an RNG draw or mutate world state.
 - **Verify:** Set `lastSavedRealTime` in the past → on load the world advances the
   expected capped tick count; progress events fire; worst-case catch-up completes
-  under ~20s at the Phase 1 measured rate; toggle off → world resumes without
-  catch-up.
+  under ~20s at the (Phase 4 re-derived) measured rate; toggle off → world resumes
+  without catch-up.
+  - **Catch-up ≡ normal invariant** (`tests/sim/catchup.test.ts`): N stripped-down
+    ticks produce **bit-identical world state** to N normal ticks (stats/lineage
+    *detail* may differ; the *world* must not). This is the invariant that
+    "stripped-down catch-up" is safe — without it, a stray side effect in a stats
+    call silently gives returning users a different world than the one that would
+    have run.
+  - **Long-horizon determinism** (nightly CI, not per-commit — it's slow): one run
+    at `MAX_OFFLINE_TICKS` scale asserts determinism holds at the horizon catch-up
+    actually replays. Deterministic-at-1,000-ticks (Phase 0.8) does **not** imply
+    deterministic-at-500,000 — long-horizon is where integer-accumulation edges, rare
+    simultaneous-death orderings, and RNG-stream patterns surface. Catch-up must not
+    be trusted to replay that far until this passes.
 
 ### Task 5A.3: Event log + "while you were away" report
 
@@ -71,22 +88,30 @@ leads with drama. This completes the DoD.
   - **`realTime` must NOT live in `sim/`.** The `sim/` event log (built in Phase 0,
     serialized in the `version:1` schema) stores **deterministic entries only:
     `{ tick, event }`** — a wall-clock timestamp inside `sim/` would break the
-    determinism + roundtrip properties. The **worker** (outside `sim/`) attaches
-    `realTime` when it observes an event, keeping a parallel `{ tick, realTime }`
-    map in worker-owned (non-`sim/`) state or reconstructing real-time from `tick` ×
-    `MS_PER_TICK` + `lastSavedRealTime`. The report reads `sim/`'s `{tick,event}` +
-    the worker's real-time association. This resolves the determinism contradiction:
-    `sim/` stays pure and reproducible; `realTime` is presentation, not simulation.
+    determinism + roundtrip properties.
+  - **Narrate by generation/tick, not wall-clock — do NOT reconstruct `realTime`
+    from `tick × MS_PER_TICK`.** That formula is *invalid across a catch-up boundary*:
+    catch-up replays hundreds of thousands of ticks in <20s of real time, so an
+    event logged at tick 480,000 did **not** happen `480000 × MS_PER_TICK` ms after
+    the last save — and catch-up events are exactly what the report narrates. The
+    report leads with **generation/tick** ("Generation 4,802. The northern
+    herbivores are extinct.") — which the SPEC.md example itself does — and uses real
+    wall-clock time **only** for events observed during a *live* session (the worker
+    timestamps those as it sees them). Replayed catch-up events carry tick only. This
+    resolves the determinism contradiction *and* avoids confidently-wrong timestamps.
   - **Define the event entry type (a discriminated union) and firing thresholds** —
-    these are `sim/` logic (deterministic) even though the report is UI:
-    - `{ kind: 'extinction', tick, species }` — fires when a species cluster's
-      population drops to 0 (using Phase 1 `speciesCount` clusters).
-    - `{ kind: 'lineageBoom', tick, species, factor }` — fires when a cluster's
-      population ≥ doubles versus its value `BOOM_WINDOW` ticks ago (a named
-      constant).
-    - `{ kind: 'newDominant', tick, species }` — fires when a different cluster
+    these are `sim/` logic (deterministic) even though the report is UI. **All three
+    events key on the stable `founderLineageRoot` identity (Phase 1.1), NOT on raw
+    cluster labels** — cluster labels are not stable across the ~500-tick recomputes,
+    so "a cluster's population `BOOM_WINDOW` ticks ago" / "holds it for
+    `DOMINANCE_WINDOW`" are only well-defined against a stable lineage key:
+    - `{ kind: 'extinction', tick, lineage }` — fires when a founder-lineage's living
+      population drops to 0.
+    - `{ kind: 'lineageBoom', tick, lineage, factor }` — fires when a lineage's
+      population ≥ doubles versus its value `BOOM_WINDOW` ticks ago (named constant).
+    - `{ kind: 'newDominant', tick, lineage }` — fires when a different lineage
       becomes the largest by population fraction and holds it for `DOMINANCE_WINDOW`
-      ticks.
+      ticks (named constant).
     - Enumerate these kinds + thresholds so the log is not free-form prose.
   - After catch-up, render a report from the log: "Generation N. The northern
     herbivores are extinct. A new predator lineage doubled in size." Grayscale,
@@ -155,8 +180,13 @@ pressure; speciation is viewable.
   `DAYS_PER_SEASON`; confirm circadian/size respond (nocturnal niches, nocturnal
   size cost). Day length is a swept config parameter. These are `sim/` changes
   gated by the same conservation/determinism tests.
+- **Re-derive `MAX_OFFLINE_TICKS` again** (as in Task 4.3b): seasonal/temperature
+  field work adds per-tick cost the Phase-4 bench didn't include, so the worst-case
+  catch-up bound must be re-measured with seasons **on**. The constant is
+  serialized; re-deriving is safe.
 - **Verify:** Over a season, temperature/day-length shift; nocturnal or
-  cold-adapted lineages appear in a sweep; conservation still exact.
+  cold-adapted lineages appear in a sweep; conservation still exact; the
+  documented `MAX_OFFLINE_TICKS × (seasons-on ms/tick) < 20s` inequality still holds.
 
 ### Task 5C.2: Speciation charts & lineage tree
 

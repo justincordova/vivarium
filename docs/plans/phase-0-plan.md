@@ -36,6 +36,36 @@
 - **Never iterate a `Set` or `Object.keys()` in `sim/`** — all agent iteration is
   index-based over a stable ID array (SPEC.md §Determinism).
 
+### Load-bearing conventions (pinned once, apply everywhere)
+
+These resolve ambiguities that would otherwise let two implementations diverge
+bit-for-bit and fail the determinism gate. They are fixed here and referenced by
+every task below.
+
+- **Angle encoding (single convention).** A relative angle in `[−π, π]` is encoded
+  to a sensor/​control scalar as `angle / π ∈ [−1, 1]`. **Sign convention:
+  positive = counter-clockwise (left), negative = clockwise (right)**, measured
+  relative to the creature's current heading. `0` = dead ahead, `±1` = directly
+  behind. Every angular sensor (6, 8, 10, 17) and the `turn` output use this exact
+  mapping. "Steer toward angle `a`" means `turn = a`; "steer away" means
+  `turn = wrapToSigned(a + 1)` (i.e. add π, re-wrap to `[−1,1]`) — never a bare
+  negation.
+- **Float→integer-quantum rounding (single rule).** Genes and expressed traits are
+  floats; energy/water are integer quanta. **Every float quantity that becomes an
+  energy or water quantum is converted with `Math.round`, once, at the moment it
+  enters the ledger** (e.g. a computed metabolic cost `K_SIZE·size` is rounded to
+  the integer actually deducted). Never `floor`/`ceil`, never round twice. This is
+  what makes two runs subtract the identical integer and stay bit-identical.
+- **Resolve interleaving is creature-major, not action-major.** In resolve
+  sub-phase 1, iterate creatures in `resolve-shuffle` order and, **for each
+  creature, apply all of its intended actions in fixed action-index order**
+  (move → eat → drink → attack → mate → emit) before advancing to the next
+  creature. (Not: all moves, then all eats.) This is the single pinned reading of
+  SPEC §Tick Loop sub-phase 1.
+- **`hidden` (recurrent state) initial value is a zero vector** everywhere it is
+  born or absent: newborns, spawned creatures, and any `deserialize` of a blob
+  lacking the field. Pinned so spawns/births don't diverge.
+
 ---
 
 ## Phase 0.0 — Project scaffold
@@ -112,7 +142,12 @@ active; lefthook runs `biome check` pre-commit.
     `MATE_THRESHOLD`, `EMIT_THRESHOLD`.
   - Rule-policy fractions (consumed by the `RuleBasedBrain.think` policy, Task
     0.6.1): `HUNGRY_FRAC` (energy fraction below which a creature seeks food),
-    `THIRSTY_FRAC` (hydration fraction below which it seeks water).
+    `THIRSTY_FRAC` (hydration fraction below which it seeks water),
+    `CRITICAL_FRAC` (energy fraction below which flee-from-threat is *suppressed*
+    in favor of feeding — "not critical" in the policy means energy ≥
+    `CRITICAL_FRAC`), `TARGET_COMMIT_TICKS` (hysteresis: how many ticks a creature
+    stays committed to a chosen target before re-selecting — prevents the
+    steer-toward-nearest limit cycle).
   - Plant/creature maxima referents: `maxHealth`/`maxEnergy`/`maxHydration`
     coefficients, sensor normalizers (`TEMP_MIN/MAX`, `LIGHT_SENSOR_MAX`,
     `SCENT_SENSOR_MAX`, `WATER_CELL_MAX`, `FERTILITY_CELL_MAX`).
@@ -145,9 +180,15 @@ active; lefthook runs `biome check` pre-commit.
     `maxAge`).
   - `Creature` (id, `parentId` — SPEC.md §Lineage, position/heading, velocity,
     energy, hydration, health, age, genome, brain, derived-weights cache marked
-    non-serialized, **plus `hidden: Float32Array(HIDDEN)`** — the per-creature
-    recurrent hidden-state vector). `Plant`, `Corpse` (energy but **no** hydration
-    field — SPEC.md §Removal), field arrays.
+    non-serialized, **`hidden: Float32Array(HIDDEN)`** — the per-creature recurrent
+    hidden-state vector, and **`ruleState`** — a tiny serialized record
+    `{ mode: 'seek'|'flee'|'rendezvous'|'scavenge'|'wander', targetId, targetKind,
+    committedTicks }` used only by `RuleBasedBrain` for target hysteresis + mutual
+    mate rendezvous, ignored by `PatchbayBrain`. **`ruleState` is rule-brain-only
+    scaffolding** — it stays in the save format under `PatchbayBrain` (harmless dead
+    weight) and is safe to drop via migration when `RuleBasedBrain` is eventually
+    retired). `Plant`, `Corpse` (energy but **no** hydration field — SPEC.md
+    §Removal), field arrays.
   - **Recurrent memory is real per-creature state, and it IS serialized.**
     `BrainOps.think(brain, senses, memory)` takes last tick's hidden layer
     (SPEC.md §Brain Design: memory = the hidden→hidden group; §Tick Loop line
@@ -168,10 +209,30 @@ active; lefthook runs `biome check` pre-commit.
     would break determinism; the worker attaches `realTime` outside `sim/` — see
     Phase 5).
   - `Config` (world dims, grid resolution, initial `solarReservoir` size, all
-    tunables, RNG sub-stream layout — SPEC.md §Persistence: self-describing save).
+    tunables including `brainKind` and `HIDDEN`, RNG sub-stream layout — SPEC.md
+    §Persistence: self-describing save). **All UI-mutable tunables live in `Config`
+    so `tick()` reads them from `world.config`, never by importing `constants.ts`
+    directly** (load-bearing for determinism + Phase 3 `setParam` + Phase 5
+    forking); `constants.ts` supplies the *default* values `defaultConfig` copies in.
   - `enum Sensor` (0–17) and `enum Action` (0–6) matching the exact indices in
     SPEC.md §Sensors and §Actions.
 - **Verify:** `pnpm build` typechecks. No behavior yet.
+
+### Task 0.1.3: `src/sim/config.ts` — the concrete `defaultConfig` value
+
+- **What:** A single concrete `defaultConfig: Config` object with starting values
+  for every tunable, plus a `makeConfig(overrides)` helper.
+- **Why:** `createWorld` (0.7), the headless runner (0.10), the viability gate
+  (0.11), and Phase 2's first render all need a concrete config *value*, not just
+  the `Config` type. Without one owner, each caller invents its own — divergence.
+- **How:** Populate every `Config` field from the `constants.ts` defaults (world
+  dims, grid resolution, initial `solarReservoir`, all `(tunable)` rates,
+  `brainKind: 'rule'`, `HIDDEN: 10`, the RNG sub-stream layout). `makeConfig` deep-
+  copies `defaultConfig` and applies overrides (used by the sweep and the
+  enlargement experiment). Pure, in `sim/`.
+- **Verify:** `pnpm build` typechecks; `defaultConfig` has a value for every
+  `Config` field (a presence test over the field names); `makeConfig({})` deep-
+  equals `defaultConfig`.
 
 ---
 
@@ -301,6 +362,20 @@ property tests pass.
   parent's allele (pre-mutation); **distance** — `distance(a,b)===distance(b,a)` and
   `distance(a,a)===0`; `deriveExpressed` uses OR (a homolog-A-off/homolog-B-on arrow
   reads enabled).
+  - **Per-homolog drift invariant (guards a silent regression).** A test asserting
+    that disabled-arrow drift uses the **per-homolog** mask bit, not the OR-ed
+    expressed bit: an arrow off in homolog A but on in homolog B **still drifts in
+    homolog A** and does **not** drift in homolog B. (Using the OR for drift
+    eligibility would silently kill the pseudogene-reservoir anti-stagnation
+    mechanism — the world still runs/conserves/is deterministic, so only this
+    targeted test catches it.)
+  - **Golden-vector determinism (enforces fixed accumulation order).** A hard-coded
+    golden test: `gamete`, `mutate`, and `deriveExpressed` on a fixed seed + fixed
+    homologs produce an exact expected byte pattern, computed by an independent
+    reference that sums/iterates in the specified index order. A value-only "is it
+    deterministic on this machine" check **cannot** detect a reordering (any fixed
+    FP order is deterministic locally); only a golden vector catches an accidental
+    reorder that would break cross-engine reachability (SPEC §Determinism point 4).
 
 ---
 
@@ -335,39 +410,74 @@ re-derives on drift and is not serialized.
     in Phase 0. Do **not** stub the brain arrays out for Phase 0 — that would force
     a save-invalidating rewrite at Phase 4.
   - `RuleBasedBrain.think(senses, memory)` — a **fully-specified deterministic
-    formula policy**. It must be pinned to exact arithmetic (the determinism gate
-    requires bit-identical output) and must be able to emit **all 7 actions** so the
-    contest/corpse resolve path (built in 0.8.1) is actually exercised by Phase 0's
-    conservation/determinism gates — a policy that never fires `attack` leaves that
-    path as dead, untested code. Concrete policy (reads sensor indices per §Sensors;
-    thresholds are the gated-action constants from 0.1.1):
-    - **turn** (output 0) = the signed angle to the highest-priority target,
-      clamped to `[−1,1]`. Priority order (fixed): if a threat is within
-      `senseRadius` (sensor 7 < 1) **and** own energy (sensor 1) is not critical →
-      steer *away* from threat angle (sensor 8); else if hungry (sensor 1 <
-      `HUNGRY_FRAC`) and food perceived (sensor 5 < 1) → steer *toward* food angle
-      (sensor 6); else if able to mate (sensor 1 > `MATE_THRESHOLD`) and mate
-      perceived (sensor 9 < 1) → steer toward mate angle (sensor 10); else go
-      straight (0).
-    - **accelerate** (output 1) = `1` when pursuing/fleeing a target, `0` otherwise.
-    - **eat** (output 2) fires when food is in reach (sensor 5 near 0) and hungry.
-    - **drink** (output 3) fires when hydration (sensor 2) < `THIRSTY_FRAC` and
-      local water (sensor 14) present.
-    - **attack** (output 4) fires when a **threat-classified** target is in reach
-      and this creature is the stronger party (self attack power ≥ target) — a
-      simple aggressor rule so predation actually occurs and the contest path runs.
-    - **mate** (output 5) fires when a compatible mate is in reach (sensor 9 near 0)
-      and energy > `MATE_THRESHOLD`.
+    formula policy**, pinned to exact arithmetic (the determinism gate requires
+    bit-identical output) and emitting **all 7 actions** so the contest/corpse path
+    (0.8.1) is exercised by Phase 0's gates. **Sensors are used for *steering
+    intent*; the actual "in reach" / "stronger party" checks happen at resolve
+    time** against the real reach formula and real target genes (the sensor vector
+    is normalized perception and cannot carry them). `think` outputs *intents*;
+    resolve validates and either applies or no-ops them. Uses the pinned angle
+    convention (Conventions block) and the constants from 0.1.1.
+    - **Target selection with hysteresis + mutual rendezvous** (`ruleState.mode`,
+      Task 0.1.2; serialized). Re-select a target only every `TARGET_COMMIT_TICKS`
+      ticks or when the current target leaves `senseRadius`; otherwise keep the
+      committed target. This kills the "steer to fresh-nearest every tick" limit
+      cycle. **Rendezvous (fixes the Allee bootstrap, not just the limit cycle):**
+      one-sided pursuit of a moving mate never closes if the mate is itself moving.
+      So when creature A commits to mate-target B **and** B has reciprocally
+      committed to A (`B.ruleState.targetId === A.id`), both enter
+      `mode: 'rendezvous'`, and **an explicit asymmetry breaks the deadlock: the
+      **lower-`id`** party sets `accelerate = 0` (holds still) while the **higher-`id`**
+      party keeps approaching** until within the reach formula; then **both** fire
+      `mate` intent. (If both stopped, no gap would ever close — the asymmetry is what
+      makes a *moving* approacher reach a *stationary* partner. Lower-id-holds is an
+      arbitrary but fixed, deterministic tie-break.) Reciprocity and the id
+      comparison are evaluated against the **prior-tick snapshot** (double-buffered
+      sense), so it stays deterministic. The `mode` discriminant makes "holding,
+      waiting to mate" a real, testable state.
+    - **Priority (fixed):** if a threat is within `senseRadius` (sensor 7 < 1) **and**
+      own energy (sensor 1) ≥ `CRITICAL_FRAC` → flee (target = threat, flee mode);
+      else if hungry (sensor 1 < `HUNGRY_FRAC`) and food perceived (sensor 5 < 1) →
+      seek food; else if energy > `MATE_THRESHOLD` and a compatible mate perceived
+      (sensor 9 < 1) → seek mate; else wander (hold heading).
+    - **turn** (output 0) = for seek, the committed target's angle sensor (6/8/10)
+      **as-is** (already in the pinned `[−1,1]` convention); for flee, the threat
+      angle steered *away* per the Conventions "steer away" rule. No re-scaling.
+    - **accelerate** (output 1) = `1` while pursuing/fleeing a committed target;
+      `0` when wandering.
+    - **eat** (output 2) intent set when hungry and food perceived (sensor 5 < 1).
+      Resolve fires it only if a food-eligible entity is actually within the reach
+      formula (`REACH_BASE + REACH_PER_SIZE × size`).
+    - **drink** (output 3) intent when hydration (sensor 2) < `THIRSTY_FRAC` and
+      local water (sensor 14) > 0.
+    - **attack** (output 4) intent when a **threat-classified** target is the
+      committed target and this creature is the **stronger party by contest math**:
+      resolve compares `self.aggression × self.size` (attacker power) vs.
+      `target.armor × target.size` floored at `target.size` (defensive scale, SPEC
+      §"What counts as threat") and only initiates if attacker power ≥ that. (Uses
+      real genes at resolve, not sensors.) So predation occurs and the contest path
+      runs, but suicidal attacks don't.
+    - **After a successful kill, the attacker's committed target switches to the
+      fresh corpse** (scavenge-to-gain): next-tick priority seeks/eats it, so
+      "kill then wander off" is avoided and eat-to-gain actually closes.
+    - **mate** (output 5) intent when energy > `MATE_THRESHOLD` and a compatible
+      mate is the committed target; resolve fires it only if the mate is within the
+      reach formula and both parties' `matingThreshold` gates pass.
     - **emit scent** (output 6) fires at low constant intensity when a threat is
-      near (so the scent field and sensors 16/17 are exercised).
-    - Thresholds/fractions (`HUNGRY_FRAC`, `THIRSTY_FRAC`, the gated-action
-      thresholds) are the named constants enumerated in Task 0.1.1. Ignores the
-      brain weight arrays. No learning; deterministic.
-  - The derived-weights cache: **call `deriveExpressed` from `genetics.ts` (Task
-    0.5.1)** — do not reimplement the mean/OR here. `brain.ts` owns only the
-    *caching*: store the derived pair on the creature, a `dirty` flag set by drift
-    triggers a re-derive before the next `think`, and the cache is **not** serialized
-    (re-derived on load — SPEC.md §"Brain weight expression").
+      near (exercises the scent field + sensors 16/17).
+    - Ignores the brain weight arrays. No learning; deterministic.
+  - The derived-weights pair: **call `deriveExpressed` from `genetics.ts` (Task
+    0.5.1)** — do not reimplement the mean/OR here. **Caching is a measured bet, not
+    an assumed win.** Implement the *simplest correct thing first*: derive inline
+    during the per-tick drift pass (which already iterates all disabled arrows), no
+    cache, no dirty flag. Reason: at realistic `DRIFT_RATE` over ~595 disabled-arrow
+    rolls/creature/tick, a large fraction of creatures dirty every tick anyway, so a
+    dirty-flag cache may be a net loss plus a coherence hazard. **Phase 1's bench
+    (Task 1.4) must A/B inline-derive vs. a dirty-flag cache and report the cache
+    hit-rate; keep the cache only if it measurably wins.** If cached, the cache is a
+    pure function of the homologs and is **not** serialized (re-derived on load —
+    SPEC.md §"Brain weight expression"). This keeps the save shape canonical either
+    way.
   - Pin the tanh rational approximation as a named function here that reads the
     `TANH_APPROX_*` constants (Task 0.1.1); used by `PatchbayBrain` later, harmless
     for rule-based.
@@ -376,6 +486,15 @@ re-derives on drift and is not serialized.
   fixture (including `attack`, so the contest path has coverage); `think` never
   reads `Math.random`; serialize/deserialize a brain and confirm the derived cache
   is absent from the blob and re-derived on load.
+  - **Unit-level rendezvous test** (the mechanism the viability gate's mating
+    assertion depends on): two compatible, well-fed creatures both above
+    `matingThreshold`, placed **initially out of reach but within `senseRadius`**
+    (the case rendezvous exists to fix — an adjacent-only test would mask a
+    both-stop deadlock), reciprocally commit, enter `rendezvous`, the higher-id
+    approaches while the lower-id holds, and they **produce a birth within a bounded
+    number of ticks**. Assert the lower-id party's `accelerate` is 0 and the
+    higher-id party's position converges. This localizes rendezvous failures if
+    Phase 0.11's mating assertion goes red.
 
 ---
 
@@ -429,11 +548,15 @@ the free serialize→deserialize→tick equivalence holds (co-gated with 0.9).
      `constants.ts`.
   2. **Think** — `BrainOps.think` per agent (rule-based in Phase 0).
   3. **Act** — collect intended actions; apply nothing.
-  4. **Resolve**, fixed sub-phases:
-     1. Agent actions in `resolve-shuffle` order (movement, eat, drink,
-        attack/contests, mate/births, emit scent). Contests: escape check then
-        probabilistic contest, both from the `resolve` stream (SPEC.md §Contests);
-        kills route through corpse path; eat-to-gain only.
+   4. **Resolve**, fixed sub-phases:
+      1. Agent actions in `resolve-shuffle` order, **creature-major** (per the
+         Conventions block: iterate creatures in shuffle order, and for each
+         creature apply its intended actions in fixed action-index order
+         move→eat→drink→attack→mate→emit before the next creature — not
+         action-major). Gated intents from `think` are validated here against the
+         real reach formula / target genes and applied or no-op'd. Contests: escape
+         check then probabilistic contest, both from the `resolve` stream (SPEC.md
+         §Contests); kills route through corpse path; eat-to-gain only.
      2. Removals in ascending-`id` order (creature death → corpse + hydration
         return; plant death → fertility decomposition).
      3. Plant updates in ascending plant-`id` order (photosynthesis
@@ -462,6 +585,13 @@ the free serialize→deserialize→tick equivalence holds (co-gated with 0.9).
   1,000-tick run, `totalEnergy(after)===totalEnergy(before)` and `totalWater`
   likewise, exact. This is the load-bearing gate — do not proceed to 0.9 until
   green.
+  - **Localized birth-transfer invariant** (births move energy/water between three
+    parties and are the most error-prone, most-revisited transfer): a targeted test
+    that a **single** birth moves exactly `offspringInvestment` energy from **each**
+    parent into the child and nothing more, with both ledgers balanced across just
+    that event. The general per-tick conservation test catches only net imbalance;
+    this catches conservative-but-wrong bugs (e.g. mom's investment double-counted
+    while dad's is dropped) and localizes them.
 
 ---
 
@@ -485,9 +615,11 @@ the free serialize→deserialize→tick equivalence holds (co-gated with 0.9).
     part of the v1 schema now so adding it later isn't a migration).
   - **Per-creature fields that MUST be serialized** (or the roundtrip/determinism
     property fails): `parentId` (SPEC.md §Lineage "from commit one"), the diploid
-    brain arrays (`weightsA/B`, `enabledA/B`), and the recurrent `hidden` vector
-    (genuine runtime state, Task 0.1.2). Explicitly enumerate these — do not let the
-    "all compartments" phrasing silently drop them.
+    brain arrays (`weightsA/B`, `enabledA/B`), the recurrent `hidden` vector, and
+    **`ruleState`** (target-hysteresis state, Task 0.1.2 — a creature mid-
+    `TARGET_COMMIT_TICKS` at the save boundary must resume its committed target, or
+    the 500→save→500 ≡ 1000 gate diverges). Explicitly enumerate all of these — do
+    not let the "all compartments" phrasing silently drop them.
   - **Do not** serialize the derived brain cache; `deserialize` re-derives it via
     `deriveExpressed` (it is a pure function of the homologs). The `hidden` vector is
     **not** a cache — it is serialized.
@@ -516,13 +648,54 @@ the free serialize→deserialize→tick equivalence holds (co-gated with 0.9).
   crashes (SPEC.md §"The `sim/` purity rule", Layer 3).
 - **How:**
   - `scripts/headless.ts` (outside `sim/`), imports only from `src/sim/`.
-  - Arg parse; run loop; every K ticks print `tick, population, plantCount,
-    corpseCount` to stdout.
+  - Arg parse (add `--print-every`, default 100); run loop; every `--print-every`
+    ticks print `tick, population, plantCount, corpseCount` to stdout.
   - Run via `tsx`/`vite-node` (no bundler, no DOM).
 - **Verify:** `pnpm exec tsx scripts/headless.ts --seed 42 --ticks 1000` runs to
   completion and prints changing population counts. If it crashes on a
   DOM/React import, that is the purity gate correctly firing — fix `sim/`, do not
   weaken the runner.
+
+---
+
+## Phase 0.11 — Viability smoke gate (the false-green killer)
+
+**Depends on:** Phase 0.8 (0.10 for a runner).
+**Gate:** the default config sustains a living, *interacting* population over a
+multi-thousand-tick run — not extinct, not exploded, with real births, kills, and
+matings occurring.
+
+### Task 0.11.1: `tests/sim/viability.test.ts`
+
+- **What:** A smoke test that the rule-based world is *alive and dynamic*, not just
+  conservative and deterministic.
+- **Why:** **Phase 0's other gates all pass on a dead world** — a population that
+  collapses to zero on tick 50 conserves energy exactly and replays deterministically.
+  Without this gate, the first signal that the rule policy can't bootstrap a
+  population arrives only after Phase 1's entire metrics+sweep apparatus is built,
+  and even then it's ambiguous (bad constants vs. bad policy). This converts three
+  false-greens into a real signal *before* expensive Phase 1 work. This is the
+  single highest-value gate in Phase 0.
+- **How:** From `createWorld(seed, defaultConfig)`, run ~5,000 ticks over a
+  **committed, fixed list of N seeds** (e.g. N=5, seeds pinned as a constant so any
+  failure is reproducible and investigable — never "flaky, re-run CI"). Assert, as a
+  **quorum, not unanimity** (a viable config can lose one unlucky `spawn`-stream seed
+  where founders cluster badly — a quorum stops that reddening the build while still
+  catching a genuinely non-bootstrapping policy):
+  - on **at least K of N seeds** (e.g. 4 of 5): population never hits 0 and never
+    exceeds a sane ceiling (a wide band — smoke, not balance; balancing is Phase 1);
+  - and on those seeds, **≥1 birth, ≥1 successful predation (kill via the contest
+    path), and ≥1 successful mating** occurred — i.e. the closed ecosystem loop
+    actually turns, not just individual actions firing on a fixture (0.6.1's check).
+- **This is a bootstrap smoke, not a viability proof.** ~5,000 ticks is only ~5
+  days at `TICKS_PER_DAY` and **less than one season** (`DAYS_PER_SEASON`), so it
+  never exercises a seasonal turn — that is fine (its job is "does the loop turn at
+  all"), but **do not** later mistake a green smoke for long-run viability, which is
+  Phase 1's 100k-tick job.
+- **Verify:** `pnpm test viability` meets the K-of-N quorum on the pinned seed list.
+  **If it fails, the rule policy or the starting constants are wrong — fix them here,
+  do not proceed to Phase 1.** (Band edges and K/N are tunable; the *existence* of
+  births/kills/matings on a quorum is not.)
 
 ---
 
@@ -533,9 +706,14 @@ All green before any Phase 1 planning:
 - [ ] `pnpm build && pnpm test && pnpm biome check` all pass.
 - [ ] Determinism property (1,000 ticks, any seed) passes.
 - [ ] Energy conservation exact every tick; water conservation exact every tick.
-- [ ] Inheritance (sexual + clonal) and distance-metric properties pass.
+- [ ] Inheritance (sexual + clonal), distance-metric, per-homolog-drift, and
+      golden-vector (fixed accumulation order) properties pass.
+- [ ] Localized birth-transfer conservation invariant passes.
 - [ ] Serialization roundtrip + 500/deserialize/500≡1000 pass.
 - [ ] `scripts/headless.ts` runs 1,000 ticks and prints population counts.
+- [ ] **Viability smoke gate (0.11) passes** — the default world sustains a living,
+      interacting population (births + kills + matings occur). Do not enter Phase 1
+      until this is green.
 - [ ] `sim/` imports nothing (Layers 1–3 all enforce it).
 
 **Next:** write `docs/plans/phase-1-plan.md` (headless CSV runner, world-health

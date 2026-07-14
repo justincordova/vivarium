@@ -19,6 +19,13 @@
   produces* (tick rate, tuned constants, `MAX_OFFLINE_TICKS`) specify a
   **procedure and a gate**, not a guessed value. The tuned constants are written
   back into `constants.ts` as their now-measured values.
+- **Constants-ownership rule (applies to every phase).** Any named constant a phase
+  introduces (`SPECIES_SPATIAL_RADIUS`, `NOVELTY_SAMPLE`, `TRAIT_BINS`,
+  `EXTINCT_SWEET`, `BOOM_WINDOW`, `DOMINANCE_WINDOW`, etc.) is **added to
+  `constants.ts` in the task that introduces it**, with a `(tunable)` marker and a
+  default, and included in the `constants.ts` presence-check test. `constants.ts` is
+  the single home for every magic number across all phases — a later phase extends
+  it, it does not fork a private constant.
 - **No UI framework yet.** The debug canvas is ~50 throwaway lines of raw canvas
   (no React, no worker) — a debugging tool, not a product surface, so the
   `frontend-design` skill does **not** apply here. (It applies from Phase 2 on.)
@@ -43,35 +50,100 @@
       range** (from the trait's clamp bounds in `constants.ts`), so each gene
       contributes comparably. Enumerate "functional trait genes" as the `Genome`
       trait fields excluding neutral `hue`.
-    - `speciesCount` = number of clusters, recomputed ~every 500 ticks, via a
-      **fixed clustering algorithm: single-linkage connected components** — build a
-      graph over living creatures with an edge between any pair whose
-      `distance(a,b) < SPECIES_COMPAT_THRESHOLD` (the **same** constant that gates
-      mate compatibility, Phase 0.1.1), then count connected components (union-find,
-      index-based over the stable ID array). Single-linkage is chosen because it
-      matches the biology: species = who *can* interbreed, and interbreeding is
-      transitive-by-chaining under the compatibility threshold. This is fixed here so
-      two implementers cannot get different counts.
+    - `speciesCount` = number of clusters, recomputed ~every 500 ticks. **Fixed
+      algorithm: spatially-restricted, diameter-checked single-linkage.**
+      Naive global single-linkage is *wrong for this metric*: its chaining pathology
+      collapses a continuous genetic cline (the *expected* structure in a
+      drift-driven sim, and the ring-species phenomenon) to a single cluster exactly
+      when the world is most diversified — anti-correlating the metric with the
+      diversification it's meant to reward. Two fixes, both applied:
+      1. **Restrict edges to spatial-hash neighbors** (build the compatibility graph
+         only between creatures within a `SPECIES_SPATIAL_RADIUS` of each other, via
+         `spatial.ts`). Creatures far apart in space essentially never interbreed, so
+         this is more biologically faithful (allopatric speciation is spatial) **and**
+         turns the edge build from O(n²) into ~O(n·k). Edge exists when neighbors'
+         `distance < SPECIES_COMPAT_THRESHOLD` (the shared Phase 0.1.1 constant).
+         **`SPECIES_SPATIAL_RADIUS` changes the metric's *value*, not just its speed**
+         (too small → every deme reads as its own species; too large → global chaining
+         returns), so it is a named constant **included in the sweep's tunable set**
+         (Task 1.5) with its sensitivity checked — `speciesCount` must not be an
+         artifact of one hand-picked radius.
+      2. **Diameter guard against chaining:** also emit, per cluster, its **max
+         intra-cluster pairwise expressed-distance** (`maxDiameter`). A cluster whose
+         diameter ≫ `SPECIES_COMPAT_THRESHOLD` is a cline, not one species; the sweep
+         ranking (Task 1.5) reads `maxDiameter` so a chained mega-cluster does not
+         masquerade as "diversified = 1 species, good." (Report both `speciesCount`
+         and the diameters.)
+      Union-find over the restricted edge set, index-based on the stable ID array,
+      ascending-id tie handling — deterministic.
+    - **Cluster *identity* is not stable across recomputations, and the metrics that
+      need stable identity must not assume it.** Connected-component labels at tick
+      1000 need not correspond to labels at tick 500. `speciesCount` (a count) is
+      fine. But any consumer that tracks "*this* species' population over time"
+      (Phase 2 `stats.population[]`, Phase 5 `lineageBoom`/`newDominant` events) must
+      derive stable identity from **`parentId` ancestry — specifically the
+      founder-lineage root**, defined as the single generation-zero founder reached
+      by walking `parentId` back up the lineage. (One rule, not "root or MRCA" — a
+      creature's founder root is unambiguous.) Use the pruned lineage tree (Task 1.2)
+      — no new infrastructure. **Do NOT key identity on
+      `hue`:** hue drifts freely and neutrally (SPEC.md §The Genome), so two unrelated
+      lineages can drift to the same hue and collide, and a single lineage's hue
+      drifts over long horizons — either failure merges/splits species wrongly and
+      would make Phase 5's `newDominant` narrate confidently-wrong events. Hue may
+      *decorate* a chart (it's what the eye reads) but must never be the join key.
     - `populationVariance` — a *reward* signal (high = good oscillation); document
       it so the sweep's ranking function does not penalize it (SPEC.md: stagnant
       worlds must score *bad*).
     - `behaviorNovelty` — **SPEC.md §Open Questions explicitly defers the precise
-      formula.** Implement the named v1 proxy and mark it as provisional in code:
-      per creature, accumulate a normalized histogram over the 7 actions (fraction of
-      ticks in a trailing window each action fired); the metric is the **mean
-      pairwise Jensen–Shannon divergence** across the population's action histograms
-      (a single scalar in `[0,1]`, higher = more behavioral diversity). Pick
-      Jensen–Shannon (not "variance or entropy") so the choice is unambiguous;
-      document that this proxy may be revisited (it is the one metric the spec leaves
-      open, so it is allowed to change without invalidating anything).
+      formula.** Implement the named v1 proxy, fully pinned and marked provisional:
+      - **Per-creature action histogram** over a trailing window of
+        `NOVELTY_WINDOW` ticks (a named constant, default ~500). "Fired" is defined
+        per action: the 5 gated actions (eat/drink/attack/mate/emit) count a fire
+        when their gate fired that tick; the 2 continuous outputs (turn, accelerate)
+        count a "fire" when `|output| > NOVELTY_ACT_EPS` (a named threshold) — so all
+        7 have a well-defined fire predicate. Normalize to a distribution over 7.
+      - **The window accumulator is per-creature runtime state and MUST be
+        serialized** (add to Task 1.2 history + the Phase 0.9 schema) — otherwise
+        novelty resets to noise after every autosave/catch-up and the 100k-tick sweep
+        (which checkpoints) gets a discontinuous signal.
+      - **Metric: subsampled mean pairwise Jensen–Shannon divergence — O(constant),
+        and it measures the right thing.** Entropy (a within-distribution spread
+        measure) is the *wrong* proxy: a population that has speciated into a hunter
+        morph and a grazer morph — the emergent outcome the project exists to produce
+        — gives each specialist a *peaked* (low-entropy) histogram, so mean entropy
+        reads that as *low* novelty. Between-creature divergence is what "novelty"
+        means here, and JSD measures exactly that. To bound cost, **sample
+        `min(population, NOVELTY_SAMPLE)` creatures (≈200) by ascending id and compute
+        mean pairwise JSD over their action histograms** — O(NOVELTY_SAMPLE²) ≈ 40k
+        ops, a *fixed constant* independent of population (cheaper than an O(n)
+        per-creature pass for n > 40k, and correct). Result normalized to `[0,1]` by
+        dividing by `log(2)` (JSD's max with natural log). Deterministic subsample
+        (ascending id), so reproducible.
+      - Uses `Math.log` (fine — `stats.ts` is **never** fed back into `tick()`, so it
+        is outside the determinism boundary; add a code comment asserting this so a
+        future refactor doesn't route a novelty term into selection and silently
+        break cross-engine reachability).
+      - `NOVELTY_SAMPLE`, `NOVELTY_WINDOW`, `NOVELTY_ACT_EPS` are named constants
+        (constants-ownership rule). Document the metric as provisional (the one
+        spec-deferred metric; allowed to change).
   - Pure, index-based iteration, no `Set`/`Object.keys`.
 - **Verify:** `tests/sim/stats.test.ts`: on hand-built fixtures, each metric
-  returns the expected value — a monoculture world → near-zero traitVariance; two
-  groups separated by `> SPECIES_COMPAT_THRESHOLD` with intra-group distances below
-  it → speciesCount exactly 2 (and a chain of creatures each within threshold of the
-  next → speciesCount 1, proving single-linkage); a flat population → near-zero
-  populationVariance; identical action histograms → behaviorNovelty 0. Determinism:
-  same world → same metrics.
+  returns the expected value —
+  - `traitVariance`: a monoculture world → near-zero.
+  - `speciesCount`: two groups that are **both spatially separated (beyond
+    `SPECIES_SPATIAL_RADIUS`) and genetically separated (`> SPECIES_COMPAT_THRESHOLD`)**
+    → speciesCount 2. A single-neighborhood genetic **chain** (each within threshold
+    of the next) → speciesCount reports 1 cluster **but with `maxDiameter` ≫
+    threshold**, and the test asserts the diameter is surfaced so the sweep reads it
+    as a cline, not as one healthy species (the guard against single-linkage chaining
+    gaming the diversity reward). Do **not** assert "chain → 1 is correct" as a
+    desirable outcome — assert that the diameter flags it.
+  - `populationVariance`: a flat population → near-zero.
+  - `behaviorNovelty`: a population of **identical** action histograms → 0 (pairwise
+    JSD of identical distributions is 0, regardless of each distribution's own
+    entropy); a population split into two distinct behavioral modes → clearly higher.
+  - Determinism: same world → same metrics (incl. the deterministic ascending-id
+    novelty subsample and the ~500-tick recompute schedule).
 
 ## Task 1.2: History accumulation + downsampling shape
 
@@ -90,6 +162,9 @@
   - Full detail for a recent window; **downsample older history** to 1 point /
     1,000 ticks; prune dead lineage branches to ancestors-of-living + summaries
     (SPEC.md §Lineage). Shape must match the Phase 0.9 serialized schema.
+  - **Serialize the per-creature `behaviorNovelty` action-window accumulator**
+    (Task 1.1) so the metric is continuous across save/catch-up boundaries. Add it
+    to the Phase 0.9 schema (optional/defaulted, so no migration).
 - **Verify:** `tests/sim/history.test.ts`: after N ticks the recent window is full
   detail and older entries are downsampled at the specified rate; serialize→
   deserialize preserves history shape (extends the Phase 0.9 roundtrip test).
@@ -112,29 +187,44 @@
   row per sample interval; a second identical invocation produces a
   byte-identical CSV (determinism through the instrument).
 
-## Task 1.4: Tick-loop benchmark → choose `MS_PER_TICK` and `MAX_OFFLINE_TICKS`
+## Task 1.4: Benchmarks → choose time knobs, A/B the brain cache, bench the metrics path
 
 > **Empirically gated — produces measured numbers, not designed ones.**
 
-- **What:** A `vitest bench` over the tick loop at a representative population,
-  then derive the two time knobs from the measured rate.
-- **Why:** SPEC.md §Tick Semantics & §Offline Catch-up: both `MS_PER_TICK` and
-  `MAX_OFFLINE_TICKS` are "chosen *after* `vitest bench` reports the real headless
-  tick rate." Guessing produces "a 14-minute loading bar or a world that barely
-  advances."
+- **What:** `vitest bench` over (a) the tick loop, (b) the metrics path, and (c)
+  the derived-weights cache A/B; then derive the two time knobs.
+- **Why:** SPEC.md §Tick Semantics & §Offline Catch-up: `MS_PER_TICK` and
+  `MAX_OFFLINE_TICKS` are chosen *after* the bench. But the tick bench alone is
+  insufficient: the metrics (speciesCount, behaviorNovelty) run every ~500 ticks and
+  can dominate sweep wall-clock, and the derived-weights cache (Phase 0.6) is an
+  unmeasured bet whose payoff depends on `DRIFT_RATE` (only chosen now).
 - **How:**
   - `tests/sim/tick.bench.ts` benchmarking `tick(world)` at a representative
-    founder population + plant density (from a representative `Config`).
-  - Record ticks/sec. Then set, in `constants.ts`:
-    - `MS_PER_TICK` — chosen so world-time flows at a watchable rate.
-    - `MAX_OFFLINE_TICKS` — chosen so worst-case offline catch-up is **under ~20s**
-      at the measured rate (SPEC.md §Offline Catch-up).
-  - Replace the Phase 0.1 placeholder comments on these two constants with the
-    measured values and a note recording the bench result they came from.
-- **Verify:** `pnpm bench` runs and prints ticks/sec; `constants.ts` now has
-  concrete `MS_PER_TICK`/`MAX_OFFLINE_TICKS` with a comment citing the measured
-  rate; a comment-check test asserts `MAX_OFFLINE_TICKS × (measured ms/tick) < 20s`
-  (documented inequality, even if the rate is hard-coded from the bench run).
+    founder population + plant density — **use a realistic population, not a toy
+    one** (the per-creature 5+ spatial-hash queries and, later, the 350-arrow
+    forward pass are the real hot path).
+  - **Bench the metrics path separately** (`worldHealth` recompute at population
+    scale) — this is what actually gates sweep throughput, and it will not show up
+    in the per-tick bench because metrics don't run every tick.
+  - **A/B the derived-weights cache** (Phase 0.6): measure inline-derive vs.
+    dirty-flag cache and report the cache **hit-rate**. **Do this at the `DRIFT_RATE`
+    the sweep actually selects for the shipped default config, not a pre-sweep
+    provisional value** — the cache decision flips with drift (low drift → most
+    creatures stay clean → cache wins; high drift → cache thrashes → delete it), and
+    `DRIFT_RATE` is a swept axis. So sequence it: sweep → default `DRIFT_RATE` fixed →
+    *then* A/B. If hit-rate < ~50%, delete the cache (simpler, faster); record the
+    crossover `DRIFT_RATE` so a later re-sweep that drops drift reopens the question.
+  - Then set in `constants.ts`: `MS_PER_TICK` (watchable rate) and
+    `MAX_OFFLINE_TICKS` (worst-case catch-up **< ~20s** at the measured rate).
+    **Set `MAX_OFFLINE_TICKS` PROVISIONALLY** and comment that it must be
+    **re-derived after Phase 4** (the 350-arrow `PatchbayBrain.think` is far heavier
+    than the rule policy, so the Phase-1 rate over-estimates post-brain throughput
+    and would blow the 20s guarantee). Both knobs are serialized, so re-deriving is
+    safe.
+- **Verify:** `pnpm bench` prints ticks/sec **and** metrics-recompute time **and**
+  cache hit-rate; `constants.ts` has concrete `MS_PER_TICK`/`MAX_OFFLINE_TICKS` with
+  a comment citing the measured rate and the "re-derive after Phase 4" note; a
+  documented-inequality check records `MAX_OFFLINE_TICKS × (measured ms/tick) < 20s`.
 
 ## Task 1.5: Parameter sweep
 
@@ -149,11 +239,17 @@
     size, etc. — the constants marked *(tunable)* in `constants.ts`).
   - Run each headless for 100k ticks (SPEC.md method), collect final `WorldHealth`,
     write a ranked CSV.
-  - Ranking function: rewards `populationVariance`, `traitVariance`,
-    `speciesCount`, moderate `extinctionEvents`; penalizes stagnation (high
-    survival + near-zero variance must rank *low*). Parallelize across workers/
-    processes (Node worker threads or child processes; `sim/` is pure so this is
-    safe).
+  - Ranking function (a scalarization — its *weights* are tunable by design, but its
+    *shape* is pinned so two implementers build the same curve): a weighted sum that
+    **rewards** `populationVariance`, `traitVariance`, `speciesCount`,
+    `behaviorNovelty`; **penalizes stagnation** (high survival + near-zero variance
+    ranks *low*); treats `extinctionEvents` as a **tent/band** — reward rises from 0
+    to a target `EXTINCT_SWEET` then falls (some drama good, total collapse bad,
+    SPEC.md), not monotonic; and **discounts a chained mega-cluster** by reading the
+    per-cluster `maxDiameter` from Task 1.1 (a single cluster with diameter ≫
+    threshold counts as low diversity, not high — so single-linkage chaining cannot
+    game the diversity reward). Parallelize across workers/processes (Node worker
+    threads or child processes; `sim/` is pure so this is safe).
   - Deterministic: each sampled config seeded from a master seed so the sweep is
     reproducible.
 - **Verify:** `pnpm exec tsx scripts/sweep.ts --n 200 --ticks 100000
