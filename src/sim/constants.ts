@@ -404,8 +404,3 @@ export const RANK_W_STAGNATION = 3.0;
  * `SPECIES_COMPAT_THRESHOLD` is a cline, not diversity — discount `speciesCount`
  * reward when the diameter is inflated (guards single-linkage gaming). (tunable) */
 export const RANK_W_CHAIN_DISCOUNT = 1.0;
-/**
- * A world that did not reach the horizon (died before `ticks`) is scored as
- * stagnation-free but gets no survival credit; this is the survival scale
- * normalizing `survivalTicks` into the stagnation term. (tunable) */
-export const RANK_SURVIVAL_SCALE = 100_000;

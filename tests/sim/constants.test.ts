@@ -167,7 +167,6 @@ describe("constants — presence check (every name a later Phase 0 task referenc
       "RANK_W_EXTINCT",
       "RANK_W_STAGNATION",
       "RANK_W_CHAIN_DISCOUNT",
-      "RANK_SURVIVAL_SCALE",
     ] as const;
 
     const mod = C as Record<string, unknown>;

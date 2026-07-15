@@ -43,17 +43,23 @@ interface Axis {
  * (plan: swept with sensitivity checked, so speciesCount isn't an artifact of one
  * hand-picked radius).
  */
+// Ranges narrowed toward the viable region a first broad sweep + a compartment-flow
+// diagnostic identified (plan Task 1.5 gate: "if nothing qualifies, iterate on
+// sim/constants/costs"). The broad sweep's collapse mechanism was metabolic starvation
+// under high mutation load: creatures starved next to full plants when
+// METABOLIC_COST_COEF was high and MUT_GLOBAL large. So metabolism is capped lower and
+// mutation kept moderate; the other axes still span a wide band for oscillation search.
 export const SWEEP_AXES: readonly Axis[] = [
-  { path: "tunables.MUT_GLOBAL", lo: 0.25, hi: 3.0 },
-  { path: "tunables.METABOLIC_COST_COEF", lo: 0.02, hi: 0.3 },
-  { path: "tunables.PLANT_GROWTH_MAX", lo: 5, hi: 40 },
-  { path: "tunables.TICKS_PER_DAY", lo: 200, hi: 2000, integer: true },
-  { path: "tunables.CREATURE_CAP", lo: 60, hi: 200, integer: true },
-  { path: "tunables.LIGHT_DECAY", lo: 0.02, hi: 0.3 },
-  { path: "tunables.CORPSE_DECAY_FRACTION", lo: 0.02, hi: 0.2 },
-  { path: "tunables.HYDRATION_DECAY", lo: 0.005, hi: 0.05 },
-  { path: "tunables.SPECIES_SPATIAL_RADIUS", lo: 10, hi: 50 },
-  { path: "initialSolarReservoir", lo: 1_000_000, hi: 4_000_000, integer: true },
+  { path: "tunables.MUT_GLOBAL", lo: 0.5, hi: 1.6 },
+  { path: "tunables.METABOLIC_COST_COEF", lo: 0.02, hi: 0.08 },
+  { path: "tunables.PLANT_GROWTH_MAX", lo: 8, hi: 30 },
+  { path: "tunables.TICKS_PER_DAY", lo: 300, hi: 1600, integer: true },
+  { path: "tunables.CREATURE_CAP", lo: 80, hi: 200, integer: true },
+  { path: "tunables.LIGHT_DECAY", lo: 0.04, hi: 0.2 },
+  { path: "tunables.CORPSE_DECAY_FRACTION", lo: 0.03, hi: 0.15 },
+  { path: "tunables.HYDRATION_DECAY", lo: 0.008, hi: 0.03 },
+  { path: "tunables.SPECIES_SPATIAL_RADIUS", lo: 15, hi: 45 },
+  { path: "initialSolarReservoir", lo: 1_500_000, hi: 4_000_000, integer: true },
 ] as const;
 
 /** Set a dotted `tunables.X` or top-level `X` path on a `ConfigOverrides`. */
@@ -110,7 +116,7 @@ export function runConfig(seed: number, overrides: ConfigOverrides, ticks: numbe
  * `EXTINCT_SWEET`; and discounts a chained mega-cluster via `maxDiameter` so
  * single-linkage chaining cannot game the diversity reward. Higher = better.
  */
-export function rankScore(health: WorldHealth): number {
+export function rankScore(health: WorldHealth, ticks: number): number {
   const {
     populationVariance,
     traitVariance,
@@ -118,8 +124,28 @@ export function rankScore(health: WorldHealth): number {
     behaviorNovelty,
     extinctionEvents,
     maxDiameter,
+    meanPopulation,
     survivalTicks,
   } = health;
+
+  // Reaching the horizon is a PRECONDITION for the diversity/oscillation rewards.
+  // Without this gate the sweep optimizes into the broken corner: a world that booms
+  // to carrying capacity then crashes to zero has *huge* populationVariance and would
+  // rank #1 — but it is dead, with speciesCount/novelty = 0 (measured on the empty
+  // final frame). A crash is not oscillation. So a config that did not survive to
+  // `ticks` earns ONLY survival-progress credit and none of the variance/diversity
+  // reward (SPEC.md: a collapsed world must score bad).
+  const reachedHorizon = ticks <= 0 || survivalTicks >= ticks;
+  if (!reachedHorizon) {
+    // Partial credit ∝ how far it got, so the search still gradient-follows toward
+    // longer-lived configs, but always ranks below any horizon-reaching world.
+    return -C.RANK_W_STAGNATION * (1 - survivalTicks / ticks);
+  }
+
+  // A survivor that is actually empty/near-empty at the horizon is not alive in any
+  // meaningful sense — guard against a technicality where survivalTicks == ticks but
+  // the population is ~0.
+  if (meanPopulation < 1) return -C.RANK_W_STAGNATION;
 
   // Extinction tent: rises 0→EXTINCT_SWEET then falls (symmetric triangular peak 1).
   const sweet = C.EXTINCT_SWEET;
@@ -131,11 +157,10 @@ export function rankScore(health: WorldHealth): number {
   const chainFactor = maxDiameter > thr ? thr / maxDiameter : 1;
   const speciesReward = speciesCount * (1 - C.RANK_W_CHAIN_DISCOUNT * (1 - chainFactor));
 
-  // Stagnation penalty: a world that survived a long time but barely oscillated is
-  // boring. Penalty ∝ (how far it got) × (how flat it was).
-  const survivalFrac = Math.min(1, survivalTicks / C.RANK_SURVIVAL_SCALE);
+  // Stagnation penalty: a horizon-reaching world that barely oscillated is boring.
+  // Penalty ∝ flatness of the recent population window.
   const flatness = 1 / (1 + populationVariance); // ~1 when variance ≈ 0, →0 as it grows
-  const stagnation = survivalFrac * flatness;
+  const stagnation = flatness;
 
   return (
     C.RANK_W_POP_VARIANCE * populationVariance +
@@ -165,5 +190,5 @@ export function evaluate(
 ): SweepResult {
   const overrides = sampleConfig(masterSeed, index);
   const health = runConfig(runSeed, overrides, ticks);
-  return { index, seed: runSeed, overrides, health, score: rankScore(health) };
+  return { index, seed: runSeed, overrides, health, score: rankScore(health, ticks) };
 }
