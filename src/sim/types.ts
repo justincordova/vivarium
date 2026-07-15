@@ -321,6 +321,8 @@ export interface Tunables {
   SPECIES_COMPAT_THRESHOLD: number;
   DENSITY_RADIUS: number;
   CREATURE_CAP: number;
+  REPRO_SOFT_FRAC: number;
+  REPRO_CROWD_LIMIT: number;
   // gated-action thresholds
   EAT_THRESHOLD: number;
   DRINK_THRESHOLD: number;

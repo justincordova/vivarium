@@ -218,8 +218,30 @@ export const HEAL_COST = 2;
 export const SPECIES_COMPAT_THRESHOLD = 8;
 /** Fixed radius `localDensity(pos)` queries — sensor #11 and density removal share it. (tunable) */
 export const DENSITY_RADIUS = 6;
-/** Soft carrying capacity: reproduction is suppressed at/above this population. (tunable) */
+/**
+ * Hard population ceiling: an absolute cap that bounds memory/CPU. Reproduction is
+ * fully suppressed at/above it — but it is NOT the primary brake. A hard cliff at the
+ * food carrying capacity produces a fragile high-churn equilibrium that death-spirals
+ * (diagnosed: births≈deaths at the cap, then a transient death excess cascades to
+ * extinction). The graduated brake below is what actually stabilizes the population.
+ * (tunable) */
 export const CREATURE_CAP = 100;
+/**
+ * Graduated density-dependent reproduction brake (SPEC.md §World-Health: "density-
+ * dependent effects" are the primary in-scope stabilizer). Below
+ * `CREATURE_CAP × REPRO_SOFT_FRAC` reproduction is unrestricted; between the soft
+ * threshold and the hard cap, a birth is stochastically suppressed with probability
+ * rising to 1 at the cap (drawn from the deterministic `mating` stream). This smooth
+ * negative feedback replaces the hard cliff, damping overshoot into a sustained
+ * oscillation rather than a crash. (tunable) */
+export const REPRO_SOFT_FRAC = 0.55;
+/**
+ * Local-crowding reproduction brake: a birth is additionally suppressed when the
+ * parent's `localDensity` (within `DENSITY_RADIUS`) exceeds this many neighbors, so
+ * dense demes stop breeding before sparse ones — creating refuges for losing
+ * strategies (SPEC.md §World-Health: spatial heterogeneity → refuges → speciation).
+ * (tunable) */
+export const REPRO_CROWD_LIMIT = 8;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Gated-action thresholds  (SPEC.md §Actions "Gated actions fire when their

@@ -123,3 +123,47 @@ describe("rendezvous produces a birth within bounded ticks", () => {
     expect(bred).toBe(true);
   });
 });
+
+describe("graduated density-dependent reproduction brake", () => {
+  it("population never exceeds the hard CREATURE_CAP", () => {
+    // The hard ceiling is absolute (memory/CPU bound). 1500 ticks reaches the cap on
+    // the default seed; assert the invariant holds every tick.
+    const cap = 90;
+    const w = createWorld(1, makeConfig({ tunables: { CREATURE_CAP: cap } }));
+    for (let i = 0; i < 1500; i++) {
+      tick(w);
+      expect(w.creatures.length).toBeLessThanOrEqual(cap);
+    }
+  }, 30000);
+
+  it("the brake is deterministic — two runs with the same seed match population exactly", () => {
+    const run = (): number[] => {
+      const w = createWorld(3, makeConfig({ tunables: { CREATURE_CAP: 90 } }));
+      const series: number[] = [];
+      for (let i = 0; i < 1200; i++) {
+        tick(w);
+        if (i % 200 === 0) series.push(w.creatures.length);
+      }
+      return series;
+    };
+    expect(run()).toEqual(run());
+  }, 30000);
+
+  it("a lower soft fraction holds the population no higher than a late brake", () => {
+    // With REPRO_SOFT_FRAC low, the stochastic brake bites earlier, so the population
+    // peak is no higher than a run where the brake engages only near the cap.
+    const peak = (softFrac: number): number => {
+      const w = createWorld(
+        1,
+        makeConfig({ tunables: { CREATURE_CAP: 200, REPRO_SOFT_FRAC: softFrac } }),
+      );
+      let mx = 0;
+      for (let i = 0; i < 2000; i++) {
+        tick(w);
+        mx = Math.max(mx, w.creatures.length);
+      }
+      return mx;
+    };
+    expect(peak(0.3)).toBeLessThanOrEqual(peak(0.95));
+  }, 30000);
+});

@@ -443,7 +443,7 @@ function applyCreature(
 
   // Mate: reproduce with the committed mate if in reach (snapshot) + both thresholds.
   if (plan.intents.mate && plan.mateId !== null && plan.mateInReach) {
-    tryMate(world, c, plan.mateId, byId, t);
+    tryMate(world, c, plan.mateId, byId, t, snap);
   }
 
   // Emit scent into the local cell.
@@ -546,13 +546,11 @@ function tryMate(
   mateId: number,
   byId: Map<number, Creature>,
   t: Config["tunables"],
+  snap: Snapshot,
 ): void {
   const b = byId.get(mateId);
   if (b === undefined || b.id === a.id) return;
-  // Soft carrying capacity: suppress reproduction when the population is already at
-  // capacity. A density-dependent brake (SPEC.md §World-Health — density-dependent
-  // effects are an in-scope stabilizer) that damps the boom-bust overshoot into a
-  // sustained oscillation. (Phase-0 provisional; Phase 1 sweeps CREATURE_CAP.)
+  // Hard population ceiling (memory/CPU bound) — absolute, no RNG.
   if (world.creatures.length >= t.CREATURE_CAP) return;
   // Reach was validated against the snapshot (plan.mateInReach) so mating is
   // order-independent; no live-distance recheck here (it would reintroduce the
@@ -561,8 +559,33 @@ function tryMate(
   if (a.energy <= expressTrait(a.genome.matingThreshold)) return;
   if (b.energy <= expressTrait(b.genome.matingThreshold)) return;
   // Deterministic single-birth: only the LOWER-id parent initiates, so the pair
-  // produces one child regardless of processing order.
+  // produces one child regardless of processing order. Placed BEFORE the stochastic
+  // brake so exactly one initiator per pair draws from the `mating` stream (RNG
+  // consumption stays a clean function of the birth attempt, not of processing order).
   if (a.id > b.id) return;
+
+  // Graduated density-dependent reproduction brake (SPEC.md §World-Health — density-
+  // dependent effects are the primary in-scope stabilizer). A HARD cliff at the food
+  // carrying capacity is fragile: births≈deaths pinned at the cap, then a transient
+  // death excess death-spirals to extinction (diagnosed empirically). Two smooth
+  // brakes instead:
+  //   1. global soft brake — above CREATURE_CAP×REPRO_SOFT_FRAC, suppress a birth with
+  //      probability rising to 1 at the cap (smooth negative feedback → oscillation).
+  //   2. local-crowding brake — suppress when the initiator's neighborhood is dense, so
+  //      dense demes stop breeding before sparse ones (refuges → speciation).
+  // Draws use the deterministic `mating` stream; only the lower-id initiator reaches
+  // here, so consumption is deterministic.
+  const pop = world.creatures.length;
+  const soft = t.CREATURE_CAP * t.REPRO_SOFT_FRAC;
+  if (pop > soft) {
+    const suppress = (pop - soft) / (t.CREATURE_CAP - soft);
+    if (world.rng.mating.next() < suppress) return;
+  }
+  const localCrowd = localDensity(snap.hash, a.x, a.y, t.DENSITY_RADIUS) - 1;
+  if (localCrowd > t.REPRO_CROWD_LIMIT) {
+    const crowdSuppress = Math.min(1, (localCrowd - t.REPRO_CROWD_LIMIT) / t.REPRO_CROWD_LIMIT);
+    if (world.rng.mating.next() < crowdSuppress) return;
+  }
 
   const invA = toQuantum(expressTrait(a.genome.offspringInvestment));
   const invB = toQuantum(expressTrait(b.genome.offspringInvestment));
