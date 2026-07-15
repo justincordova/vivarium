@@ -24,10 +24,29 @@
 export const TICKS_PER_DAY = 1000;
 /** Day/night cycles per season. (tunable) */
 export const DAYS_PER_SEASON = 30;
-/** How fast world-time flows in real time, ms per tick. (bench — chosen after Phase 1 bench) */
+/**
+ * How fast world-time flows in real time, ms per tick. (bench, Phase 1 Task 1.4)
+ *
+ * Measured headless compute at steady-state (~100 creatures, rule policy) is
+ * ~4.4 ms/tick (`tick.bench.ts`: ~225 Hz). 50 ms/tick = 20 world-ticks/sec is a
+ * watchable display pace and leaves ample headroom over the compute cost. This is a
+ * pacing knob (interval between ticks), not compute-bound here; it is serialized so
+ * re-tuning post-Phase-4 is safe.
+ */
 export const MS_PER_TICK = 50;
-/** Offline catch-up ceiling, in ticks. (bench — chosen so worst-case catch-up < ~20s) */
-export const MAX_OFFLINE_TICKS = 100_000;
+/**
+ * Offline catch-up ceiling, in ticks — chosen so worst-case catch-up < ~20s
+ * (SPEC.md §Offline Catch-up). Catch-up is compute-bound: it calls `tick()` N times
+ * as fast as possible.
+ *
+ * **PROVISIONAL (Phase 1 Task 1.4); MUST be re-derived after Phase 4.** The measured
+ * rate is ~4.4 ms/tick under the *rule* policy (`tick.bench.ts`). Documented
+ * inequality: `MAX_OFFLINE_TICKS × ms/tick = 4500 × 4.44 ms ≈ 19.98 s < 20 s`. The
+ * Phase-4 350-arrow `PatchbayBrain.think` is far heavier than the rule policy, so
+ * this rate over-estimates post-brain throughput and this ceiling must drop after
+ * that swap or the 20 s guarantee breaks. Serialized, so re-deriving is safe. (bench)
+ */
+export const MAX_OFFLINE_TICKS = 4_500;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Movement / kinematics  (SPEC.md §Actions — the mass/accel formula)
