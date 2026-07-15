@@ -675,7 +675,10 @@ function resolvePlants(world: World, _reservoir: Compartment): void {
     if (light > t.LIGHT_THRESHOLD && fertility > t.FERTILITY_THRESHOLD) {
       const maxSize = expressTrait(p.genome.maxSize);
       const headroom = Math.max(0, toQuantum(maxSize) - p.energy);
-      const grow = Math.min(t.PLANT_GROWTH_MAX, headroom);
+      // `PLANT_GROWTH_MAX` is a real-valued rate cap (a swept tunable), so quantize it
+      // before it reaches the integer ledger — `transferUpTo` requires integer quanta.
+      // `headroom` is already integer, so `grow` is the min of two integers.
+      const grow = Math.min(toQuantum(t.PLANT_GROWTH_MAX), headroom);
       if (grow > 0) {
         // Draw from light then fertility (headroom-limited); gain exactly equals draw.
         const fromLight = transferUpTo(

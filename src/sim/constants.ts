@@ -369,3 +369,43 @@ export const HISTORY_DOWNSAMPLE_TICKS = 1000;
 
 /** How often (in ticks) a history sample is recorded into `world.history`. (tunable) */
 export const HISTORY_SAMPLE_INTERVAL = 100;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1 — sweep ranking (plan Task 1.5)
+//
+// The ranking scalarization's *shape* is pinned (so two implementers build the same
+// curve); its *weights* are tunable by design. Read only by `scripts/sweep.ts`,
+// never by `tick()` or `stats.ts`. These live here per the constants-ownership rule.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * `extinctionEvents` is scored as a tent/band, not monotonically: reward rises from
+ * 0 to this many events then falls (some drama good, total collapse bad, SPEC.md
+ * §World-Health). The peak of the tent. (tunable) */
+export const EXTINCT_SWEET = 5;
+
+/** Ranking weight on `populationVariance` (rewarded — oscillation is good). (tunable) */
+export const RANK_W_POP_VARIANCE = 1.0;
+/** Ranking weight on `traitVariance` (rewarded — genetic diversity). (tunable) */
+export const RANK_W_TRAIT_VARIANCE = 200.0;
+/** Ranking weight on `speciesCount` (rewarded — diversification). (tunable) */
+export const RANK_W_SPECIES = 2.0;
+/** Ranking weight on `behaviorNovelty` (rewarded — behavioral diversity). (tunable) */
+export const RANK_W_NOVELTY = 50.0;
+/** Ranking weight on the extinction tent term. (tunable) */
+export const RANK_W_EXTINCT = 5.0;
+/**
+ * Stagnation penalty weight: a world with high survival but near-zero
+ * `populationVariance` is boring and must rank low (SPEC.md). Subtracted when a
+ * long-surviving world shows little oscillation. (tunable) */
+export const RANK_W_STAGNATION = 3.0;
+/**
+ * Chaining discount weight: a single cluster whose `maxDiameter` ≫
+ * `SPECIES_COMPAT_THRESHOLD` is a cline, not diversity — discount `speciesCount`
+ * reward when the diameter is inflated (guards single-linkage gaming). (tunable) */
+export const RANK_W_CHAIN_DISCOUNT = 1.0;
+/**
+ * A world that did not reach the horizon (died before `ticks`) is scored as
+ * stagnation-free but gets no survival credit; this is the survival scale
+ * normalizing `survivalTicks` into the stagnation term. (tunable) */
+export const RANK_SURVIVAL_SCALE = 100_000;

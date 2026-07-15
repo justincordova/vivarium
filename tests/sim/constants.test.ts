@@ -158,6 +158,16 @@ describe("constants — presence check (every name a later Phase 0 task referenc
       "HISTORY_RECENT_WINDOW",
       "HISTORY_DOWNSAMPLE_TICKS",
       "HISTORY_SAMPLE_INTERVAL",
+      // Phase 1 — sweep ranking
+      "EXTINCT_SWEET",
+      "RANK_W_POP_VARIANCE",
+      "RANK_W_TRAIT_VARIANCE",
+      "RANK_W_SPECIES",
+      "RANK_W_NOVELTY",
+      "RANK_W_EXTINCT",
+      "RANK_W_STAGNATION",
+      "RANK_W_CHAIN_DISCOUNT",
+      "RANK_SURVIVAL_SCALE",
     ] as const;
 
     const mod = C as Record<string, unknown>;
