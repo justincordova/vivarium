@@ -116,11 +116,12 @@ export function serializeRng(bundle: RngBundle): SerializedRng {
  * mid-sequence. A missing stream defaults to state 0 (a future migration concern;
  * v1 always writes all 7).
  */
-export function deserializeRng(data: SerializedRng): RngBundle {
+export function deserializeRng(data: Partial<SerializedRng> | Record<string, number>): RngBundle {
   const bundle = {} as RngBundle;
+  const src = data as Record<string, number | undefined>;
   for (let i = 0; i < RNG_STREAM_NAMES.length; i++) {
     const name = RNG_STREAM_NAMES[i] as RngStreamName;
-    bundle[name] = mulberry32((data[name] ?? 0) >>> 0);
+    bundle[name] = mulberry32((src[name] ?? 0) >>> 0);
   }
   return bundle;
 }
