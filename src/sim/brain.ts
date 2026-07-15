@@ -241,11 +241,19 @@ export function ruleThink(ctx: RuleContext): Intents {
     return intents;
   }
 
-  // ── Priority 4: wander (hold heading) ──
+  // ── Priority 4: wander ──
+  // A HUNGRY creature that perceives no food must EXPLORE to find some, not freeze.
+  // At low density (a dispersed population) abundant global food can lie outside sense
+  // range; a creature that stops here starves next to full plants it never reaches —
+  // the diagnosed low-density trough-collapse. So a hungry wanderer roams forward
+  // (holding heading) to cover ground; a sated one idles to conserve energy. Roaming
+  // uses HALF acceleration: enough to find food, but half the movement cost and less
+  // per-tick displacement (keeps the wander case cheap — most ticks most creatures are
+  // sated and still idle).
   rs.mode = "wander";
   rs.targetId = -1;
   rs.targetKind = "none";
   intents.turn = 0;
-  intents.accelerate = 0;
+  intents.accelerate = ctx.energyFrac < C.HUNGRY_FRAC ? 0.5 : 0;
   return intents;
 }
