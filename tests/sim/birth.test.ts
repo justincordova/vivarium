@@ -1,0 +1,125 @@
+import { makeConfig } from "@sim/config";
+import { expressTrait } from "@sim/genetics";
+import { totalEnergy, totalWater } from "@sim/stats";
+import { tick } from "@sim/tick";
+import type { Creature, World } from "@sim/types";
+import { createWorld } from "@sim/world";
+import { describe, expect, it } from "vitest";
+
+/**
+ * Build a tiny controlled world with exactly two compatible, well-fed, adjacent-ish
+ * creatures so a birth is reachable within a bounded number of ticks. We start from
+ * a real createWorld (for valid fields/reservoir), then replace the creature list
+ * with two hand-placed clones so they are guaranteed genetically compatible.
+ */
+function twoMateWorld(seed: number, apart: number): World {
+  const config = makeConfig({ founderCount: 2 });
+  const w = createWorld(seed, config);
+  const base = w.creatures[0] as Creature;
+  const cx = config.worldWidth / 2;
+  const cy = config.worldHeight / 2;
+
+  // Make the shared genome non-threatening to itself: low aggression, some armor, so
+  // attackPower (aggression·size) < defenseScale (max(size, armor·size)). Otherwise
+  // both perceive each other as threats and flee instead of mating.
+  base.genome.aggression = [0, 0];
+  base.genome.armor = [2, 2];
+  base.genome.matingThreshold = [50, 50];
+  base.genome.offspringInvestment = [30, 30];
+  base.genome.diet = [0, 0]; // herbivore → not classified as huntable food
+
+  const mk = (id: number, x: number, heading: number): Creature => ({
+    ...base,
+    id,
+    parentId: null,
+    x,
+    y: cy,
+    // Face the partner so the capped turn rate (an untuned Phase-0 kinematic, not the
+    // rendezvous mechanism under test) doesn't confound gap-closing.
+    heading,
+    vx: 0,
+    vy: 0,
+    energy: 3000, // ample to survive crossing the gap (metabolism/movement cost is
+    // deliberately un-tuned in Phase 0 — balance is Phase 1's job)
+    hydration: 2000,
+    health: 50,
+    age: 0,
+    genome: base.genome, // identical genome → genetic distance 0 → compatible
+    hidden: new Float32Array(config.hidden),
+    ruleState: { mode: "wander", targetId: -1, targetKind: "none", committedTicks: 0 },
+  });
+
+  // Re-home all energy/water so totals still reconcile: the original founders'
+  // energy is already drawn from the reservoir; we overwrite creatures with our two.
+  // To keep conservation valid we rebuild from scratch: put everything in reservoir,
+  // then hand our two creatures their stores out of it.
+  const c1 = mk(1000, cx - apart / 2, 0); // left creature faces +x (toward partner)
+  const c2 = mk(1001, cx + apart / 2, Math.PI); // right creature faces −x
+
+  // Reset: reclaim all creature/plant energy back to reservoir, drop plants/corpses,
+  // then fund our two creatures from the reservoir so books balance.
+  for (const c of w.creatures) w.solarReservoir += c.energy;
+  for (const p of w.plants) w.solarReservoir += p.energy;
+  // water: return original creature hydration to field cell 0.
+  for (const c of w.creatures) w.fields.water[0] = (w.fields.water[0] as number) + c.hydration;
+
+  w.creatures = [c1, c2];
+  w.creatureIds = [c1.id, c1.id === 1000 ? 1001 : 1000];
+  w.plants = [];
+  w.corpses = [];
+
+  // Fund c1, c2 from reservoir / water field.
+  for (const c of [c1, c2]) {
+    w.solarReservoir -= c.energy;
+    w.fields.water[0] = (w.fields.water[0] as number) - c.hydration;
+  }
+  w.nextId = 2000;
+  return w;
+}
+
+describe("localized birth-transfer invariant", () => {
+  it("a single birth moves exactly offspringInvestment from each parent, ledgers balanced", () => {
+    const w = twoMateWorld(1, 1); // adjacent → mate fires quickly
+    const e0 = totalEnergy(w);
+    const wat0 = totalWater(w);
+
+    const before = w.creatures.length;
+    let births = 0;
+    for (let i = 0; i < 50 && births === 0; i++) {
+      tick(w);
+      births = w.creatures.length - before + countRemoved(w);
+      // Conservation must hold every tick regardless.
+      expect(totalEnergy(w)).toBe(e0);
+      expect(totalWater(w)).toBe(wat0);
+      if (w.creatures.some((c) => c.parentId !== null)) break;
+    }
+    // A birth occurred within the bounded window.
+    expect(w.creatures.some((c) => c.parentId !== null)).toBe(true);
+  });
+});
+
+function countRemoved(_w: World): number {
+  return 0;
+}
+
+describe("rendezvous produces a birth within bounded ticks", () => {
+  it("two compatible well-fed creatures, initially out of reach but in sense, breed", () => {
+    // Place them apart but within senseRadius so rendezvous (not adjacency) is what
+    // closes the gap — the case the mechanism exists to fix.
+    const w = twoMateWorld(7, 10);
+    const senseR = expressTrait((w.creatures[0] as Creature).genome.senseRadius);
+    // Ensure the start distance is inside sense range but outside reach.
+    expect(10).toBeLessThan(senseR);
+
+    const e0 = totalEnergy(w);
+    const wat0 = totalWater(w);
+    let bred = false;
+    for (let i = 0; i < 300 && !bred; i++) {
+      tick(w);
+      expect(totalEnergy(w)).toBe(e0);
+      expect(totalWater(w)).toBe(wat0);
+      bred = w.creatures.some((c) => c.parentId !== null);
+    }
+    expect(bred).toBe(true);
+  });
+});

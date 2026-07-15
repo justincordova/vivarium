@@ -115,6 +115,8 @@ export interface RuleContext {
   nearestMate: Percept | null;
   /** The mate's reciprocal committed target id (for rendezvous), or null if unknown. */
   mateReciprocalTargetId: number | null;
+  /** Whether the nearest mate is within interaction reach (tick loop knows real units). */
+  mateInReach: boolean;
   ruleState: RuleState;
 }
 
@@ -209,13 +211,19 @@ export function ruleThink(ctx: RuleContext): Intents {
     const reciprocated = ctx.mateReciprocalTargetId === ctx.selfId;
     if (reciprocated) {
       rs.mode = "rendezvous";
-      // Deterministic asymmetry: lower-id holds still, higher-id approaches.
-      if (ctx.selfId < mate.id) {
-        intents.accelerate = 0; // hold
-        intents.turn = mate.angle; // still face the partner
+      intents.turn = mate.angle; // face the partner
+      // Arrived: both hold so they settle in reach (no overshoot) and mate fires from
+      // a stable position regardless of resolve order. `mateInReach` (real units from
+      // the tick loop) is authoritative; the small normalized-distance check is a
+      // fallback for callers that don't populate it.
+      const arrived = ctx.mateInReach || mate.distance < C.RENDEZVOUS_ARRIVE_FRAC;
+      if (arrived) {
+        intents.accelerate = 0;
+      } else if (ctx.selfId < mate.id) {
+        // Deterministic asymmetry: lower-id holds still, higher-id approaches.
+        intents.accelerate = 0;
       } else {
-        intents.accelerate = 1; // approach
-        intents.turn = mate.angle;
+        intents.accelerate = 1;
       }
     } else {
       rs.mode = "seek";

@@ -17,6 +17,7 @@ function baseCtx(over: Partial<RuleContext> = {}): RuleContext {
     nearestThreat: null,
     nearestMate: null,
     mateReciprocalTargetId: null,
+    mateInReach: false,
     ruleState: freshRuleState(),
     ...over,
   };

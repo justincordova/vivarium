@@ -262,3 +262,10 @@ export const K_ANGLE = 1.0;
 
 /** Intensity written into the scent field by a low-constant emit (rule policy). (tunable) */
 export const EMIT_INTENSITY = 10;
+
+/**
+ * Normalized-distance (of senseRadius) below which a rendezvousing creature treats a
+ * mate as "arrived" and holds, if the tick loop's real-units `mateInReach` is not
+ * supplied. Fallback only. (tunable)
+ */
+export const RENDEZVOUS_ARRIVE_FRAC = 0.05;
