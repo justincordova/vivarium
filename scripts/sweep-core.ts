@@ -43,19 +43,24 @@ interface Axis {
  * (plan: swept with sensitivity checked, so speciesCount isn't an artifact of one
  * hand-picked radius).
  */
-// Ranges narrowed toward the viable region a first broad sweep + a compartment-flow
-// diagnostic identified (plan Task 1.5 gate: "if nothing qualifies, iterate on
-// sim/constants/costs"). The broad sweep's collapse mechanism was metabolic starvation
-// under high mutation load: creatures starved next to full plants when
-// METABOLIC_COST_COEF was high and MUT_GLOBAL large. So metabolism is capped lower and
-// mutation kept moderate; the other axes still span a wide band for oscillation search.
+// Ranges narrowed toward the viable region diagnostics identified (plan Task 1.5 gate:
+// "if nothing qualifies, iterate on sim/constants/costs"). Two collapse mechanisms were
+// diagnosed and addressed: (a) metabolic starvation under high mutation load — so
+// metabolism/mutation are kept moderate; (b) a synchronized death-spiral at the hard
+// population cap — fixed structurally by the density-dependent reproduction brake.
+// For OSCILLATION the sweep must find grazing pressure tight enough that herbivores
+// deplete plants and create scarcity (a plant→herbivore feedback loop), so plant
+// density/regrowth (PLANT_GROWTH_MAX, PLANT_CAP_PER_CELL) and the brake's soft
+// threshold (REPRO_SOFT_FRAC) are swept — abundant-plant configs sit flat, scarce-plant
+// configs boom-bust.
 export const SWEEP_AXES: readonly Axis[] = [
   { path: "tunables.MUT_GLOBAL", lo: 0.5, hi: 1.6 },
-  { path: "tunables.METABOLIC_COST_COEF", lo: 0.02, hi: 0.08 },
-  { path: "tunables.PLANT_GROWTH_MAX", lo: 8, hi: 30 },
+  { path: "tunables.METABOLIC_COST_COEF", lo: 0.03, hi: 0.09 },
+  { path: "tunables.PLANT_GROWTH_MAX", lo: 3, hi: 18 },
+  { path: "tunables.PLANT_CAP_PER_CELL", lo: 1, hi: 3, integer: true },
   { path: "tunables.TICKS_PER_DAY", lo: 300, hi: 1600, integer: true },
-  { path: "tunables.CREATURE_CAP", lo: 80, hi: 200, integer: true },
-  { path: "tunables.LIGHT_DECAY", lo: 0.04, hi: 0.2 },
+  { path: "tunables.CREATURE_CAP", lo: 90, hi: 220, integer: true },
+  { path: "tunables.REPRO_SOFT_FRAC", lo: 0.3, hi: 0.7 },
   { path: "tunables.CORPSE_DECAY_FRACTION", lo: 0.03, hi: 0.15 },
   { path: "tunables.HYDRATION_DECAY", lo: 0.008, hi: 0.03 },
   { path: "tunables.SPECIES_SPATIAL_RADIUS", lo: 15, hi: 45 },
