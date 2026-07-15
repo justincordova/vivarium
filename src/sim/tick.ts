@@ -73,22 +73,39 @@ function dist(ax: number, ay: number, bx: number, by: number): number {
 
 interface Snapshot {
   creatures: readonly Creature[];
+  /** id → creature, for O(1) percept-to-entity resolution. */
+  byId: Map<number, Creature>;
   hash: SpatialHash;
+  plantHash: SpatialHash;
+  plantById: Map<number, Plant>;
   /** committed mate-target per creature id, from the prior tick (for rendezvous). */
   committedTargetById: Map<number, number>;
 }
 
+/** Cell size for the per-tick spatial hashes (world units). Bounds neighbor queries. */
+const HASH_CELL = 10;
+
 function snapshot(world: World): Snapshot {
   const pts: SpatialPoint[] = world.creatures.map((c) => ({ id: c.id, x: c.x, y: c.y }));
+  const plantPts: SpatialPoint[] = world.plants.map((p) => ({ id: p.id, x: p.x, y: p.y }));
   const committed = new Map<number, number>();
+  const byId = new Map<number, Creature>();
   for (let i = 0; i < world.creatures.length; i++) {
     const c = world.creatures[i] as Creature;
     committed.set(c.id, c.ruleState.targetId);
+    byId.set(c.id, c);
   }
-  // Cell size ~ mean senseRadius; a per-tick constant is fine for correctness.
+  const plantById = new Map<number, Plant>();
+  for (let i = 0; i < world.plants.length; i++) {
+    const p = world.plants[i] as Plant;
+    plantById.set(p.id, p);
+  }
   return {
     creatures: world.creatures.slice(),
-    hash: new SpatialHash(pts, 8),
+    byId,
+    hash: new SpatialHash(pts, HASH_CELL),
+    plantHash: new SpatialHash(plantPts, HASH_CELL),
+    plantById,
     committedTargetById: committed,
   };
 }
@@ -99,8 +116,11 @@ function classifyFood(self: Creature, other: Creature): boolean {
   // Carnivore-leaning creatures perceive weaker living agents as food (huntable).
   return expressTrait(self.genome.diet) > 0.5 && expressTrait(other.genome.diet) >= 0;
 }
-function isThreat(self: Creature, other: Creature): boolean {
-  return attackPower(other) > defenseScale(self);
+function isThreat(self: Creature, other: Creature, t: Config["tunables"]): boolean {
+  // Require the other to be *substantially* stronger (a margin) before it registers
+  // as a threat — otherwise near-peers all flee each other and never feed/mate,
+  // starving the bootstrap. (Phase-0 provisional; Phase 1 sweeps THREAT_MARGIN.)
+  return attackPower(other) > defenseScale(self) * t.THREAT_MARGIN;
 }
 function isMate(self: Creature, other: Creature, t: Config["tunables"]): boolean {
   return (
@@ -127,10 +147,11 @@ function senseContext(
     let best: Creature | Plant | null = null;
     let bestD = Number.POSITIVE_INFINITY;
     let bestIsAgent = false;
-    // Creatures.
-    for (let i = 0; i < snap.creatures.length; i++) {
-      const o = snap.creatures[i] as Creature;
-      if (o.id === self.id) continue;
+    // Creatures — bounded query over the spatial hash (O(neighbors), not O(N)).
+    const creatureNeighbors = snap.hash.queryWithin(self.x, self.y, senseRadius);
+    for (let i = 0; i < creatureNeighbors.length; i++) {
+      const o = snap.byId.get(creatureNeighbors[i] as number);
+      if (o === undefined || o.id === self.id) continue;
       const d = dist(self.x, self.y, o.x, o.y);
       if (d > senseRadius) continue;
       if (!predicate(o)) continue;
@@ -140,10 +161,12 @@ function senseContext(
         bestIsAgent = true;
       }
     }
-    // Plants (for food only).
+    // Plants (for food only) — bounded query over the plant hash.
     if (allowPlants && expressTrait(self.genome.diet) < 1) {
-      for (let i = 0; i < world.plants.length; i++) {
-        const p = world.plants[i] as Plant;
+      const plantNeighbors = snap.plantHash.queryWithin(self.x, self.y, senseRadius);
+      for (let i = 0; i < plantNeighbors.length; i++) {
+        const p = snap.plantById.get(plantNeighbors[i] as number);
+        if (p === undefined) continue;
         const d = dist(self.x, self.y, p.x, p.y);
         if (d > senseRadius) continue;
         if (d < bestD || (d === bestD && best !== null && p.id < best.id)) {
@@ -163,7 +186,7 @@ function senseContext(
   };
 
   const food = nearest((o) => classifyFood(self, o), true);
-  const threat = nearest((o) => isThreat(self, o), false);
+  const threat = nearest((o) => isThreat(self, o, t), false);
   const mate = nearest((o) => isMate(self, o, t), false);
 
   const cellIdx = cellIndexOf(world.config, self.x, self.y);
@@ -274,7 +297,7 @@ export function tick(world: World): void {
     const plan = planned[order[oi] as number] as PlannedAction;
     const c = plan.creature;
     if (c.energy <= 0 || c.hydration <= 0 || c.health <= 0) continue; // already doomed
-    applyCreature(world, c, plan, byId, reservoir, t);
+    applyCreature(world, c, plan, byId, reservoir, t, snap);
   }
 
   // 4.2 Removals in ascending-id order.
@@ -298,25 +321,21 @@ function applyCreature(
   byId: Map<number, Creature>,
   reservoir: Compartment,
   t: Config["tunables"],
+  snap: Snapshot,
 ): void {
   const cEnergy = fieldCompartment(c, "energy");
   const size = expressTrait(c.genome.size);
   const metabolism = expressTrait(c.genome.metabolism);
 
   // Baseline metabolic cost → reservoir (heat). Scaled by size & metabolism.
-  const baseline = toQuantum(1 + size * metabolism);
+  // Coefficient keeps the drain small relative to energy stores so creatures have a
+  // runway to find food (Phase-0 provisional; Phase 1 sweeps it).
+  const baseline = toQuantum(1 + size * metabolism * t.METABOLIC_COST_COEF);
   transferUpTo(cEnergy, reservoir, baseline);
 
-  // Density surcharge (crowding) → reservoir.
-  const density = localDensity(
-    new SpatialHash(
-      world.creatures.map((x) => ({ id: x.id, x: x.x, y: x.y })),
-      t.DENSITY_RADIUS,
-    ),
-    c.x,
-    c.y,
-    t.DENSITY_RADIUS,
-  );
+  // Density surcharge (crowding) → reservoir. Reuses the snapshot hash (start-of-tick
+  // positions — consistent with double-buffering) instead of rebuilding per creature.
+  const density = localDensity(snap.hash, c.x, c.y, t.DENSITY_RADIUS);
   if (density > 1) transferUpTo(cEnergy, reservoir, toQuantum((density - 1) * 0.5));
 
   // Senescence: cost rises near maxLifespan.
@@ -348,7 +367,7 @@ function applyCreature(
   c.x = clamp(c.x + c.vx, 0, world.config.worldWidth);
   c.y = clamp(c.y + c.vy, 0, world.config.worldHeight);
   if (appliedAccel !== 0) {
-    transferUpTo(cEnergy, reservoir, toQuantum(speed * speed * 0.1 + 1));
+    transferUpTo(cEnergy, reservoir, toQuantum(speed * speed * t.MOVEMENT_COST_COEF + 1));
   }
 
   // Healing (only above energy threshold; paid in energy → reservoir).
@@ -468,6 +487,9 @@ function tryAttack(
     // Attacker wins: deal damage (may be lethal → corpse path at removals).
     target.health -= toQuantum(power);
     if (target.health < 0) target.health = 0;
+    if (target.health === 0) {
+      world.eventLog.push({ tick: world.tick, event: `kill:${target.id}` });
+    }
     // Scavenge-to-gain: commit to the target so next tick seeks the corpse.
     attacker.ruleState.targetId = target.id;
     attacker.ruleState.targetKind = "corpse";
@@ -490,6 +512,11 @@ function tryMate(
 ): void {
   const b = byId.get(mateId);
   if (b === undefined || b.id === a.id) return;
+  // Soft carrying capacity: suppress reproduction when the population is already at
+  // capacity. A density-dependent brake (SPEC.md §World-Health — density-dependent
+  // effects are an in-scope stabilizer) that damps the boom-bust overshoot into a
+  // sustained oscillation. (Phase-0 provisional; Phase 1 sweeps CREATURE_CAP.)
+  if (world.creatures.length >= t.CREATURE_CAP) return;
   // Reach was validated against the snapshot (plan.mateInReach) so mating is
   // order-independent; no live-distance recheck here (it would reintroduce the
   // mid-tick overshoot/first-mover sensitivity).
@@ -628,9 +655,13 @@ function resolvePlants(world: World, _reservoir: Compartment): void {
         }
       }
     }
-    // Seeding: if above reproductive size, spend energy to spawn one seed.
+    // Seeding: if above reproductive size, spend energy to spawn one seed. Halt when
+    // the plant population is already saturated (a soft carrying-capacity cap that
+    // keeps the sim tractable and bounds monoculture; Phase-0 provisional).
+    const plantCap = world.config.gridCols * world.config.gridRows * t.PLANT_CAP_PER_CELL;
+    const saturated = ordered.length + newSeeds.length >= plantCap;
     const seedCost = toQuantum(expressTrait(p.genome.seedInvestment));
-    if (p.energy > seedCost * 2 && seedCost > 0) {
+    if (!saturated && p.energy > seedCost * 2 && seedCost > 0) {
       const seedGenome = plantSeed(p.genome, world.rng.mutation);
       const disp = expressTrait(p.genome.dispersal);
       const sx = clamp(p.x + (world.rng.spawn.next() * 2 - 1) * disp, 0, world.config.worldWidth);

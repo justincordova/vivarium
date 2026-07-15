@@ -93,6 +93,23 @@ export class SpatialHash {
    * `predicate` lets the caller express food/threat/mate classification (which is
    * relative to the perceiving creature).
    */
+  /**
+   * Ids of all indexed points within `radius` of `(x, y)`. A bounded query
+   * (O(neighbors)) callers use to avoid O(N) scans; the exact `withinRadius` filter
+   * is applied so results are precise, not just the cell-block superset.
+   */
+  queryWithin(x: number, y: number, radius: number): number[] {
+    const candidates = this.candidateIndices(x, y, radius);
+    const out: number[] = [];
+    for (let i = 0; i < candidates.length; i++) {
+      const p = this.points[candidates[i] as number] as SpatialPoint;
+      const dx = p.x - x;
+      const dy = p.y - y;
+      if (withinRadius(dx, dy, radius)) out.push(p.id);
+    }
+    return out;
+  }
+
   nearestWithin(
     x: number,
     y: number,

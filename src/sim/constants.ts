@@ -155,11 +155,13 @@ export const CORPSE_DECAY_FRACTION = 0.05;
 /** Fraction of a creature's hydration store lost (returned to water field) per tick. (tunable) */
 export const HYDRATION_DECAY = 0.01;
 /** Per-tick photosynthesis rate cap, before headroom limiting (SPEC.md §Plant Lifecycle). (tunable) */
-export const PLANT_GROWTH_MAX = 5;
+export const PLANT_GROWTH_MAX = 15;
 /** Minimum light in a cell for a plant to photosynthesize. (tunable) */
 export const LIGHT_THRESHOLD = 1;
 /** Minimum fertility in a cell for a plant to photosynthesize. (tunable) */
 export const FERTILITY_THRESHOLD = 1;
+/** Soft plant carrying capacity: max plants per grid cell before seeding halts. (tunable) */
+export const PLANT_CAP_PER_CELL = 2;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Health regeneration  (SPEC.md §"Health regeneration")
@@ -184,6 +186,8 @@ export const HEAL_COST = 2;
 export const SPECIES_COMPAT_THRESHOLD = 8;
 /** Fixed radius `localDensity(pos)` queries — sensor #11 and density removal share it. (tunable) */
 export const DENSITY_RADIUS = 6;
+/** Soft carrying capacity: reproduction is suppressed at/above this population. (tunable) */
+export const CREATURE_CAP = 100;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Gated-action thresholds  (SPEC.md §Actions "Gated actions fire when their
@@ -193,7 +197,7 @@ export const DENSITY_RADIUS = 6;
 export const EAT_THRESHOLD = 0.5; // (tunable)
 export const DRINK_THRESHOLD = 0.5; // (tunable)
 export const ATTACK_THRESHOLD = 0.5; // (tunable)
-export const MATE_THRESHOLD = 0.5; // (tunable)
+export const MATE_THRESHOLD = 0.7; // (tunable) — must be quite full to seek a mate
 export const EMIT_THRESHOLD = 0.5; // (tunable)
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -201,7 +205,7 @@ export const EMIT_THRESHOLD = 0.5; // (tunable)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Energy fraction below which a creature seeks food. (tunable) */
-export const HUNGRY_FRAC = 0.5;
+export const HUNGRY_FRAC = 0.8;
 /** Hydration fraction below which a creature seeks water. (tunable) */
 export const THIRSTY_FRAC = 0.4;
 /**
@@ -247,8 +251,20 @@ export const FERTILITY_CELL_MAX = 100;
 // Contests  (SPEC.md §Contests)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Multiplier on the size·metabolism baseline metabolic drain per tick. (tunable) */
+export const METABOLIC_COST_COEF = 0.1;
+/** Multiplier on the speed² movement-energy cost per tick. (tunable) */
+export const MOVEMENT_COST_COEF = 0.01;
+
+/**
+ * A creature registers another as a *threat* only if the other's attack power
+ * exceeds its own defensive scale by this factor — a margin so near-peers don't all
+ * flee each other and starve the bootstrap. (tunable)
+ */
+export const THREAT_MARGIN = 1.5;
+
 /** reach = REACH_BASE + REACH_PER_SIZE·size. Base interaction reach, world units. (tunable) */
-export const REACH_BASE = 1.0;
+export const REACH_BASE = 2.0;
 /** reach = REACH_BASE + REACH_PER_SIZE·size. Size term. (tunable) */
 export const REACH_PER_SIZE = 0.5;
 /** Escape-check sigmoid coefficient on the speed differential. (tunable) */

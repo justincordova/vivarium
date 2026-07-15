@@ -292,6 +292,7 @@ export interface Tunables {
   PLANT_GROWTH_MAX: number;
   LIGHT_THRESHOLD: number;
   FERTILITY_THRESHOLD: number;
+  PLANT_CAP_PER_CELL: number;
   // healing
   HEAL_ENERGY_THRESHOLD: number;
   HEAL_RATE: number;
@@ -299,6 +300,7 @@ export interface Tunables {
   // species / density
   SPECIES_COMPAT_THRESHOLD: number;
   DENSITY_RADIUS: number;
+  CREATURE_CAP: number;
   // gated-action thresholds
   EAT_THRESHOLD: number;
   DRINK_THRESHOLD: number;
@@ -324,7 +326,11 @@ export interface Tunables {
   SCENT_SENSOR_MAX: number;
   WATER_CELL_MAX: number;
   FERTILITY_CELL_MAX: number;
+  // metabolic/movement cost coefficients
+  METABOLIC_COST_COEF: number;
+  MOVEMENT_COST_COEF: number;
   // contests
+  THREAT_MARGIN: number;
   REACH_BASE: number;
   REACH_PER_SIZE: number;
   K_SPEED: number;

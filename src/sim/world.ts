@@ -38,8 +38,40 @@ function midTrait(gene: TraitGene): number {
   return (lo + hi) / 2;
 }
 
-/** Build a founder genome: mid-range traits with light `spawn`-stream jitter. */
-function makeFounderGenome(spawn: RNG): Genome {
+/** A shared seed brain template all founders are lightly-jittered copies of. */
+interface BrainTemplate {
+  weightsA: Float32Array;
+  weightsB: Float32Array;
+  enabledA: Uint8Array;
+  enabledB: Uint8Array;
+}
+
+/**
+ * Build the single shared founder brain template. Founders are *copies* of this with
+ * light per-arrow jitter, so their expressed brains stay within
+ * `SPECIES_COMPAT_THRESHOLD` of each other and the initial population is one
+ * interbreeding species (SPEC.md §Initial Conditions — "copies of a small number of
+ * viable seed genomes"). Independent random brains would put founders ~10× past the
+ * compatibility threshold and no one could mate.
+ */
+function makeBrainTemplate(spawn: RNG): BrainTemplate {
+  const weightsA = new Float32Array(C.ARROWS);
+  const weightsB = new Float32Array(C.ARROWS);
+  const enabledA = new Uint8Array(C.ARROWS);
+  const enabledB = new Uint8Array(C.ARROWS);
+  for (let i = 0; i < C.ARROWS; i++) {
+    const w = gaussian(spawn) * 0.5;
+    weightsA[i] = w;
+    weightsB[i] = w;
+    const on = spawn.next() < C.NEWBORN_ENABLE_FRAC ? 1 : 0;
+    enabledA[i] = on;
+    enabledB[i] = on;
+  }
+  return { weightsA, weightsB, enabledA, enabledB };
+}
+
+/** Build a founder genome: a lightly-jittered copy of the shared brain template. */
+function makeFounderGenome(spawn: RNG, template: BrainTemplate, carnivore: boolean): Genome {
   const jitter = (base: number, gene: TraitGene): Allele => {
     const [lo, hi] = TRAIT_RANGE[gene];
     const span = (hi - lo) * 0.05; // ±5% of range, lightly randomized
@@ -48,19 +80,41 @@ function makeFounderGenome(spawn: RNG): Genome {
     return [a, b];
   };
 
+  // Small per-arrow weight jitter around the shared template — keeps founders within
+  // the compatibility threshold while adding variation.
   const weightsA = new Float32Array(C.ARROWS);
   const weightsB = new Float32Array(C.ARROWS);
   const enabledA = new Uint8Array(C.ARROWS);
   const enabledB = new Uint8Array(C.ARROWS);
   for (let i = 0; i < C.ARROWS; i++) {
-    weightsA[i] = gaussian(spawn) * 0.5;
-    weightsB[i] = gaussian(spawn) * 0.5;
-    enabledA[i] = spawn.next() < C.NEWBORN_ENABLE_FRAC ? 1 : 0;
-    enabledB[i] = spawn.next() < C.NEWBORN_ENABLE_FRAC ? 1 : 0;
+    weightsA[i] = (template.weightsA[i] as number) + gaussian(spawn) * 0.02;
+    weightsB[i] = (template.weightsB[i] as number) + gaussian(spawn) * 0.02;
+    enabledA[i] = template.enabledA[i] as number;
+    enabledB[i] = template.enabledB[i] as number;
   }
 
   const g = { weightsA, weightsB, enabledA, enabledB } as Genome;
   for (const gene of TRAIT_GENES) g[gene] = jitter(midTrait(gene), gene);
+  // Override to a viable *seed phenotype* (SPEC.md §Initial Conditions: founders are
+  // lightly-randomized copies of viable seed genomes — mid-range is not necessarily
+  // viable). These bootstrap values let founders feed and mate at moderate energy;
+  // everything still evolves from here. (Phase-0 provisional; Phase 1 sweeps.)
+  const seedGene = (gene: TraitGene, base: number): void => {
+    g[gene] = jitter(base, gene);
+  };
+  seedGene("size", carnivore ? 5 : 3);
+  seedGene("speed", carnivore ? 5 : 4);
+  seedGene("metabolism", 1);
+  // A minority of founders are carnivores (high diet + aggression) so predator–prey
+  // dynamics exist from tick 0 and the ecosystem loop includes real kills; the rest
+  // are herbivores. Both evolve freely from here.
+  seedGene("diet", carnivore ? 0.9 : 0.1);
+  seedGene("aggression", carnivore ? 4 : 1);
+  seedGene("senseRadius", 25);
+  seedGene("matingThreshold", 140); // fed enough to mate (throttles breeding)
+  seedGene("offspringInvestment", 90); // costly but lets survivors rebuild after a trough
+  seedGene("maxLifespan", 2000);
+  seedGene("digestionEfficiency", 0.8);
   g.hue = [spawn.next() * 360, spawn.next() * 360];
   return g;
 }
@@ -74,12 +128,19 @@ function makePlantGenome(spawn: RNG): PlantGenome {
       clamp(mid + gaussian(spawn) * span, lo, hi),
     ];
   };
+  // Founder plants start easy to eat (low toughness) and modestly sized so the
+  // herbivore bootstrap has accessible food; toughness evolves up under grazing
+  // pressure (Phase-0 provisional seeding).
+  const low = (lo: number, hi: number): Allele => [
+    clamp(lo + gaussian(spawn) * (hi - lo) * 0.1, lo, hi),
+    clamp(lo + gaussian(spawn) * (hi - lo) * 0.1, lo, hi),
+  ];
   return {
-    maxSize: a(1, 1000),
+    maxSize: a(80, 200),
     height: a(0, 10),
     dispersal: a(0, 50),
-    toughness: a(0, 1),
-    seedInvestment: a(1, 500),
+    toughness: low(0, 0.2),
+    seedInvestment: a(1, 100),
     maxAge: a(10, 100000),
     hue: [spawn.next() * 360, spawn.next() * 360],
   };
@@ -92,11 +153,13 @@ function clamp(v: number, lo: number, hi: number): number {
 // ── World creation ───────────────────────────────────────────────────────────
 
 /** Per-founder starting energy/hydration and per-plant starting energy (tunable). */
-const FOUNDER_START_ENERGY = 100;
-const FOUNDER_START_HYDRATION = 80;
-const PLANT_START_ENERGY = 40;
+const FOUNDER_START_ENERGY = 300;
+const FOUNDER_START_HYDRATION = 150;
+const PLANT_START_ENERGY = 60;
 /** Plants pre-seeded at moderate density: this many per founder. */
-const PLANTS_PER_FOUNDER = 3;
+const PLANTS_PER_FOUNDER = 5;
+/** Initial fertility placed per grid cell so plants can photosynthesize from tick 0. */
+const INITIAL_FERTILITY_PER_CELL = 50;
 /** Number of spatial demes founders cluster into (SPEC.md §Initial Conditions). */
 const DEME_COUNT = 4;
 /** Radius of a deme cluster, world units. */
@@ -152,18 +215,30 @@ export function createWorld(seed: number, config: Config): World {
 
   const reservoir = fieldCompartment(world, "solarReservoir");
 
+  // Seed initial fertility from the reservoir (drawn, never minted) so plants can
+  // photosynthesize from tick 0 rather than waiting for the first corpse/decay.
+  for (let i = 0; i < cells; i++) {
+    transfer(reservoir, cellCompartment(fields.fertility, i), INITIAL_FERTILITY_PER_CELL);
+  }
+
   // Deme centers, drawn from the spawn stream.
   const demeCenters: [number, number][] = [];
   for (let d = 0; d < DEME_COUNT; d++) {
     demeCenters.push([spawn.next() * config.worldWidth, spawn.next() * config.worldHeight]);
   }
 
+  // One shared seed brain; every founder is a lightly-jittered copy (so they form one
+  // interbreeding species).
+  const brainTemplate = makeBrainTemplate(spawn);
+
   // Founders: clustered into demes; genome jitter + placement from `spawn`.
   for (let f = 0; f < config.founderCount; f++) {
     const deme = demeCenters[f % DEME_COUNT] as [number, number];
     const x = clamp(deme[0] + (spawn.next() * 2 - 1) * DEME_RADIUS, 0, config.worldWidth);
     const y = clamp(deme[1] + (spawn.next() * 2 - 1) * DEME_RADIUS, 0, config.worldHeight);
-    const genome = makeFounderGenome(spawn);
+    // ~17% of founders are carnivores so predation reliably occurs across seeds
+    // without over-predating the bootstrap population.
+    const genome = makeFounderGenome(spawn, brainTemplate, f % 6 === 0);
 
     const creature: Creature = {
       id: world.nextId++,

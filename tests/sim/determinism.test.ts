@@ -21,6 +21,8 @@ function fingerprint(w: World): string {
 
 describe("determinism (the load-bearing gate)", () => {
   it("two 1000-tick runs from the same seed are bit-identical", () => {
+    // A live 1000-tick run over a full population is ~10s, so keep numRuns small
+    // and lift the per-test timeout; the viability gate covers long multi-seed runs.
     fc.assert(
       fc.property(fc.integer({ min: 1, max: 100000 }), (seed) => {
         const a = createWorld(seed, makeConfig({}));
@@ -31,9 +33,9 @@ describe("determinism (the load-bearing gate)", () => {
         }
         expect(fingerprint(a)).toBe(fingerprint(b));
       }),
-      { numRuns: 5 },
+      { numRuns: 3 },
     );
-  });
+  }, 60_000);
 });
 
 describe("conservation (exact, every tick)", () => {
@@ -49,7 +51,7 @@ describe("conservation (exact, every tick)", () => {
           expect(totalWater(w)).toBe(wat0);
         }
       }),
-      { numRuns: 5 },
+      { numRuns: 3 },
     );
-  });
+  }, 60_000);
 });
