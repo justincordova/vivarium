@@ -10,13 +10,15 @@
     "test:watch": "vitest",
     "bench": "vitest bench",
     "lint": "biome check .",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "headless": "tsx scripts/headless.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.3",
     "@types/node": "^26.1.1",
     "fast-check": "^4.9.0",
     "lefthook": "^2.1.10",
+    "tsx": "^4.23.1",
     "typescript": "^5.7.3",
     "vite": "^8.1.4",
     "vitest": "^4.1.10"
