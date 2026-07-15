@@ -13,9 +13,8 @@
  * seeds); accumulation is index-based in a fixed order. Part of `sim/`.
  */
 
-import * as C from "./constants";
 import { gaussian } from "./rng";
-import type { Allele, Genome, PlantGenome, RNG } from "./types";
+import type { Allele, Genome, PlantGenome, RNG, Tunables } from "./types";
 
 // ── Trait-gene registry (fixed order — load-bearing for the golden-vector test) ──
 
@@ -162,14 +161,14 @@ function wrap360(v: number): number {
  * then disabled-drift; then walk trait genes in `TRAIT_GENES` order (both alleles),
  * then hue (both alleles).
  */
-export function mutate(child: Genome, mutation: RNG): boolean {
-  const g = C.MUT_GLOBAL;
-  const weightRate = C.WEIGHT_MUT_RATE * g;
-  const onRate = C.ENABLE_ON_RATE * g;
-  const offRate = C.ENABLE_OFF_RATE * g;
-  const driftRate = C.DRIFT_RATE * g;
-  const traitRate = C.TRAIT_MUT_RATE * g;
-  const hueRate = C.HUE_MUT_RATE * g;
+export function mutate(child: Genome, mutation: RNG, t: Tunables): boolean {
+  const g = t.MUT_GLOBAL;
+  const weightRate = t.WEIGHT_MUT_RATE * g;
+  const onRate = t.ENABLE_ON_RATE * g;
+  const offRate = t.ENABLE_OFF_RATE * g;
+  const driftRate = t.DRIFT_RATE * g;
+  const traitRate = t.TRAIT_MUT_RATE * g;
+  const hueRate = t.HUE_MUT_RATE * g;
 
   let dirty = false;
 
@@ -189,7 +188,7 @@ export function mutate(child: Genome, mutation: RNG): boolean {
 
       // Weight mutation (per homolog, per arrow).
       if (mutation.next() < weightRate) {
-        weights[i] = (weights[i] as number) + gaussian(mutation) * C.WEIGHT_MUT_SIGMA;
+        weights[i] = (weights[i] as number) + gaussian(mutation) * t.WEIGHT_MUT_SIGMA;
       }
       // Enable-bit flips.
       if (enabled[i] === 0) {
@@ -200,7 +199,7 @@ export function mutate(child: Genome, mutation: RNG): boolean {
       // Disabled-arrow neutral drift — gated on THIS homolog's own start-of-pass mask
       // bit, not the OR-ed expressed bit and not the just-flipped value.
       if (!wasEnabled && mutation.next() < driftRate) {
-        weights[i] = (weights[i] as number) + gaussian(mutation) * C.DRIFT_SIGMA;
+        weights[i] = (weights[i] as number) + gaussian(mutation) * t.DRIFT_SIGMA;
         dirty = true;
       }
     }
@@ -210,7 +209,7 @@ export function mutate(child: Genome, mutation: RNG): boolean {
   for (let gi = 0; gi < TRAIT_GENES.length; gi++) {
     const gene = TRAIT_GENES[gi] as TraitGene;
     const range = TRAIT_RANGE[gene];
-    const sigma = (C.TRAIT_MUT_SIGMA as Record<string, number>)[gene] as number;
+    const sigma = t.TRAIT_MUT_SIGMA[gene] as number;
     const pair = child[gene];
     for (let a = 0; a < 2; a++) {
       if (mutation.next() < traitRate) {
@@ -222,7 +221,7 @@ export function mutate(child: Genome, mutation: RNG): boolean {
   // Hue — per allele, wrapped mod 360 (the only wraparound in the sim).
   for (let a = 0; a < 2; a++) {
     if (mutation.next() < hueRate) {
-      child.hue[a] = wrap360((child.hue[a] as number) + gaussian(mutation) * C.HUE_DRIFT);
+      child.hue[a] = wrap360((child.hue[a] as number) + gaussian(mutation) * t.HUE_DRIFT);
     }
   }
 
@@ -237,7 +236,7 @@ export function mutate(child: Genome, mutation: RNG): boolean {
  * `constants.ts` coefficients. Operates on the expressed brain only (not trait
  * genes). Symmetric and zero-on-identity by construction.
  */
-export function distance(a: Genome, b: Genome): number {
+export function distance(a: Genome, b: Genome, t: Tunables): number {
   const ea = deriveExpressed(a.weightsA, a.weightsB, a.enabledA, a.enabledB);
   const eb = deriveExpressed(b.weightsA, b.weightsB, b.enabledA, b.enabledB);
   const n = ea.weights.length;
@@ -248,7 +247,7 @@ export function distance(a: Genome, b: Genome): number {
     sumSq += dw * dw;
     if ((ea.enabled[k] as number) !== (eb.enabled[k] as number)) hamming++;
   }
-  return C.DIST_WEIGHT_COEF * Math.sqrt(sumSq) + C.DIST_MASK_COEF * hamming;
+  return t.DIST_WEIGHT_COEF * Math.sqrt(sumSq) + t.DIST_MASK_COEF * hamming;
 }
 
 // ── Clonal plant reproduction ────────────────────────────────────────────────
@@ -279,25 +278,24 @@ export const PLANT_RANGE: Record<(typeof PLANT_GENES)[number], [number, number]>
  * stream governs placement/dispersal at the call site (not here); this function
  * only mutates genes via the `mutation` stream.
  */
-export function plantSeed(parent: PlantGenome, mutation: RNG): PlantGenome {
-  const g = C.MUT_GLOBAL;
-  const traitRate = C.TRAIT_MUT_RATE * g;
-  const hueRate = C.HUE_MUT_RATE * g;
+export function plantSeed(parent: PlantGenome, mutation: RNG, t: Tunables): PlantGenome {
+  const g = t.MUT_GLOBAL;
+  const traitRate = t.TRAIT_MUT_RATE * g;
+  const hueRate = t.HUE_MUT_RATE * g;
 
   const seed = {} as PlantGenome;
   for (let gi = 0; gi < PLANT_GENES.length; gi++) {
     const gene = PLANT_GENES[gi] as (typeof PLANT_GENES)[number];
     const range = PLANT_RANGE[gene];
+    // Per-gene plant sigma (NOT the creature `size` sigma) so wide-range plant genes
+    // actually mutate at a meaningful step.
+    const sigma = t.PLANT_MUT_SIGMA[gene] as number;
     // Copy verbatim, then mutate per allele.
     const src = parent[gene];
     const pair: Allele = [src[0], src[1]];
     for (let a = 0; a < 2; a++) {
       if (mutation.next() < traitRate) {
-        pair[a] = clamp(
-          (pair[a] as number) + gaussian(mutation) * C.TRAIT_MUT_SIGMA.size,
-          range[0],
-          range[1],
-        );
+        pair[a] = clamp((pair[a] as number) + gaussian(mutation) * sigma, range[0], range[1]);
       }
     }
     seed[gene] = pair;
@@ -305,7 +303,7 @@ export function plantSeed(parent: PlantGenome, mutation: RNG): PlantGenome {
   const huePair: Allele = [parent.hue[0], parent.hue[1]];
   for (let a = 0; a < 2; a++) {
     if (mutation.next() < hueRate) {
-      huePair[a] = wrap360((huePair[a] as number) + gaussian(mutation) * C.HUE_DRIFT);
+      huePair[a] = wrap360((huePair[a] as number) + gaussian(mutation) * t.HUE_DRIFT);
     }
   }
   seed.hue = huePair;

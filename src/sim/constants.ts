@@ -130,6 +130,19 @@ export const TRAIT_MUT_SIGMA = {
   maxLifespan: 0.1,
   digestionEfficiency: 0.05,
 } as const;
+/**
+ * Per-gene std-dev of a *plant* trait mutation, in each gene's own units. (tunable,
+ * per-gene) Separate from the creature `TRAIT_MUT_SIGMA` — plant genes have their own
+ * ranges (e.g. `maxSize` 1–1000), so reusing a creature sigma would misfit them.
+ */
+export const PLANT_MUT_SIGMA = {
+  maxSize: 5,
+  height: 0.1,
+  dispersal: 0.5,
+  toughness: 0.02,
+  seedInvestment: 2,
+  maxAge: 50,
+} as const;
 /** Per-allele probability of a hue mutation. (tunable) */
 export const HUE_MUT_RATE = 0.05;
 /** Std-dev of hue drift, degrees, wrapped mod 360. (tunable) */

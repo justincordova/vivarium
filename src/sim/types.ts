@@ -282,6 +282,7 @@ export interface Tunables {
   DRIFT_SIGMA: number;
   TRAIT_MUT_RATE: number;
   TRAIT_MUT_SIGMA: Record<string, number>;
+  PLANT_MUT_SIGMA: Record<string, number>;
   HUE_MUT_RATE: number;
   HUE_DRIFT: number;
   MUT_GLOBAL: number;

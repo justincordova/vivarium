@@ -25,7 +25,7 @@ export function fieldCompartment<K extends string>(obj: Record<K, number>, key: 
   return {
     get: () => obj[key],
     add: (delta) => {
-      obj[key] = (obj[key] + delta) as Record<K, number>[K];
+      obj[key] = obj[key] + delta;
     },
   };
 }

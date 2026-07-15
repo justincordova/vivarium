@@ -47,6 +47,22 @@ describe("constants — structural relations", () => {
       expect(C.TRAIT_MUT_SIGMA[g]).toBeGreaterThan(0);
     }
   });
+
+  it("PLANT_MUT_SIGMA has an entry for every diploid plant gene", () => {
+    // plantSeed indexes this by plant gene; a missing entry would silently freeze
+    // that gene's evolution (or crash).
+    const plantGenes = [
+      "maxSize",
+      "height",
+      "dispersal",
+      "toughness",
+      "seedInvestment",
+      "maxAge",
+    ] as const;
+    for (const g of plantGenes) {
+      expect(C.PLANT_MUT_SIGMA[g]).toBeGreaterThan(0);
+    }
+  });
 });
 
 describe("constants — presence check (every name a later Phase 0 task references)", () => {

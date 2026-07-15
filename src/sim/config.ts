@@ -40,6 +40,7 @@ function defaultTunables(): Tunables {
     DRIFT_SIGMA: C.DRIFT_SIGMA,
     TRAIT_MUT_RATE: C.TRAIT_MUT_RATE,
     TRAIT_MUT_SIGMA: { ...C.TRAIT_MUT_SIGMA },
+    PLANT_MUT_SIGMA: { ...C.PLANT_MUT_SIGMA },
     HUE_MUT_RATE: C.HUE_MUT_RATE,
     HUE_DRIFT: C.HUE_DRIFT,
     MUT_GLOBAL: C.MUT_GLOBAL,
@@ -154,11 +155,15 @@ export function makeConfig(overrides: ConfigOverrides = {}): Config {
     tunables: {
       ...base.tunables,
       ...tunableOverrides,
-      // TRAIT_MUT_SIGMA is nested; merge it explicitly so a partial override does
-      // not drop the other gene entries.
+      // The nested sigma tables are merged explicitly so a partial override does not
+      // drop the other gene entries.
       TRAIT_MUT_SIGMA: {
         ...base.tunables.TRAIT_MUT_SIGMA,
         ...(tunableOverrides?.TRAIT_MUT_SIGMA ?? {}),
+      },
+      PLANT_MUT_SIGMA: {
+        ...base.tunables.PLANT_MUT_SIGMA,
+        ...(tunableOverrides?.PLANT_MUT_SIGMA ?? {}),
       },
     },
   };

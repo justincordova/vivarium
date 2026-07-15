@@ -48,10 +48,11 @@ describe("config — defaultConfig completeness", () => {
     expect(defaultConfig.founderCount).toBeLessThanOrEqual(100);
   });
 
-  it("every Tunables field is a defined number (or the TRAIT_MUT_SIGMA record)", () => {
+  it("every Tunables field is a defined number (or a per-gene sigma record)", () => {
     const t = defaultConfig.tunables;
+    const recordFields = new Set<keyof Tunables>(["TRAIT_MUT_SIGMA", "PLANT_MUT_SIGMA"]);
     for (const [key, value] of Object.entries(t) as [keyof Tunables, unknown][]) {
-      if (key === "TRAIT_MUT_SIGMA") {
+      if (recordFields.has(key)) {
         expect(typeof value).toBe("object");
         continue;
       }

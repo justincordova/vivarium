@@ -14,7 +14,7 @@
  */
 
 import * as C from "./constants";
-import { crossover, deriveExpressed, distance as genomeDistance, mutate } from "./genetics";
+import { crossover, deriveExpressed } from "./genetics";
 import type { Genome, RNG, RuleState } from "./types";
 
 // ── Pinned activation ────────────────────────────────────────────────────────
@@ -56,11 +56,14 @@ export function derive(genome: Genome): { weights: Float32Array; enabled: Uint8A
 }
 
 /**
- * `RuleBasedBrain` — Phase 0's `BrainOps<Genome>`. Genome ops delegate to
- * `genetics.ts` (the brain arrays are real and evolve); only `think` is a
- * placeholder that ignores the arrays. The tick loop uses `ruleThink` (below) for
- * actual behavior; this `think` exists to satisfy the interface and to keep the
- * Phase 4 shape (a pure senses→outputs function).
+ * `RuleBasedBrain` — Phase 0's `BrainOps<Genome>`, present to fix the swap-contract
+ * *shape*. In Phase 0 the tick loop calls `genetics.ts` (`mutate`/`crossover`/
+ * `distance`) and `ruleThink` **directly** — none of these methods are on the live
+ * path yet. They are Phase-4 wiring points: `create` is done by `world.ts` founder
+ * construction, and `mutate`/`distance` need `world.config.tunables` (which the
+ * bare `BrainOps` signatures don't carry), so they are wired when `PatchbayBrain`
+ * lands. Kept explicit rather than fake-delegating so the config-indirection rule is
+ * not quietly violated. `crossover` takes no tunables, so it can delegate today.
  */
 export const RuleBasedBrain: BrainOps<Genome> = {
   create(_rng: RNG): Genome {
@@ -71,14 +74,18 @@ export const RuleBasedBrain: BrainOps<Genome> = {
     // Phase 0 behavior is computed by ruleThink from world context.
     return new Float32Array(C.ACTIONS);
   },
-  mutate(brain: Genome, rng: RNG): void {
-    mutate(brain, rng);
+  mutate(_brain: Genome, _rng: RNG): void {
+    // Phase-4 hook: the live Phase-0 path calls genetics.mutate(child, rng, tunables)
+    // directly from tick.ts so the mutation rates come from world.config.tunables.
+    throw new Error("RuleBasedBrain.mutate: call genetics.mutate with tunables directly");
   },
   crossover(mom: Genome, dad: Genome, rng: RNG): Genome {
     return crossover(mom, dad, rng);
   },
-  distance(a: Genome, b: Genome): number {
-    return genomeDistance(a, b);
+  distance(_a: Genome, _b: Genome): number {
+    // Phase-4 hook: the live path calls genetics.distance(a, b, tunables) directly so
+    // the distance coefficients come from world.config.tunables.
+    throw new Error("RuleBasedBrain.distance: call genetics.distance with tunables directly");
   },
   serialize(_brain: Genome): ArrayBuffer {
     // The genome (incl. brain arrays) is serialized by serialize.ts (Task 0.9);

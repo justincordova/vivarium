@@ -15,7 +15,7 @@
  */
 
 import type { Intents, Percept, RuleContext } from "./brain";
-import { ruleThink } from "./brain";
+import { ruleThink, tanhApprox } from "./brain";
 import {
   type Compartment,
   cellCompartment,
@@ -124,7 +124,7 @@ function isThreat(self: Creature, other: Creature, t: Config["tunables"]): boole
 }
 function isMate(self: Creature, other: Creature, t: Config["tunables"]): boolean {
   return (
-    distance(self.genome, other.genome) < t.SPECIES_COMPAT_THRESHOLD &&
+    distance(self.genome, other.genome, t) < t.SPECIES_COMPAT_THRESHOLD &&
     other.energy > expressTrait(other.genome.matingThreshold)
   );
 }
@@ -532,7 +532,7 @@ function tryMate(
   if (invA > a.energy || invB > b.energy) return; // can't afford
 
   const childGenome = crossover(a.genome, b.genome, world.rng.mating);
-  mutate(childGenome, world.rng.mutation);
+  mutate(childGenome, world.rng.mutation, t);
 
   const child: Creature = {
     id: world.nextId++,
@@ -662,7 +662,7 @@ function resolvePlants(world: World, _reservoir: Compartment): void {
     const saturated = ordered.length + newSeeds.length >= plantCap;
     const seedCost = toQuantum(expressTrait(p.genome.seedInvestment));
     if (!saturated && p.energy > seedCost * 2 && seedCost > 0) {
-      const seedGenome = plantSeed(p.genome, world.rng.mutation);
+      const seedGenome = plantSeed(p.genome, world.rng.mutation, t);
       const disp = expressTrait(p.genome.dispersal);
       const sx = clamp(p.x + (world.rng.spawn.next() * 2 - 1) * disp, 0, world.config.worldWidth);
       const sy = clamp(p.y + (world.rng.spawn.next() * 2 - 1) * disp, 0, world.config.worldHeight);
@@ -761,6 +761,13 @@ function clampSigned(v: number): number {
 function clampUnit(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
 }
+/**
+ * Logistic sigmoid via the **pinned** `tanhApprox` (identity `σ(x) = ½(tanh(x/2)+1)`),
+ * NOT `Math.exp`. This is a state-affecting draw (the contest escape check), so it
+ * must use the same engine-independent approximation the brain uses — `Math.exp` is
+ * not bit-identical across engines and would break the cross-engine determinism the
+ * activation pinning exists to preserve (SPEC.md §Determinism point 3).
+ */
 function sigmoid(x: number): number {
-  return 1 / (1 + Math.exp(-x));
+  return 0.5 * (tanhApprox(x / 2) + 1);
 }

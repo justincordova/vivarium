@@ -1,3 +1,4 @@
+import { defaultConfig } from "@sim/config";
 import * as C from "@sim/constants";
 import {
   crossover,
@@ -15,6 +16,9 @@ import { mulberry32 } from "@sim/rng";
 import type { Allele, Genome, PlantGenome } from "@sim/types";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
+
+/** Shared tunables for genetics calls (rates/coeffs now come from config, not constants). */
+const T = defaultConfig.tunables;
 
 // ── Genome factories seeded from a plain RNG (test-local, deterministic) ─────────
 
@@ -146,7 +150,7 @@ describe("clonal inheritance (plantSeed)", () => {
     fc.assert(
       fc.property(fc.integer({ min: 1, max: 1e6 }), fc.integer({ min: 1, max: 1e6 }), (sp, sm) => {
         const parent = makePlantGenome(sp);
-        const seed = plantSeed(parent, mulberry32(sm));
+        const seed = plantSeed(parent, mulberry32(sm), T);
         expect(Object.keys(seed).sort()).toEqual(Object.keys(parent).sort());
         for (const gene of PLANT_GENE_KEYS) {
           expect(Number.isFinite(seed[gene][0])).toBe(true);
@@ -166,7 +170,7 @@ describe("clonal inheritance (plantSeed)", () => {
     let untouched = 0;
     let total = 0;
     for (const gene of PLANT_GENE_KEYS) {
-      const seed = plantSeed(parent, mulberry32(gene.length + 1));
+      const seed = plantSeed(parent, mulberry32(gene.length + 1), T);
       for (let a = 0; a < 2; a++) {
         total++;
         if (seed[gene][a] === parent[gene][a]) untouched++;
@@ -178,8 +182,8 @@ describe("clonal inheritance (plantSeed)", () => {
 
   it("is bit-reproducible for a fixed seed (golden)", () => {
     const parent = makePlantGenome(9);
-    const s1 = plantSeed(parent, mulberry32(2024));
-    const s2 = plantSeed(parent, mulberry32(2024));
+    const s1 = plantSeed(parent, mulberry32(2024), T);
+    const s2 = plantSeed(parent, mulberry32(2024), T);
     for (const gene of PLANT_GENE_KEYS) expect(s1[gene]).toEqual(s2[gene]);
   });
 });
@@ -192,8 +196,8 @@ describe("genetic distance", () => {
       fc.property(fc.integer({ min: 1, max: 1e6 }), fc.integer({ min: 1, max: 1e6 }), (sa, sb) => {
         const a = makeGenome(sa);
         const b = makeGenome(sb);
-        expect(distance(a, b)).toBeCloseTo(distance(b, a), 10);
-        expect(distance(a, a)).toBe(0);
+        expect(distance(a, b, T)).toBeCloseTo(distance(b, a, T), 10);
+        expect(distance(a, a, T)).toBe(0);
       }),
     );
   });
@@ -204,7 +208,7 @@ describe("genetic distance", () => {
     // Perturb one expressed weight in b by shifting both homologs.
     (b.weightsA as Float32Array)[0] = (a.weightsA[0] as number) + 10;
     (b.weightsB as Float32Array)[0] = (a.weightsB[0] as number) + 10;
-    expect(distance(a, b)).toBeGreaterThan(0);
+    expect(distance(a, b, T)).toBeGreaterThan(0);
   });
 });
 
@@ -219,7 +223,7 @@ describe("per-homolog drift (guards the pseudogene reservoir)", () => {
       const c = makeGenome(11);
       c.enabledA[0] = 0;
       const w0 = c.weightsA[0] as number;
-      mutate(c, mulberry32(t + 1));
+      mutate(c, mulberry32(t + 1), T);
       if ((c.weightsA[0] as number) !== w0) aChanged = true;
     }
     expect(aChanged).toBe(true);
@@ -237,7 +241,7 @@ describe("per-homolog drift (guards the pseudogene reservoir)", () => {
         c.enabledA[i] = 1;
         c.enabledB[i] = 1;
       }
-      if (mutate(c, mulberry32(t + 500))) anyDirty = true;
+      if (mutate(c, mulberry32(t + 500), T)) anyDirty = true;
     }
     expect(anyDirty).toBe(false);
   });
@@ -263,8 +267,8 @@ describe("golden-vector determinism", () => {
   it("mutate + deriveExpressed on a fixed seed reproduce exactly", () => {
     const a = makeGenome(99);
     const b = makeGenome(99);
-    const dirtyA = mutate(a, mulberry32(777));
-    const dirtyB = mutate(b, mulberry32(777));
+    const dirtyA = mutate(a, mulberry32(777), T);
+    const dirtyB = mutate(b, mulberry32(777), T);
     expect(dirtyA).toBe(dirtyB);
     expect(Array.from(a.weightsA)).toEqual(Array.from(b.weightsA));
     expect(Array.from(a.weightsB)).toEqual(Array.from(b.weightsB));
@@ -299,7 +303,7 @@ describe("expressTrait", () => {
     const gene: TraitGene = "diet"; // range [0,1]
     for (let t = 0; t < 300; t++) {
       const c = makeGenome(3);
-      mutate(c, mulberry32(t + 1));
+      mutate(c, mulberry32(t + 1), T);
       expect(c[gene][0]).toBeGreaterThanOrEqual(0);
       expect(c[gene][0]).toBeLessThanOrEqual(1);
       expect(c[gene][1]).toBeGreaterThanOrEqual(0);

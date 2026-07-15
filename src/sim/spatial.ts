@@ -86,14 +86,6 @@ export class SpatialHash {
   }
 
   /**
-   * Nearest point (by Euclidean distance) within `radius` of `(x, y)` for which
-   * `predicate` holds, **ties broken by ascending `id`** — a total, deterministic
-   * order independent of scan order. Returns `null` if none qualifies.
-   *
-   * `predicate` lets the caller express food/threat/mate classification (which is
-   * relative to the perceiving creature).
-   */
-  /**
    * Ids of all indexed points within `radius` of `(x, y)`. A bounded query
    * (O(neighbors)) callers use to avoid O(N) scans; the exact `withinRadius` filter
    * is applied so results are precise, not just the cell-block superset.
@@ -110,6 +102,14 @@ export class SpatialHash {
     return out;
   }
 
+  /**
+   * Nearest point (by Euclidean distance) within `radius` of `(x, y)` for which
+   * `predicate` holds, **ties broken by ascending `id`** — a total, deterministic
+   * order independent of scan order. Returns `null` if none qualifies.
+   *
+   * `predicate` lets the caller express food/threat/mate classification (which is
+   * relative to the perceiving creature).
+   */
   nearestWithin(
     x: number,
     y: number,
