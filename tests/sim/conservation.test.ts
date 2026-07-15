@@ -40,6 +40,7 @@ function stubCreature(id: number, energy: number, hydration: number): Creature {
     genome: {} as any,
     hidden: new Float32Array(0),
     ruleState: { mode: "wander", targetId: -1, targetKind: "none", committedTicks: 0 },
+    actionWindow: new Float32Array(7),
   };
 }
 

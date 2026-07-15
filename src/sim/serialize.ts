@@ -13,6 +13,7 @@
  * Pure — no DOM/IndexedDB (those are worker/Phase 5 concerns). Part of `sim/`.
  */
 
+import { ACTIONS } from "./constants";
 import { deserializeRng, serializeRng } from "./rng";
 import type {
   Config,
@@ -60,6 +61,8 @@ interface SerCreature {
   genome: SerGenome;
   hidden: number[];
   ruleState: Creature["ruleState"];
+  /** behaviorNovelty trailing action-fire histogram (length ACTIONS). */
+  actionWindow: number[];
 }
 
 interface SerGenome {
@@ -160,6 +163,7 @@ export function serialize(world: World): SaveBlob {
       genome: serGenome(c.genome),
       hidden: Array.from(c.hidden),
       ruleState: { ...c.ruleState },
+      actionWindow: Array.from(c.actionWindow),
     })),
     plants: world.plants.map((p) => ({
       id: p.id,
@@ -259,6 +263,10 @@ export function deserialize(data: SaveBlob): World {
       targetKind: "none",
       committedTicks: 0,
     },
+    // Serialized behaviorNovelty accumulator; default to a zero histogram if a
+    // pre-Phase-1 blob lacks it (optional/defaulted → no migration needed).
+    actionWindow:
+      c.actionWindow !== undefined ? Float32Array.from(c.actionWindow) : new Float32Array(ACTIONS),
     // derived cache intentionally NOT restored — re-derived on first use.
   }));
 

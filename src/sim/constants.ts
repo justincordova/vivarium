@@ -298,3 +298,55 @@ export const EMIT_INTENSITY = 10;
  * supplied. Fallback only. (tunable)
  */
 export const RENDEZVOUS_ARRIVE_FRAC = 0.05;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1 — world-health metrics  (SPEC.md §World-Health Metrics; plan Task 1.1)
+//
+// These are read only by `stats.ts` (outside the `tick()` determinism boundary),
+// never by `tick()`. They tune what the *metrics* measure, so several are swept in
+// Task 1.5 (their value, not just their speed, changes the reported health).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * `speciesCount` clustering restricts compatibility edges to creatures within this
+ * spatial radius of each other (allopatric speciation is spatial). Changes the
+ * metric's *value*, not just its speed: too small → every deme reads as its own
+ * species; too large → global single-linkage chaining returns. Swept in Task 1.5
+ * with its sensitivity checked. (tunable) */
+export const SPECIES_SPATIAL_RADIUS = 25;
+
+/**
+ * How often (in ticks) `speciesCount`/species clustering is recomputed — the
+ * ~500-tick cadence from SPEC.md §Lineage. The metric is expensive, so it is not
+ * recomputed every tick. (tunable) */
+export const SPECIES_RECOMPUTE_INTERVAL = 500;
+
+/**
+ * Trailing timescale (in ticks) of the per-creature action-fire accumulator backing
+ * `behaviorNovelty`. Realized as an exponential-decay histogram with decay factor
+ * `1 − 1/NOVELTY_WINDOW` (the standard bounded-memory realization of a trailing
+ * window: O(7) per tick, O(7) to serialize, continuous across save/catch-up). (tunable) */
+export const NOVELTY_WINDOW = 500;
+
+/**
+ * A continuous output (turn, accelerate) counts as a "fire" this tick when its
+ * magnitude exceeds this threshold — gives the 2 continuous actions a well-defined
+ * fire predicate alongside the 5 gated actions. (tunable) */
+export const NOVELTY_ACT_EPS = 0.1;
+
+/**
+ * `behaviorNovelty` subsamples this many creatures (ascending id) and computes mean
+ * pairwise Jensen–Shannon divergence over their action histograms — an O(constant)
+ * cost independent of population. (tunable) */
+export const NOVELTY_SAMPLE = 200;
+
+/**
+ * Recent-window size (in samples) kept at full detail before older history is
+ * downsampled to 1 point / `HISTORY_DOWNSAMPLE_TICKS` (SPEC.md §Lineage). (tunable) */
+export const HISTORY_RECENT_WINDOW = 200;
+
+/** Older history is downsampled to one point per this many ticks (SPEC.md §Lineage). (tunable) */
+export const HISTORY_DOWNSAMPLE_TICKS = 1000;
+
+/** How often (in ticks) a history sample is recorded into `world.history`. (tunable) */
+export const HISTORY_SAMPLE_INTERVAL = 100;

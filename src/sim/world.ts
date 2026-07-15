@@ -255,6 +255,7 @@ export function createWorld(seed: number, config: Config): World {
       genome,
       hidden: new Float32Array(config.hidden),
       ruleState: { mode: "wander", targetId: -1, targetKind: "none", committedTicks: 0 },
+      actionWindow: new Float32Array(C.ACTIONS),
     };
     // Draw starting energy from the reservoir and hydration from the local water cell.
     transfer(reservoir, fieldCompartment(creature, "energy"), FOUNDER_START_ENERGY);

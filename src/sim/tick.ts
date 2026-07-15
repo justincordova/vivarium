@@ -26,7 +26,7 @@ import {
 } from "./energy";
 import { crossover, distance, expressTrait, mutate, plantSeed } from "./genetics";
 import { localDensity, SpatialHash, type SpatialPoint } from "./spatial";
-import type { Config, Corpse, Creature, Plant, World } from "./types";
+import { Action, type Config, type Corpse, type Creature, type Plant, type World } from "./types";
 
 // ── Expressed-trait helpers ──────────────────────────────────────────────────
 
@@ -300,6 +300,17 @@ export function tick(world: World): void {
     applyCreature(world, c, plan, byId, reservoir, t, snap);
   }
 
+  // 4.1b Update each creature's trailing action-fire histogram (behaviorNovelty
+  // accumulator, plan Task 1.1/1.2). Index-order over `planned` — decay is a
+  // per-creature commutative op so order is deterministic; newborns from this tick
+  // are absent here and start updating next tick from their zero window. This writes
+  // per-creature state but is NEVER read back into think(), so it does not enter the
+  // determinism-critical path.
+  for (let pi = 0; pi < planned.length; pi++) {
+    const plan = planned[pi] as PlannedAction;
+    updateActionWindow(plan.creature, plan.intents, t);
+  }
+
   // 4.2 Removals in ascending-id order.
   resolveRemovals(world);
 
@@ -310,6 +321,32 @@ export function tick(world: World): void {
   resolveFields(world, reservoir);
 
   world.tick++;
+}
+
+// ── 4.1b behaviorNovelty accumulator ─────────────────────────────────────────
+
+/**
+ * Decay a creature's action-fire histogram one tick and add this tick's fires
+ * (plan Task 1.1). Exponential-decay realization of a trailing `NOVELTY_WINDOW`:
+ * every slot × `(1 − 1/NOVELTY_WINDOW)`, then a fired action's slot += 1. Fire
+ * predicates: the 5 gated actions fire when their gate fired (the intent); the 2
+ * continuous outputs fire when `|output| > NOVELTY_ACT_EPS`. Pure per-creature
+ * mutation of `actionWindow`; the result is read only by `stats.ts`, never `think()`.
+ */
+function updateActionWindow(c: Creature, intents: Intents, t: Config["tunables"]): void {
+  const w = c.actionWindow;
+  const decay = 1 - 1 / t.NOVELTY_WINDOW;
+  for (let k = 0; k < w.length; k++) w[k] = (w[k] as number) * decay;
+  const eps = t.NOVELTY_ACT_EPS;
+  if (Math.abs(intents.turn) > eps) w[Action.Turn] = (w[Action.Turn] as number) + 1;
+  if (Math.abs(intents.accelerate) > eps) {
+    w[Action.Accelerate] = (w[Action.Accelerate] as number) + 1;
+  }
+  if (intents.eat) w[Action.Eat] = (w[Action.Eat] as number) + 1;
+  if (intents.drink) w[Action.Drink] = (w[Action.Drink] as number) + 1;
+  if (intents.attack) w[Action.Attack] = (w[Action.Attack] as number) + 1;
+  if (intents.mate) w[Action.Mate] = (w[Action.Mate] as number) + 1;
+  if (intents.emit) w[Action.EmitScent] = (w[Action.EmitScent] as number) + 1;
 }
 
 // ── 4.1 helpers ──────────────────────────────────────────────────────────────
@@ -549,6 +586,7 @@ function tryMate(
     genome: childGenome,
     hidden: new Float32Array(world.config.hidden),
     ruleState: { mode: "wander", targetId: -1, targetKind: "none", committedTicks: 0 },
+    actionWindow: new Float32Array(Action.EmitScent + 1),
   };
   // Energy transferred from BOTH parents; water likewise (mirror). Never minted.
   transfer(fieldCompartment(a, "energy"), fieldCompartment(child, "energy"), invA);

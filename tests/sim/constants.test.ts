@@ -149,6 +149,15 @@ describe("constants — presence check (every name a later Phase 0 task referenc
       "K_ANGLE",
       // scent
       "EMIT_INTENSITY",
+      // Phase 1 — world-health metrics
+      "SPECIES_SPATIAL_RADIUS",
+      "SPECIES_RECOMPUTE_INTERVAL",
+      "NOVELTY_WINDOW",
+      "NOVELTY_ACT_EPS",
+      "NOVELTY_SAMPLE",
+      "HISTORY_RECENT_WINDOW",
+      "HISTORY_DOWNSAMPLE_TICKS",
+      "HISTORY_SAMPLE_INTERVAL",
     ] as const;
 
     const mod = C as Record<string, unknown>;

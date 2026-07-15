@@ -138,6 +138,15 @@ export interface Creature {
   hidden: Float32Array;
   /** Rule-brain hysteresis/rendezvous state. Serialized. */
   ruleState: RuleState;
+  /**
+   * Per-creature trailing action-fire histogram (length ACTIONS = 7), backing the
+   * `behaviorNovelty` metric (plan Task 1.1). An exponential-decay accumulator: each
+   * tick every slot decays by `1 − 1/NOVELTY_WINDOW` and a fired action's slot gains
+   * 1 — the bounded-memory realization of a trailing window. **Serialized runtime
+   * state** (plan Task 1.2): without it, novelty resets to noise after every
+   * save/catch-up. Updated in `tick()` but **never read back into `think()`**, so it
+   * stays outside the determinism-critical selection path. Inits to zeros. */
+  actionWindow: Float32Array;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -239,12 +248,22 @@ export interface SimEvent {
 // Downsampled history  (SPEC.md §Lineage — part of the v1 schema from the start)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** One downsampled history sample (1 point / ~1000 ticks). */
+/**
+ * One history sample. Recent samples are kept at full detail; older ones are
+ * downsampled to 1 point / ~1000 ticks (SPEC.md §Lineage; plan Task 1.2). All the
+ * per-gene fields are optional so a pre-Phase-1 `version:1` blob still deserializes
+ * (no migration) — the plan's "shape is part of the v1 schema" requirement.
+ */
 export interface HistorySample {
   tick: number;
   population: number;
   plantCount: number;
   corpseCount: number;
+  /** Population variance of expressed value, per functional trait gene (means/vars). */
+  traitMeans?: Record<string, number>;
+  traitVariances?: Record<string, number>;
+  /** Cluster count at this sample (recomputed on the species cadence; else carried). */
+  speciesCount?: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -338,6 +357,12 @@ export interface Tunables {
   K_ANGLE: number;
   // scent
   EMIT_INTENSITY: number;
+  // Phase 1 — world-health metrics (read by stats.ts only, never by tick()).
+  SPECIES_SPATIAL_RADIUS: number;
+  SPECIES_RECOMPUTE_INTERVAL: number;
+  NOVELTY_WINDOW: number;
+  NOVELTY_ACT_EPS: number;
+  NOVELTY_SAMPLE: number;
 }
 
 /** Which brain policy is active. Phase 0–3: `'rule'`; Phase 4 swaps in `'patchbay'`. */
