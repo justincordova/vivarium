@@ -244,6 +244,19 @@ export const REPRO_SOFT_FRAC = 0.55;
  * strategies (SPEC.md §World-Health: spatial heterogeneity → refuges → speciation).
  * (tunable) */
 export const REPRO_CROWD_LIMIT = 8;
+/**
+ * Allee low-density starvation rescue threshold (SPEC.md §World-Health — density-
+ * dependent effects). Energetic analysis showed primary production (light) vastly
+ * exceeds consumption, so the collapse is a *spatial* overshoot: herbivores clump,
+ * strip local plants, and mass-starve in a synchronized cascade. A gentle reproduction
+ * throttle keeps the population near a healthy plateau, but a rare deep fluctuation can
+ * still trigger the cascade. Below this population, a would-be *starvation* death on an
+ * otherwise-viable creature is given a survival ration drawn from the reservoir (energy
+ * conserved, not minted) — a floor that lets the rare deep dip recover instead of
+ * terminating, so the plateau becomes a permanently-sustained (mildly oscillating)
+ * population. Only starvation, only when already low, so normal dynamics are untouched.
+ * (tunable) */
+export const ALLEE_POP_THRESHOLD = 40;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Gated-action thresholds  (SPEC.md §Actions "Gated actions fire when their

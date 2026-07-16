@@ -120,6 +120,7 @@ describe("constants — presence check (every name a later Phase 0 task referenc
       "CREATURE_CAP",
       "REPRO_SOFT_FRAC",
       "REPRO_CROWD_LIMIT",
+      "ALLEE_POP_THRESHOLD",
       // gated-action thresholds
       "EAT_THRESHOLD",
       "DRINK_THRESHOLD",

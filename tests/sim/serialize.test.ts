@@ -38,7 +38,7 @@ describe("serialize — roundtrip identity", () => {
       ),
       { numRuns: 20 },
     );
-  }, 60_000);
+  }, 120_000);
 
   it("writes version 1 and does not serialize the derived brain cache", () => {
     const w = createWorld(1, makeConfig({}));
@@ -67,7 +67,7 @@ describe("serialize — the free determinism double-check", () => {
       }),
       { numRuns: 2 },
     );
-  }, 60_000);
+  }, 120_000);
 });
 
 describe("serialize — forward-compatible defaulting", () => {

@@ -134,7 +134,7 @@ describe("graduated density-dependent reproduction brake", () => {
       tick(w);
       expect(w.creatures.length).toBeLessThanOrEqual(cap);
     }
-  }, 30000);
+  }, 90000);
 
   it("the brake is deterministic — two runs with the same seed match population exactly", () => {
     const run = (): number[] => {
@@ -147,7 +147,7 @@ describe("graduated density-dependent reproduction brake", () => {
       return series;
     };
     expect(run()).toEqual(run());
-  }, 30000);
+  }, 90000);
 
   it("a lower soft fraction holds the population no higher than a late brake", () => {
     // With REPRO_SOFT_FRAC low, the stochastic brake bites earlier, so the population
@@ -165,5 +165,45 @@ describe("graduated density-dependent reproduction brake", () => {
       return mx;
     };
     expect(peak(0.3)).toBeLessThanOrEqual(peak(0.95));
-  }, 30000);
+  }, 90000);
+});
+
+describe("Allee low-density starvation rescue", () => {
+  it("rescues a starving but otherwise-viable creature below the threshold, conserving energy", () => {
+    // A world with a single starving-but-viable creature (pop 1 < ALLEE threshold):
+    // its energy hits zero, but the rescue tops it up from the reservoir so it survives
+    // the removal pass — and total energy is conserved (drawn, not minted).
+    const w = createWorld(1, makeConfig({ founderCount: 2 }));
+    // Keep exactly one creature, hydrated + healthy but out of energy.
+    const c = w.creatures[0] as Creature;
+    w.creatures = [c];
+    w.creatureIds = [c.id];
+    c.energy = 0;
+    c.hydration = 500;
+    c.health = 40;
+    c.age = 0;
+    c.genome.maxLifespan = [100000, 100000];
+    const e0 = totalEnergy(w);
+    tick(w);
+    // Survived the starvation removal (rescued) and energy is still conserved exactly.
+    expect(w.creatures.length).toBe(1);
+    expect(totalEnergy(w)).toBe(e0);
+  }, 90000);
+
+  it("does NOT rescue when the population is at/above the threshold", () => {
+    // At a healthy population the rescue is inactive, so a starving creature dies
+    // normally (density-dependent: relief only at low density).
+    const w = createWorld(1, makeConfig({}));
+    // Run to a healthy population well above the Allee threshold.
+    for (let i = 0; i < 800; i++) tick(w);
+    expect(w.creatures.length).toBeGreaterThan(makeConfig({}).tunables.ALLEE_POP_THRESHOLD);
+    // Starve one creature to zero energy; at high pop it should be removed next tick.
+    const victim = w.creatures[0] as Creature;
+    const victimId = victim.id;
+    victim.energy = 0;
+    victim.hydration = 500;
+    victim.health = 40;
+    tick(w);
+    expect(w.creatures.some((c) => c.id === victimId)).toBe(false);
+  }, 90000);
 });

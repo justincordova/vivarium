@@ -323,6 +323,7 @@ export interface Tunables {
   CREATURE_CAP: number;
   REPRO_SOFT_FRAC: number;
   REPRO_CROWD_LIMIT: number;
+  ALLEE_POP_THRESHOLD: number;
   // gated-action thresholds
   EAT_THRESHOLD: number;
   DRINK_THRESHOLD: number;

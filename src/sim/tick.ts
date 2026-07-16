@@ -311,8 +311,8 @@ export function tick(world: World): void {
     updateActionWindow(plan.creature, plan.intents, t);
   }
 
-  // 4.2 Removals in ascending-id order.
-  resolveRemovals(world);
+  // 4.2 Removals in ascending-id order (with the Allee low-density starvation rescue).
+  resolveRemovals(world, reservoir, t);
 
   // 4.3 Plant updates in ascending plant-id order.
   resolvePlants(world, reservoir);
@@ -627,7 +627,35 @@ function tryMate(
 
 // ── 4.2 Removals (ascending id) ──────────────────────────────────────────────
 
-function resolveRemovals(world: World): void {
+function resolveRemovals(world: World, reservoir: Compartment, t: Config["tunables"]): void {
+  // Allee low-density starvation rescue (SPEC.md §World-Health — density-dependent
+  // effects). Energetic analysis: light (primary production) vastly exceeds consumption,
+  // so the collapse is a *spatial* overshoot (herbivores clump → strip local plants →
+  // synchronized mass-starvation), not a global resource shortage. Below the threshold,
+  // an otherwise-viable creature (hydrated, healthy, not aged out) whose energy hit zero
+  // gets a survival ration drawn from the reservoir (a named compartment — energy
+  // conserved, never minted). Combined with a gentle reproduction throttle (which keeps
+  // the population near a healthy plateau), this floor lets the rare deep fluctuation
+  // recover instead of cascading to extinction. Only starvation, only when already low.
+  if (world.creatures.length < t.ALLEE_POP_THRESHOLD) {
+    // Rescue tops a starving survivor up ABOVE its mating threshold, not just to bare
+    // survival — otherwise the population clings to the floor unable to breed and a
+    // later fluctuation finishes it (observed). Reaching the mating threshold lets the
+    // sparse survivors reproduce and actively climb back out of the dip.
+    for (let i = 0; i < world.creatures.length; i++) {
+      const c = world.creatures[i] as Creature;
+      if (
+        c.energy <= 0 &&
+        c.hydration > 0 &&
+        c.health > 0 &&
+        c.age < expressTrait(c.genome.maxLifespan)
+      ) {
+        const target = toQuantum(expressTrait(c.genome.matingThreshold) + t.MAX_ENERGY_BASE);
+        transferUpTo(reservoir, fieldCompartment(c, "energy"), target);
+      }
+    }
+  }
+
   const survivors: Creature[] = [];
   const dying: Creature[] = [];
   for (let i = 0; i < world.creatures.length; i++) {
