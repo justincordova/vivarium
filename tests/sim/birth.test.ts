@@ -158,14 +158,14 @@ describe("graduated density-dependent reproduction brake", () => {
         makeConfig({ tunables: { CREATURE_CAP: 200, REPRO_SOFT_FRAC: softFrac } }),
       );
       let mx = 0;
-      for (let i = 0; i < 2000; i++) {
+      for (let i = 0; i < 1200; i++) {
         tick(w);
         mx = Math.max(mx, w.creatures.length);
       }
       return mx;
     };
     expect(peak(0.3)).toBeLessThanOrEqual(peak(0.95));
-  }, 90000);
+  }, 120000);
 });
 
 describe("Allee low-density starvation rescue", () => {

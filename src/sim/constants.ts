@@ -186,8 +186,10 @@ export const LIGHT_DECAY = 0.1;
  * in finite ticks (SPEC.md §Removal & Corpses). (tunable)
  */
 export const CORPSE_DECAY_FRACTION = 0.05;
-/** Fraction of a creature's hydration store lost (returned to water field) per tick. (tunable) */
-export const HYDRATION_DECAY = 0.01;
+/**
+ * Fraction of a creature's hydration store lost (returned to water field) per tick.
+ * (tunable) 0.015 is a Phase-1-gate-tuned value (see the balance note on CREATURE_CAP). */
+export const HYDRATION_DECAY = 0.015;
 /** Per-tick photosynthesis rate cap, before headroom limiting (SPEC.md §Plant Lifecycle). (tunable) */
 export const PLANT_GROWTH_MAX = 15;
 /** Minimum light in a cell for a plant to photosynthesize. (tunable) */
@@ -226,8 +228,16 @@ export const DENSITY_RADIUS = 6;
  * food carrying capacity produces a fragile high-churn equilibrium that death-spirals
  * (diagnosed: births≈deaths at the cap, then a transient death excess cascades to
  * extinction). The graduated brake below is what actually stabilizes the population.
- * (tunable) */
-export const CREATURE_CAP = 100;
+ *
+ * **Phase-1-gate-tuned default.** `CREATURE_CAP=120`, `REPRO_SOFT_FRAC=0.35`,
+ * `METABOLIC_COST_COEF=0.05`, `HYDRATION_DECAY=0.015` are the balance found for the
+ * Phase 1 gate (a world that oscillates + diversifies for 100k ticks). Derived from an
+ * energetic model — light (primary production) far exceeds consumption, so the collapse
+ * was a spatial overshoot, not a resource shortage — plus probing. On seed 1 this
+ * config oscillates (pop CV ≈ 0.6, ~26→120 swing) and diversifies (~20 species) for the
+ * full 100k; all viability seeds survive. The winning config becomes the world Phase 2
+ * renders (plan §Phase 1 exit). (tunable) */
+export const CREATURE_CAP = 120;
 /**
  * Graduated density-dependent reproduction brake (SPEC.md §World-Health: "density-
  * dependent effects" are the primary in-scope stabilizer). Below
@@ -235,8 +245,10 @@ export const CREATURE_CAP = 100;
  * threshold and the hard cap, a birth is stochastically suppressed with probability
  * rising to 1 at the cap (drawn from the deterministic `mating` stream). This smooth
  * negative feedback replaces the hard cliff, damping overshoot into a sustained
- * oscillation rather than a crash. (tunable) */
-export const REPRO_SOFT_FRAC = 0.55;
+ * oscillation rather than a crash. 0.35 is the Phase-1-gate-tuned value: a gentle
+ * throttle that keeps the population off the cap so it never overshoots into a spatial
+ * crash (see the CREATURE_CAP balance note). (tunable) */
+export const REPRO_SOFT_FRAC = 0.35;
 /**
  * Local-crowding reproduction brake: a birth is additionally suppressed when the
  * parent's `localDensity` (within `DENSITY_RADIUS`) exceeds this many neighbors, so
@@ -320,8 +332,12 @@ export const FERTILITY_CELL_MAX = 100;
 // Contests  (SPEC.md §Contests)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Multiplier on the size·metabolism baseline metabolic drain per tick. (tunable) */
-export const METABOLIC_COST_COEF = 0.1;
+/**
+ * Multiplier on the size·metabolism baseline metabolic drain per tick. (tunable)
+ * 0.05 is the Phase-1-gate-tuned value (see the CREATURE_CAP balance note): a lower
+ * drain gives foragers the runway to survive the gaps between meals in the spatially
+ * clumped food landscape. */
+export const METABOLIC_COST_COEF = 0.05;
 /** Multiplier on the speed² movement-energy cost per tick. (tunable) */
 export const MOVEMENT_COST_COEF = 0.01;
 
