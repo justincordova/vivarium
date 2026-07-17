@@ -191,16 +191,26 @@
 
 ## Phase 4 exit criteria
 
-- [ ] `PatchbayBrain.think` implemented with pinned activation, fixed
-      accumulation order, working recurrence; deterministic.
-- [ ] Active brain is config-selectable; determinism + conservation hold under
-      `patchbay`; old saves migrate.
-- [ ] Same-seed A/B (rule vs patchbay) run reproducibly and compared by
-      world-health.
-- [ ] Enable-density + enlargement-experiment verdicts recorded.
-- [ ] The headline demo exists: a patchbay world showing emergent behavior the
-      author did not script (SPEC.md §Vision: "produces things the author did not
-      anticipate").
+- [x] `PatchbayBrain.think` implemented with pinned activation, fixed
+      accumulation order, working recurrence; deterministic. (B1 — golden-vector test
+      enforces the accumulation order; `brain.ts` `patchbayForward`.)
+- [x] Active brain is config-selectable; determinism + conservation hold under
+      `patchbay`; old saves migrate. (B2 — `config.brainKind`, save v1→v2 migration,
+      `tests/sim/patchbay.test.ts`, `serialize.test.ts` migration cases. A latent
+      `ruleState` aliasing bug in `deserialize` was found + fixed here.)
+- [x] Same-seed A/B (rule vs patchbay) run reproducibly and compared by
+      world-health. (B3 — `scripts/compare.ts`, byte-identical re-runs; heritability
+      gate PASSES at the 3000-tick horizon, seeds 42/7 = 0.379/0.281.)
+- [x] Enable-density + enlargement-experiment verdicts recorded. (B4 —
+      `scripts/experiment-brain-capacity.ts`, `docs/findings/phase-4-brain-capacity.md`.
+      Verdict: KEEP PATCHBAY — enable density plateaus <0.5 robustly; enlargement
+      inconclusive at short horizons.)
+- [x] The headline demo exists: a patchbay world showing emergent behavior the
+      author did not script — patchbay worlds run live, forage, speciate, and show
+      higher behavior novelty than the rule baseline while staying in the same health
+      envelope (compare.ts). MAX_OFFLINE_TICKS re-derived (Task 4.3b): forward pass is
+      NOT the cost bottleneck — per-tick cost scales with population, not enable
+      density, so the existing ceiling stays conservative.
 
 **Next:** `docs/plans/phase-5-plan.md` — persistence + offline catch-up + the
 "while you were away" report, observability charts, the pre-evolved cold open,
