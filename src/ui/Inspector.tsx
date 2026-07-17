@@ -39,7 +39,9 @@ function GeneRow({
   gene: TraitGene | "hue";
 }): React.ReactElement {
   const editGenome = useSimStore((s) => s.editGenome);
-  const [lo, hi] = gene === "hue" ? [0, 360] : TRAIT_RANGE[gene as TraitGene];
+  // Hue wraps mod 360 in the worker, so cap the slider at 359 — a max of 360 would
+  // store as 0 and make the control snap back, fighting the user.
+  const [lo, hi] = gene === "hue" ? [0, 359] : TRAIT_RANGE[gene as TraitGene];
   const allele = creature.genome[gene] as [number, number];
   const expressed = (allele[0] + allele[1]) / 2;
   const step = (hi - lo) / 200;
@@ -103,7 +105,10 @@ export function Inspector(): React.ReactElement | null {
         <Vital label="energy" value={num(inspected.energy, 0)} />
         <Vital label="hydration" value={num(inspected.hydration, 0)} />
         <Vital label="health" value={num(inspected.health, 0)} />
-        <Vital label="lineage" value={`#${inspected.parentId ?? inspected.id}`} />
+        <Vital
+          label="parent"
+          value={inspected.parentId === null ? "founder" : `#${inspected.parentId}`}
+        />
         <Vital label="brain on" value={`${num(enableDensity(inspected) * 100, 0)}%`} />
       </div>
 

@@ -119,6 +119,11 @@ function repaintIfPaused(): void {
   }
 }
 
+// Correctness note: god-power mutations are applied here, at a tick boundary, never
+// mid-tick. That holds ONLY because `step`/`stepTicks` are fully synchronous and JS is
+// single-threaded — a command can be dequeued between scheduled steps, never during a
+// `tick()`. Do not make the tick loop yield (no `await`/microtask chunking inside a
+// tick) or a command could land mid-resolve and break determinism/conservation.
 self.onmessage = (ev: MessageEvent<Command>): void => {
   const cmd = ev.data;
   switch (cmd.t) {

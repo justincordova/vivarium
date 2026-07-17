@@ -185,6 +185,15 @@ describe("applyPaint", () => {
     expect(totalEnergy(world)).toBe(e0);
     expect(totalWater(world)).toBe(w0);
   });
+
+  it("modulator paint quantizes a fractional delta (sim-read field stays integer)", () => {
+    const world = createWorld(1, makeConfig({}));
+    const cell = cellIndexOf(world, 100, 100);
+    const before = world.fields.temperature[cell] as number;
+    // A fractional delta must round (quantize-on-entry) — 2.6 → +3, not +2.6.
+    applyPaint(world, "temperature", cell, 2.6, 0);
+    expect(world.fields.temperature[cell] as number).toBeCloseTo(before + 3, 5);
+  });
 });
 
 describe("applySetParam", () => {

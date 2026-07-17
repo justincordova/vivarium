@@ -227,7 +227,7 @@ export function SimCanvas(): React.ReactElement {
       {deathNote !== null && (
         <div className="tabular pointer-events-auto absolute bottom-16 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-md border border-neutral-800 bg-neutral-950/90 px-3 py-1.5 text-xs text-neutral-300 backdrop-blur-sm">
           <span>
-            creature #{deathNote.id} died · age {deathNote.age.toLocaleString("en-US")}
+            creature #{deathNote.id} gone · age {deathNote.age.toLocaleString("en-US")}
           </span>
           <button
             type="button"

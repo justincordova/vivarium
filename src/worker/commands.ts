@@ -60,8 +60,8 @@ function genomeFromSpec(spec: SpawnSpec): Genome {
 /**
  * Spawn a creature at `spec.{x,y}` with energy/hydration drawn from the reservoir and
  * the local water cell (saturating — you can't spawn energy the world doesn't have).
- * Returns the new creature's id, or -1 if it couldn't be placed. Conserves both
- * ledgers: the endowment is transferred in, never minted.
+ * Returns the new creature's id. Conserves both ledgers: the endowment is transferred
+ * in, never minted. Spawn intentionally bypasses `CREATURE_CAP` — it is a god-power.
  */
 export function applySpawn(world: World, spec: SpawnSpec): number {
   const x = clamp(spec.x, 0, world.config.worldWidth);
@@ -161,7 +161,9 @@ export function applyEditGenome(world: World, id: number, patch: GenomePatch): b
   const enabled = patch.homolog === "A" ? g.enabledA : g.enabledB;
   if (patch.weight !== undefined) weights[patch.arrow] = patch.weight;
   if (patch.enabled !== undefined) enabled[patch.arrow] = patch.enabled;
-  // Invalidate the derived cache and reset recurrent state.
+  // Invalidate the derived-weights cache (a no-op today — RuleBasedBrain never
+  // populates `.derived`; load-bearing for the Phase 4 patchbay swap, when `derive()`
+  // will) and reset the recurrent hidden state (live now).
   c.derived = undefined;
   c.hidden = new Float32Array(world.config.hidden);
   return true;
@@ -214,9 +216,12 @@ export function applyPaint(
   const d = Math.round(delta);
 
   if (field === "temperature" || field === "scent") {
+    // Use the rounded `d`, not the raw float: these modulators are read by sensors
+    // that feed the deterministic tick, so a fractional delta would inject a
+    // non-integer into a sim-read field (the quantize-on-entry rule applies here too).
     const arr = world.fields[field];
     for (const idx of brushCells(world, cell, brush)) {
-      arr[idx] = (arr[idx] as number) + delta;
+      arr[idx] = (arr[idx] as number) + d;
     }
     return;
   }
@@ -256,7 +261,8 @@ export function applyPaint(
     for (const idx of ring) {
       if (need <= 0) break;
       const src = cellCompartment(water, idx);
-      const moved = transferUpTo(src, center, Math.min(need, src.get()));
+      // transferUpTo already saturates at src.get(); pass `need` directly.
+      const moved = transferUpTo(src, center, need);
       need -= moved;
     }
   }
