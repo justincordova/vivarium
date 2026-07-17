@@ -15,9 +15,14 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
+    "jsx": "react-jsx",
     "types": ["vitest/globals"],
     "paths": {
-      "@sim/*": ["./src/sim/*"]
+      "@sim/*": ["./src/sim/*"],
+      "@worker/*": ["./src/worker/*"],
+      "@render/*": ["./src/render/*"],
+      "@ui/*": ["./src/ui/*"],
+      "@store/*": ["./src/store/*"]
     }
   },
   "include": ["src", "tests", "scripts", "vite.config.ts"]

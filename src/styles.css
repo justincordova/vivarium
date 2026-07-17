@@ -1,0 +1,30 @@
+@import "tailwindcss";
+
+/*
+ * Chrome is grayscale; the world (the canvas) is the only saturated thing on
+ * screen (SPEC.md §Visual Design). Numbers are monospace. Nothing here eases,
+ * bounces, or animates — the only thing that moves is the simulation.
+ */
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #0a0a0a;
+  color: #d4d4d4;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* All numeric readouts render monospace (SPEC.md §Visual Design). */
+.tabular {
+  font-family: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", monospace;
+  font-variant-numeric: tabular-nums;
+}

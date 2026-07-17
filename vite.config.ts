@@ -1,10 +1,17 @@
 import { fileURLToPath } from "node:url";
+import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       "@sim": fileURLToPath(new URL("./src/sim", import.meta.url)),
+      "@worker": fileURLToPath(new URL("./src/worker", import.meta.url)),
+      "@render": fileURLToPath(new URL("./src/render", import.meta.url)),
+      "@ui": fileURLToPath(new URL("./src/ui", import.meta.url)),
+      "@store": fileURLToPath(new URL("./src/store", import.meta.url)),
     },
   },
   test: {

@@ -6,6 +6,9 @@
   "description": "Evolutionary ecosystem simulator — browser-based, client-side, deterministic.",
   "scripts": {
     "build": "tsc --noEmit",
+    "dev": "vite",
+    "preview": "vite preview",
+    "build:web": "tsc --noEmit && vite build",
     "test": "vitest run",
     "test:watch": "vitest",
     "bench": "vitest bench",
@@ -15,13 +18,23 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.3",
+    "@tailwindcss/vite": "^4.3.2",
     "@types/node": "^26.1.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
     "fast-check": "^4.9.0",
     "lefthook": "^2.1.10",
+    "tailwindcss": "^4.3.2",
     "tsx": "^4.23.1",
     "typescript": "^5.7.3",
     "vite": "^8.1.4",
     "vitest": "^4.1.10"
   },
-  "packageManager": "pnpm@11.7.0"
+  "packageManager": "pnpm@11.7.0",
+  "dependencies": {
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "zustand": "^5.0.14"
+  }
 }
