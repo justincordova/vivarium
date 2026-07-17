@@ -34,14 +34,15 @@ Post-beta work (Terrarium/Laboratory modes, LLM naturalist, etc. — SPEC.md
 
 ## 3. Save-format version — the serialized integer
 
-A monotonic integer inside every serialized world (`version: 1` from the first
-write, per SPEC.md §Persistence). **Independent of git tags and the SemVer above.**
+A monotonic integer inside every serialized world (started at `version: 1`; **now
+`2`** after Phase 4, per SPEC.md §Persistence). **Independent of git tags and the
+SemVer above.**
 
 - Bump **only** on a breaking schema change, and ship a `migrate_vN_to_vN+1()`
   forward migration in `serialize.ts`. Old saves are never silently discarded.
-- Known planned bump: **`1 → 2` at the Phase 4 brain swap** (`brainKind` +
-  activated brain arrays change the schema). This is a `v0.5.0`-era change but the
-  save integer moves for its own reason — do not tie it to the git tag.
+- **`1 → 2` shipped at the Phase 4 brain swap** (`migrateV1toV2` defaults a missing
+  `config.brainKind` to `'rule'`). Landed in the `v0.5.0` phase, but the save integer
+  moved for its own reason — it is not tied to the git tag.
 - Seed reproducibility is guaranteed *within* a save version, not necessarily
   across (SPEC.md §Determinism / RNG Discipline).
 
