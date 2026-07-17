@@ -15,7 +15,7 @@
 
 import * as C from "./constants";
 import { crossover, deriveExpressed } from "./genetics";
-import type { Genome, RNG, RuleState } from "./types";
+import type { DerivedBrain, Genome, RNG, RuleState } from "./types";
 
 // ── Pinned activation ────────────────────────────────────────────────────────
 
@@ -53,6 +53,138 @@ export interface BrainOps<B> {
 /** Derive the forward-pass operand from a genome's homologs (delegates to genetics). */
 export function derive(genome: Genome): { weights: Float32Array; enabled: Uint8Array } {
   return deriveExpressed(genome.weightsA, genome.weightsB, genome.enabledA, genome.enabledB);
+}
+
+// ── The patchbay forward pass (Phase 4) ──────────────────────────────────────
+
+/**
+ * The fixed arrow layout in the shared address space (SPEC.md §Brain Design — the
+ * patchbay). Arrow #k is the same arrow in every creature that ever lives; this
+ * pinned partition and the index conventions below are **load-bearing for
+ * determinism and cross-engine reachability** — reordering them changes the
+ * summation order and low FP bits, so they are frozen. The golden-vector test in
+ * `brain.test.ts` is the enforcement.
+ *
+ *   [0                     .. SENSORS*HIDDEN)            sensors → hidden   (180)
+ *   [SENSORS*HIDDEN        .. +HIDDEN*HIDDEN)            hidden(prev) → hidden (100)
+ *   [SENSORS*HIDDEN+HIDDEN*HIDDEN .. +HIDDEN*ACTIONS)    hidden → actions   (70)
+ *
+ * Within each group the index is **row-major over (source, target)**:
+ *   sensors→hidden:  k = s*HIDDEN + h              (sensor s, hidden h)
+ *   hidden→hidden:   k = SH + j*HIDDEN + h         (prev-hidden j, hidden h)
+ *   hidden→actions:  k = SH + HH + h*ACTIONS + a   (hidden h, action a)
+ */
+const SENSORS_HIDDEN_BASE = 0;
+const HIDDEN_HIDDEN_BASE = C.SENSORS * C.HIDDEN;
+const HIDDEN_ACTIONS_BASE = C.SENSORS * C.HIDDEN + C.HIDDEN * C.HIDDEN;
+
+/**
+ * One deterministic patchbay forward pass over the derived (expressed) brain.
+ * Masked accumulation `sum += input * weights[k] * enabled[k]` in the pinned
+ * index order (SPEC.md §Brain Design "Forward pass masks disabled arrows"):
+ *
+ *   1. For each hidden neuron `h`, pre-activation is
+ *      `Σ_s senses[s]·w·en (sensors→hidden) + Σ_j memory[j]·w·en (hidden→hidden)`,
+ *      both groups summing into the SAME accumulator for `h`. `memory` is the
+ *      creature's `hidden` vector from the *previous* tick, read before this tick's
+ *      activation — no within-tick self-reference, fully determinate.
+ *   2. `newHidden[h] = tanhApprox(preActivation[h])`.
+ *   3. `actions[a] = tanhApprox(Σ_h newHidden[h]·w·en (hidden→actions))`.
+ *
+ * Returns `{ actions, hidden: newHidden }`; the caller writes `newHidden` back to
+ * `creature.hidden` for next tick. Pure — no RNG (a forward pass is deterministic
+ * given brain + senses + memory).
+ */
+export function patchbayForward(
+  weights: Float32Array,
+  enabled: Uint8Array,
+  senses: Float32Array,
+  memory: Float32Array,
+): { actions: Float32Array; hidden: Float32Array } {
+  const newHidden = new Float32Array(C.HIDDEN);
+
+  // 1–2. Hidden pre-activations: sensors→hidden then hidden→hidden into one accumulator.
+  for (let h = 0; h < C.HIDDEN; h++) {
+    let sum = 0;
+    // sensors → hidden (source-major: iterate sensors, fixed target h).
+    for (let s = 0; s < C.SENSORS; s++) {
+      const k = SENSORS_HIDDEN_BASE + s * C.HIDDEN + h;
+      sum += (senses[s] as number) * (weights[k] as number) * (enabled[k] as number);
+    }
+    // hidden(prev) → hidden (source-major: iterate prev-hidden j, fixed target h).
+    for (let j = 0; j < C.HIDDEN; j++) {
+      const k = HIDDEN_HIDDEN_BASE + j * C.HIDDEN + h;
+      sum += (memory[j] as number) * (weights[k] as number) * (enabled[k] as number);
+    }
+    newHidden[h] = tanhApprox(sum);
+  }
+
+  // 3. Actions: hidden → actions (source-major: iterate hidden h, fixed target a).
+  const actions = new Float32Array(C.ACTIONS);
+  for (let a = 0; a < C.ACTIONS; a++) {
+    let sum = 0;
+    for (let h = 0; h < C.HIDDEN; h++) {
+      const k = HIDDEN_ACTIONS_BASE + h * C.ACTIONS + a;
+      sum += (newHidden[h] as number) * (weights[k] as number) * (enabled[k] as number);
+    }
+    actions[a] = tanhApprox(sum);
+  }
+
+  return { actions, hidden: newHidden };
+}
+
+/**
+ * `PatchbayBrain` — the Phase 4 `BrainOps<Genome>`. Implements the real forward pass
+ * (SPEC.md §"Make the swap cheap": same interface, so the tick loop calls
+ * `think` unchanged). `mutate`/`distance` still throw here for the same reason as
+ * `RuleBasedBrain` — the live path calls `genetics.ts` with `world.config.tunables`
+ * directly (the bare `BrainOps` signatures don't carry tunables); `crossover` takes
+ * no tunables so it delegates. `create` is provided by `world.ts` founder
+ * construction. These are kept explicit rather than fake-delegating so the
+ * config-indirection rule is not quietly violated.
+ *
+ * `think` derives the expressed brain fresh from the homologs each call. The tick
+ * loop's per-creature `derived` cache (Task 0.6.1) is the performance path used in
+ * production; this method stays cache-free so it is correct in isolation (the
+ * golden-vector and recurrence tests call it directly).
+ */
+export const PatchbayBrain: BrainOps<Genome> = {
+  create(_rng: RNG): Genome {
+    throw new Error("PatchbayBrain.create is provided by world.ts founder construction");
+  },
+  think(brain: Genome, senses: Float32Array, memory: Float32Array): Float32Array {
+    const { weights, enabled } = derive(brain);
+    return patchbayForward(weights, enabled, senses, memory).actions;
+  },
+  mutate(_brain: Genome, _rng: RNG): void {
+    throw new Error("PatchbayBrain.mutate: call genetics.mutate with tunables directly");
+  },
+  crossover(mom: Genome, dad: Genome, rng: RNG): Genome {
+    return crossover(mom, dad, rng);
+  },
+  distance(_a: Genome, _b: Genome): number {
+    throw new Error("PatchbayBrain.distance: call genetics.distance with tunables directly");
+  },
+  serialize(_brain: Genome): ArrayBuffer {
+    // The genome (incl. brain arrays) is serialized by serialize.ts; the recurrent
+    // `hidden` vector is serialized per-creature. The derived cache is NOT serialized
+    // (re-derived on load), so this per-brain hook stays empty.
+    return new ArrayBuffer(0);
+  },
+};
+
+/**
+ * Run the forward pass from a creature's *cached* derived brain (the tick-loop
+ * performance path). Identical math to `patchbayForward`; takes the pre-derived
+ * `DerivedBrain` so the tick loop can reuse the Phase 0.6 cache instead of
+ * re-deriving every tick.
+ */
+export function patchbayThinkCached(
+  derived: DerivedBrain,
+  senses: Float32Array,
+  memory: Float32Array,
+): { actions: Float32Array; hidden: Float32Array } {
+  return patchbayForward(derived.weights, derived.enabled, senses, memory);
 }
 
 /**

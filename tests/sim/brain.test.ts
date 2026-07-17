@@ -1,6 +1,14 @@
-import { type Percept, RuleBasedBrain, type RuleContext, ruleThink, tanhApprox } from "@sim/brain";
+import {
+  PatchbayBrain,
+  type Percept,
+  patchbayForward,
+  RuleBasedBrain,
+  type RuleContext,
+  ruleThink,
+  tanhApprox,
+} from "@sim/brain";
 import * as C from "@sim/constants";
-import type { RuleState } from "@sim/types";
+import type { Genome, RuleState } from "@sim/types";
 import { describe, expect, it } from "vitest";
 
 function freshRuleState(): RuleState {
@@ -191,5 +199,237 @@ describe("RuleBasedBrain — BrainOps interface", () => {
     );
     expect(out).toHaveLength(C.ACTIONS);
     expect(Array.from(out).every((v) => v === 0)).toBe(true);
+  });
+});
+
+// ── PatchbayBrain — the Phase 4 forward pass ─────────────────────────────────
+
+/**
+ * Build an expressed weights/enabled pair from a fixed LCG (independent of the sim's
+ * `mulberry32` RNG, so the golden vector never silently tracks a sim-RNG change).
+ * Uses `Math.fround` so values match `Float32Array` storage exactly.
+ */
+function fixedExpressedBrain(seed: number): { weights: Float32Array; enabled: Uint8Array } {
+  let st = seed >>> 0;
+  const rnd = (): number => {
+    st = (1664525 * st + 1013904223) >>> 0;
+    return st / 4294967296;
+  };
+  const weights = new Float32Array(C.ARROWS);
+  const enabled = new Uint8Array(C.ARROWS);
+  for (let k = 0; k < C.ARROWS; k++) {
+    weights[k] = Math.fround((rnd() * 2 - 1) * 0.8);
+    enabled[k] = rnd() < 0.5 ? 1 : 0;
+  }
+  return { weights, enabled };
+}
+
+/** A diploid genome whose expressed brain equals `weights`/`enabled` (both homologs identical). */
+function genomeFromExpressed(weights: Float32Array, enabled: Uint8Array): Genome {
+  return {
+    weightsA: weights.slice(),
+    weightsB: weights.slice(),
+    enabledA: enabled.slice(),
+    enabledB: enabled.slice(),
+  } as Genome;
+}
+
+/** Fixed sense + memory vectors used by the golden test (bias sensor = 1.0). */
+function fixedSenses(): Float32Array {
+  const senses = new Float32Array(C.SENSORS);
+  for (let s = 0; s < C.SENSORS; s++) senses[s] = Math.fround(((s % 3) - 1) * 0.5);
+  senses[0] = 1;
+  return senses;
+}
+function fixedMemory(): Float32Array {
+  const memory = new Float32Array(C.HIDDEN);
+  for (let j = 0; j < C.HIDDEN; j++) memory[j] = Math.fround(j % 2 ? 0.3 : -0.2);
+  return memory;
+}
+
+/**
+ * An INDEPENDENT reference forward pass, written separately from `patchbayForward`,
+ * summing in the specified index order. Any accidental reorder of the production
+ * accumulation changes low FP bits and diverges from this reference (SPEC.md
+ * §Determinism point 4 — the cross-engine door). This is the real enforcement of the
+ * fixed-accumulation-order rule.
+ */
+function referenceForward(
+  weights: Float32Array,
+  enabled: Uint8Array,
+  senses: Float32Array,
+  memory: Float32Array,
+): { actions: Float32Array; hidden: Float32Array } {
+  const SH = C.SENSORS * C.HIDDEN;
+  const HH = C.HIDDEN * C.HIDDEN;
+  const hidden = new Float32Array(C.HIDDEN);
+  for (let h = 0; h < C.HIDDEN; h++) {
+    let sum = 0;
+    for (let s = 0; s < C.SENSORS; s++) {
+      const k = s * C.HIDDEN + h;
+      sum += (senses[s] as number) * (weights[k] as number) * (enabled[k] as number);
+    }
+    for (let j = 0; j < C.HIDDEN; j++) {
+      const k = SH + j * C.HIDDEN + h;
+      sum += (memory[j] as number) * (weights[k] as number) * (enabled[k] as number);
+    }
+    hidden[h] = tanhApprox(sum);
+  }
+  const actions = new Float32Array(C.ACTIONS);
+  for (let a = 0; a < C.ACTIONS; a++) {
+    let sum = 0;
+    for (let h = 0; h < C.HIDDEN; h++) {
+      const k = SH + HH + h * C.ACTIONS + a;
+      sum += (hidden[h] as number) * (weights[k] as number) * (enabled[k] as number);
+    }
+    actions[a] = tanhApprox(sum);
+  }
+  return { actions, hidden };
+}
+
+describe("PatchbayBrain.think — forward pass", () => {
+  it("is deterministic for fixed senses+memory+weights (bit-identical repeats)", () => {
+    const { weights, enabled } = fixedExpressedBrain(42);
+    const brain = genomeFromExpressed(weights, enabled);
+    const s = fixedSenses();
+    const m = fixedMemory();
+    const a = PatchbayBrain.think(brain, s, m);
+    const b = PatchbayBrain.think(brain, s, m);
+    expect(Array.from(a)).toEqual(Array.from(b));
+    expect(a).toHaveLength(C.ACTIONS);
+  });
+
+  it("matches an independent reference summing in the pinned index order", () => {
+    const { weights, enabled } = fixedExpressedBrain(42);
+    const s = fixedSenses();
+    const m = fixedMemory();
+    const got = patchbayForward(weights, enabled, s, m);
+    const ref = referenceForward(weights, enabled, s, m);
+    expect(Array.from(got.actions)).toEqual(Array.from(ref.actions));
+    expect(Array.from(got.hidden)).toEqual(Array.from(ref.hidden));
+  });
+
+  it("pins the forward pass against a hard-coded golden output vector", () => {
+    // Golden vector computed by an independent reference (see /tmp golden.mjs in the
+    // Phase 4 work) summing in the specified index order. Any reorder of the
+    // accumulation — even a "harmless" one — changes low FP bits and fails this.
+    const golden = [
+      -0.1964922994375229, 0.1743593066930771, 0.3235314190387726, -0.1327136754989624,
+      -0.2703844904899597, 0.30330780148506165, -0.4343004524707794,
+    ];
+    const { weights, enabled } = fixedExpressedBrain(123456789);
+    const brain = genomeFromExpressed(weights, enabled);
+    const out = PatchbayBrain.think(brain, fixedSenses(), fixedMemory());
+    expect(Array.from(out)).toEqual(golden);
+  });
+
+  it("uses the pinned activation, not Math.tanh", () => {
+    // A single fully-enabled sensor→hidden→action path with a large weight drives the
+    // pre-activation past where the rational approx and Math.tanh visibly differ.
+    const weights = new Float32Array(C.ARROWS);
+    const enabled = new Uint8Array(C.ARROWS);
+    // sensor 0 (bias=1) → hidden 0, weight 2 ; hidden 0 → action 0, weight 5.
+    const SH = C.SENSORS * C.HIDDEN;
+    const HH = C.HIDDEN * C.HIDDEN;
+    const kS0H0 = 0 * C.HIDDEN + 0;
+    const kH0A0 = SH + HH + 0 * C.ACTIONS + 0;
+    weights[kS0H0] = 2;
+    enabled[kS0H0] = 1;
+    weights[kH0A0] = 5;
+    enabled[kH0A0] = 1;
+    const senses = new Float32Array(C.SENSORS);
+    senses[0] = 1;
+    const out = patchbayForward(weights, enabled, senses, new Float32Array(C.HIDDEN));
+    // hidden0 = tanhApprox(2); action0 = tanhApprox(hidden0 * 5).
+    const h0 = tanhApprox(2);
+    const expected = tanhApprox(h0 * 5);
+    expect(out.actions[0]).toBe(Math.fround(expected));
+    // And it must NOT equal the Math.tanh path (guards against a silent swap).
+    const mathPath = Math.tanh(Math.tanh(2) * 5);
+    expect(out.actions[0]).not.toBeCloseTo(mathPath, 6);
+  });
+
+  it("recurrence feeds hidden state forward (memory-dependent output differs)", () => {
+    const { weights, enabled } = fixedExpressedBrain(7);
+    const s = fixedSenses();
+    // Tick 1: zero memory. Tick 2: memory = tick-1 hidden. Same senses both ticks.
+    const t1 = patchbayForward(weights, enabled, s, new Float32Array(C.HIDDEN));
+    const t2 = patchbayForward(weights, enabled, s, t1.hidden);
+    // With non-trivial hidden→hidden arrows, feeding memory forward changes the output.
+    expect(Array.from(t2.actions)).not.toEqual(Array.from(t1.actions));
+  });
+
+  it("disabled arrows contribute zero (masking works)", () => {
+    const { weights } = fixedExpressedBrain(99);
+    const s = fixedSenses();
+    const m = fixedMemory();
+    const allOff = new Uint8Array(C.ARROWS); // every arrow disabled
+    const out = patchbayForward(weights, allOff, s, m);
+    // All-disabled → every pre-activation is 0 → tanhApprox(0) = 0 everywhere.
+    expect(Array.from(out.hidden).every((v) => v === 0)).toBe(true);
+    expect(Array.from(out.actions).every((v) => v === 0)).toBe(true);
+  });
+
+  it("flipping a single disabled arrow to enabled changes the output", () => {
+    const { weights, enabled } = fixedExpressedBrain(5);
+    const s = fixedSenses();
+    const m = fixedMemory();
+    const before = patchbayForward(weights, enabled, s, m);
+    // Find a disabled arrow with a non-zero weight in the sensors→hidden group and flip it.
+    const flipped = enabled.slice();
+    let idx = -1;
+    for (let k = 0; k < C.SENSORS * C.HIDDEN; k++) {
+      if (enabled[k] === 0 && weights[k] !== 0) {
+        idx = k;
+        break;
+      }
+    }
+    expect(idx).toBeGreaterThanOrEqual(0);
+    flipped[idx] = 1;
+    const after = patchbayForward(weights, flipped, s, m);
+    expect(Array.from(after.actions)).not.toEqual(Array.from(before.actions));
+  });
+});
+
+describe("PatchbayBrain — BrainOps interface", () => {
+  it("crossover delegates to genetics (no tunables needed)", () => {
+    const { weights, enabled } = fixedExpressedBrain(1);
+    const mom = genomeFromExpressed(weights, enabled);
+    const dad = genomeFromExpressed(weights, enabled);
+    // Fill trait/hue so crossover's trait segregation has values to read.
+    for (const g of [mom, dad]) {
+      for (const key of [
+        "size",
+        "speed",
+        "senseRadius",
+        "metabolism",
+        "aggression",
+        "diet",
+        "circadian",
+        "nightVision",
+        "armor",
+        "toxicity",
+        "offspringInvestment",
+        "matingThreshold",
+        "maxLifespan",
+        "digestionEfficiency",
+      ] as const) {
+        g[key] = [1, 1];
+      }
+      g.hue = [0, 0];
+    }
+    const rng = { state: 1, next: () => 0.25 };
+    const child = PatchbayBrain.crossover(mom, dad, rng);
+    expect(child.weightsA).toHaveLength(C.ARROWS);
+    expect(child.weightsB).toHaveLength(C.ARROWS);
+  });
+
+  it("create/mutate/distance throw (live path wires tunables directly)", () => {
+    const rng = { state: 1, next: () => 0.5 };
+    // biome-ignore lint/suspicious/noExplicitAny: only the throwing methods under test
+    const stub = {} as any;
+    expect(() => PatchbayBrain.create(rng)).toThrow();
+    expect(() => PatchbayBrain.mutate(stub, rng)).toThrow();
+    expect(() => PatchbayBrain.distance(stub, stub)).toThrow();
   });
 });
