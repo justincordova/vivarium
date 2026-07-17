@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
   type Camera,
+  centerOn,
   fitCamera,
   MAX_ZOOM,
   MIN_ZOOM,
@@ -98,5 +99,18 @@ describe("resize", () => {
     expect(r.viewH).toBe(768);
     expect(r.cx).toBe(c.cx);
     expect(r.zoom).toBe(c.zoom);
+  });
+});
+
+describe("centerOn (follow-cam)", () => {
+  it("re-centers on a world point, preserving zoom and viewport", () => {
+    const c = cam();
+    const f = centerOn(c, 123, 456);
+    expect(f.cx).toBe(123);
+    expect(f.cy).toBe(456);
+    expect(f.zoom).toBe(c.zoom);
+    expect(f.viewW).toBe(c.viewW);
+    // The followed point now sits at the viewport center.
+    expect(worldToScreen(f, 123, 456)).toEqual([c.viewW / 2, c.viewH / 2]);
   });
 });

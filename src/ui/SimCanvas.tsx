@@ -5,20 +5,43 @@
  * non-reactive `latestFrame` ref and draws it via `render/canvas.draw`. The camera
  * lives in a ref (mutated on drag/wheel, read by the rAF loop) so panning/zooming
  * never triggers a React re-render — the only thing that moves is the simulation.
+ *
+ * Canvas clicks dispatch a worker command chosen by the active tool (Task 3.4):
+ * inspect / spawn / delete / move-water. The rAF loop also drives the follow-cam
+ * (Task 3.5): it hard-locks the camera to the followed creature and, when that
+ * creature vanishes from the frame (death), surfaces a grayscale caption.
  */
 
-import { type Camera, fitCamera, pan, resize, screenToWorld, zoomAt } from "@render/camera";
+import {
+  type Camera,
+  centerOn,
+  fitCamera,
+  pan,
+  resize,
+  screenToWorld,
+  zoomAt,
+} from "@render/camera";
 import { draw } from "@render/canvas";
 import { latestFrame, useSimStore } from "@store/useSimStore";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /** Pixels the pointer must move before a press counts as a drag (not a click). */
 const DRAG_THRESHOLD = 4;
+/** Water quanta moved per drought/flood click. */
+const WATER_BRUSH_DELTA = 400;
+const WATER_BRUSH_RADIUS = 2;
+
+interface DeathNote {
+  id: number;
+  age: number;
+}
 
 export function SimCanvas(): React.ReactElement {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const camRef = useRef<Camera | null>(null);
-  const inspect = useSimStore((s) => s.inspect);
+  const [deathNote, setDeathNote] = useState<DeathNote | null>(null);
+  // Last-seen age of the followed creature, for the death caption.
+  const followAge = useRef<number>(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -26,7 +49,6 @@ export function SimCanvas(): React.ReactElement {
     const ctx = canvas.getContext("2d");
     if (ctx === null) return;
 
-    // Size the backing store to the element's box (device-pixel aware).
     const fitCanvas = (): void => {
       const dpr = window.devicePixelRatio || 1;
       const rect = canvas.getBoundingClientRect();
@@ -36,13 +58,11 @@ export function SimCanvas(): React.ReactElement {
       const w = rect.width;
       const h = rect.height;
       if (camRef.current === null) {
-        // First fit: frame the whole world once a frame's dims are known.
         const f = latestFrame.current;
         camRef.current = fitCamera(f?.worldWidth ?? 200, f?.worldHeight ?? 200, w, h);
       } else {
         camRef.current = resize(camRef.current, w, h);
       }
-      // Paint the dark chrome background once so trails accumulate over it.
       ctx.fillStyle = "#08080a";
       ctx.fillRect(0, 0, w, h);
     };
@@ -53,8 +73,31 @@ export function SimCanvas(): React.ReactElement {
     let raf = 0;
     const loop = (): void => {
       const frame = latestFrame.current;
-      const cam = camRef.current;
-      if (frame !== null && cam !== null) draw(frame, ctx, cam);
+      let cam = camRef.current;
+      if (frame !== null && cam !== null) {
+        // Follow-cam: lock onto the followed creature, or announce its death.
+        const followId = useSimStore.getState().followId;
+        if (followId !== null) {
+          const c = frame.creatures;
+          let found = -1;
+          for (let i = 0; i < c.count; i++) {
+            if ((c.ids[i] as number) === followId) {
+              found = i;
+              break;
+            }
+          }
+          if (found >= 0) {
+            followAge.current = c.age[found] as number;
+            cam = centerOn(cam, c.x[found] as number, c.y[found] as number);
+            camRef.current = cam;
+          } else {
+            // The followed creature is gone → death caption, then release the lock.
+            setDeathNote({ id: followId, age: Math.round(followAge.current) });
+            useSimStore.getState().setFollow(null);
+          }
+        }
+        draw(frame, ctx, cam);
+      }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -65,11 +108,15 @@ export function SimCanvas(): React.ReactElement {
     };
   }, []);
 
-  // ── Pointer interaction: drag to pan, wheel to zoom, click to inspect ──────────
+  // ── Pointer interaction ────────────────────────────────────────────────────────
   const drag = useRef<{ x: number; y: number; moved: number } | null>(null);
 
   const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>): void => {
-    e.currentTarget.setPointerCapture(e.pointerId);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // setPointerCapture can throw for synthetic events; harmless.
+    }
     drag.current = { x: e.clientX, y: e.clientY, moved: 0 };
   };
 
@@ -80,9 +127,30 @@ export function SimCanvas(): React.ReactElement {
     const dx = e.clientX - d.x;
     const dy = e.clientY - d.y;
     d.moved += Math.abs(dx) + Math.abs(dy);
+    // Dragging pans and breaks any follow-lock (free camera).
+    if (useSimStore.getState().followId !== null) useSimStore.getState().setFollow(null);
     camRef.current = pan(cam, dx, dy);
     d.x = e.clientX;
     d.y = e.clientY;
+  };
+
+  /** Index of the creature nearest a world point, or -1 if none within `hitRadius`. */
+  const nearestCreature = (wx: number, wy: number, hitRadius: number): number => {
+    const frame = latestFrame.current;
+    if (frame === null) return -1;
+    const c = frame.creatures;
+    let best = -1;
+    let bestD2 = hitRadius * hitRadius;
+    for (let i = 0; i < c.count; i++) {
+      const ddx = (c.x[i] as number) - wx;
+      const ddy = (c.y[i] as number) - wy;
+      const d2 = ddx * ddx + ddy * ddy;
+      if (d2 <= bestD2) {
+        bestD2 = d2;
+        best = i;
+      }
+    }
+    return best;
   };
 
   const onPointerUp = (e: React.PointerEvent<HTMLCanvasElement>): void => {
@@ -91,27 +159,50 @@ export function SimCanvas(): React.ReactElement {
     const cam = camRef.current;
     const frame = latestFrame.current;
     if (d === null || cam === null || frame === null) return;
-    if (d.moved >= DRAG_THRESHOLD) return; // it was a pan, not a click
+    if (d.moved >= DRAG_THRESHOLD) return; // a pan, not a click
 
-    // Click: find the nearest creature to the click in world space, inspect it.
     const rect = e.currentTarget.getBoundingClientRect();
     const [wx, wy] = screenToWorld(cam, e.clientX - rect.left, e.clientY - rect.top);
-    const c = frame.creatures;
-    let best = -1;
-    let bestD2 = Number.POSITIVE_INFINITY;
-    for (let i = 0; i < c.count; i++) {
-      const ddx = (c.x[i] as number) - wx;
-      const ddy = (c.y[i] as number) - wy;
-      const d2 = ddx * ddx + ddy * ddy;
-      if (d2 < bestD2) {
-        bestD2 = d2;
-        best = i;
-      }
-    }
-    // Only inspect if the click landed reasonably near a creature (world units).
+    const store = useSimStore.getState();
     const hitRadius = 6 / cam.zoom + 4;
-    if (best >= 0 && bestD2 <= hitRadius * hitRadius) {
-      inspect(c.ids[best] as number);
+
+    switch (store.tool) {
+      case "inspect": {
+        const i = nearestCreature(wx, wy, hitRadius);
+        if (i >= 0) store.inspect(frame.creatures.ids[i] as number);
+        break;
+      }
+      case "delete": {
+        const i = nearestCreature(wx, wy, hitRadius);
+        if (i >= 0) store.remove(frame.creatures.ids[i] as number);
+        break;
+      }
+      case "spawn": {
+        // Spawn a mid-diet creature at the click, endowed from the reservoir/water.
+        store.spawn({
+          x: wx,
+          y: wy,
+          traits: { size: 3, speed: 4, diet: 0.3, metabolism: 1, senseRadius: 25 },
+          hue: Math.floor((wx / frame.worldWidth) * 360),
+          energy: 250,
+          hydration: 120,
+        });
+        break;
+      }
+      case "paintWaterDown":
+      case "paintWaterUp": {
+        const cell = cellIndexOfFrame(
+          frame.gridCols,
+          frame.gridRows,
+          frame.worldWidth,
+          frame.worldHeight,
+          wx,
+          wy,
+        );
+        const delta = store.tool === "paintWaterDown" ? -WATER_BRUSH_DELTA : WATER_BRUSH_DELTA;
+        store.paint("water", cell, delta, WATER_BRUSH_RADIUS);
+        break;
+      }
     }
   };
 
@@ -124,13 +215,48 @@ export function SimCanvas(): React.ReactElement {
   };
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="h-full w-full cursor-crosshair touch-none select-none"
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onWheel={onWheel}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        className="h-full w-full cursor-crosshair touch-none select-none"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onWheel={onWheel}
+      />
+      {deathNote !== null && (
+        <div className="tabular pointer-events-auto absolute bottom-16 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-md border border-neutral-800 bg-neutral-950/90 px-3 py-1.5 text-xs text-neutral-300 backdrop-blur-sm">
+          <span>
+            creature #{deathNote.id} died · age {deathNote.age.toLocaleString("en-US")}
+          </span>
+          <button
+            type="button"
+            onClick={() => setDeathNote(null)}
+            className="text-neutral-500 hover:text-neutral-200"
+            aria-label="dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+    </>
   );
+}
+
+/**
+ * Grid cell index for a world position, using the frame's grid resolution — mirrors
+ * `worker/commands.cellIndexOf` (which needs a full `World`). The worker re-validates
+ * the cell against its own bounds, so an edge case is clamped there too.
+ */
+function cellIndexOfFrame(
+  gridCols: number,
+  gridRows: number,
+  worldW: number,
+  worldH: number,
+  x: number,
+  y: number,
+): number {
+  const col = Math.min(gridCols - 1, Math.max(0, Math.floor((x / worldW) * gridCols)));
+  const row = Math.min(gridRows - 1, Math.max(0, Math.floor((y / worldH) * gridRows)));
+  return row * gridCols + col;
 }

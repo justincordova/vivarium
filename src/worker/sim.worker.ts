@@ -15,6 +15,7 @@ import { serialize } from "@sim/serialize";
 import { tick } from "@sim/tick";
 import type { Config, World } from "@sim/types";
 import { createWorld } from "@sim/world";
+import { applyDelete, applyEditGenome, applyPaint, applySetParam, applySpawn } from "./commands";
 import { buildRenderFrame, buildStats, frameTransferables } from "./frame";
 import type { Command, Event } from "./protocol";
 
@@ -92,6 +93,32 @@ function init(seed: number, config: Config): void {
   emitStats();
 }
 
+/**
+ * Advance exactly `n` ticks synchronously (single/N-step while paused), then repaint.
+ * A no-op if running (the loop already advances time). Used by the `step` command.
+ */
+function stepTicks(n: number): void {
+  if (world === null || running) return;
+  const count = Math.max(0, Math.floor(n));
+  for (let i = 0; i < count; i++) {
+    tick(world);
+    recordHistory(world);
+  }
+  emitFrame();
+  emitStats();
+}
+
+/**
+ * Repaint after an out-of-loop god-power mutation so a paused world reflects the
+ * change immediately. When running, the next scheduled `step` already repaints.
+ */
+function repaintIfPaused(): void {
+  if (!running) {
+    emitFrame();
+    emitStats();
+  }
+}
+
 self.onmessage = (ev: MessageEvent<Command>): void => {
   const cmd = ev.data;
   switch (cmd.t) {
@@ -115,6 +142,36 @@ self.onmessage = (ev: MessageEvent<Command>): void => {
     }
     case "snapshot":
       if (world !== null) post({ t: "snapshot", world: serialize(world) });
+      break;
+    // ── Phase 3 god-powers + stepping (applied at the tick boundary) ────────────
+    case "step":
+      stepTicks(cmd.ticks);
+      break;
+    case "spawn":
+      if (world !== null) {
+        applySpawn(world, cmd.spec);
+        repaintIfPaused();
+      }
+      break;
+    case "delete":
+      if (world !== null && applyDelete(world, cmd.id)) repaintIfPaused();
+      break;
+    case "editGenome":
+      if (world !== null && applyEditGenome(world, cmd.id, cmd.patch)) {
+        // Reply with the updated creature so an open inspector refreshes.
+        const c = world.creatures.find((cr) => cr.id === cmd.id);
+        if (c !== undefined) post({ t: "creature", data: c });
+        repaintIfPaused();
+      }
+      break;
+    case "paint":
+      if (world !== null) {
+        applyPaint(world, cmd.field, cmd.cell, cmd.delta, cmd.brush);
+        repaintIfPaused();
+      }
+      break;
+    case "setParam":
+      if (world !== null && applySetParam(world, cmd.key, cmd.value)) repaintIfPaused();
       break;
   }
 };

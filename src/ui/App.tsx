@@ -5,12 +5,13 @@
  * sandbox (sliders, spawn/paint, inspector depth) is Phase 3.
  */
 
-import { expressTrait } from "@sim/genetics";
 import { startWorker, useSimStore } from "@store/useSimStore";
 import { useEffect } from "react";
+import { Charts } from "./Charts";
+import { ControlPanel } from "./ControlPanel";
+import { Inspector } from "./Inspector";
 import { SimCanvas } from "./SimCanvas";
-
-const SPEEDS = [1, 2, 4, 8] as const;
+import { Toolbar } from "./Toolbar";
 
 function fmt(n: number, digits = 0): string {
   if (!Number.isFinite(n)) return "—";
@@ -50,75 +51,18 @@ function Hud(): React.ReactElement {
   );
 }
 
-function Inspector(): React.ReactElement | null {
-  const inspected = useSimStore((s) => s.inspected);
-  const clear = useSimStore((s) => s.clearInspected);
-  if (inspected === null) return null;
-  const g = inspected.genome;
+function DetachedBadge(): React.ReactElement | null {
+  const detached = useSimStore((s) => s.detached);
+  if (!detached) return null;
   return (
-    <div className="absolute right-4 top-4 w-56 rounded-md border border-neutral-800 bg-neutral-950/90 p-3 backdrop-blur-sm">
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-[10px] font-medium uppercase tracking-widest text-neutral-400">
-          creature #{inspected.id}
-        </span>
-        <button
-          type="button"
-          onClick={clear}
-          className="text-neutral-500 transition-none hover:text-neutral-200"
-          aria-label="close inspector"
-        >
-          ✕
-        </button>
-      </div>
-      <div className="space-y-1">
-        <Stat label="age" value={fmt(inspected.age)} />
-        <Stat label="energy" value={fmt(inspected.energy)} />
-        <Stat label="hydration" value={fmt(inspected.hydration)} />
-        <Stat label="health" value={fmt(inspected.health)} />
-        <Stat label="size" value={fmt(expressTrait(g.size), 2)} />
-        <Stat label="diet" value={fmt(expressTrait(g.diet), 2)} />
-        <Stat label="aggression" value={fmt(expressTrait(g.aggression), 2)} />
-        <Stat label="armor" value={fmt(expressTrait(g.armor), 2)} />
-        <Stat label="hue" value={`${fmt(expressTrait(g.hue))}°`} />
-      </div>
-    </div>
-  );
-}
-
-function Controls(): React.ReactElement {
-  const running = useSimStore((s) => s.running);
-  const speed = useSimStore((s) => s.speed);
-  const toggle = useSimStore((s) => s.toggle);
-  const setSpeed = useSimStore((s) => s.setSpeed);
-  return (
-    <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-md border border-neutral-800 bg-neutral-950/85 p-1 backdrop-blur-sm">
-      <button
-        type="button"
-        onClick={toggle}
-        className="tabular w-16 rounded px-3 py-1.5 text-sm text-neutral-200 transition-none hover:bg-neutral-800"
-      >
-        {running ? "pause" : "play"}
-      </button>
-      <div className="mx-1 h-5 w-px bg-neutral-800" />
-      {SPEEDS.map((s) => (
-        <button
-          type="button"
-          key={s}
-          onClick={() => setSpeed(s)}
-          className={`tabular w-9 rounded px-2 py-1.5 text-sm transition-none ${
-            speed === s
-              ? "bg-neutral-200 text-neutral-950"
-              : "text-neutral-400 hover:bg-neutral-800"
-          }`}
-        >
-          {s}×
-        </button>
-      ))}
+    <div className="tabular pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded border border-neutral-800 bg-neutral-950/85 px-2 py-1 text-[10px] uppercase tracking-widest text-neutral-500">
+      detached from seed — god-powers active
     </div>
   );
 }
 
 export function App(): React.ReactElement {
+  const seed = useSimStore((s) => s.seed);
   // Boot the worker once; auto-play so a visitor sees a living world immediately.
   useEffect(() => {
     startWorker();
@@ -129,10 +73,13 @@ export function App(): React.ReactElement {
     <div className="relative h-screen w-screen overflow-hidden bg-[#08080a] text-neutral-200">
       <SimCanvas />
       <Hud />
+      <Toolbar />
+      <ControlPanel />
+      <Charts />
       <Inspector />
-      <Controls />
+      <DetachedBadge />
       <div className="tabular pointer-events-none absolute bottom-4 right-4 text-[10px] uppercase tracking-widest text-neutral-600">
-        vivarium · seed {useSimStore.getState().seed}
+        vivarium · seed {seed}
       </div>
     </div>
   );

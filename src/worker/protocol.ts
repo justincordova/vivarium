@@ -77,6 +77,9 @@ export interface RenderFrame {
   tick: number;
   worldWidth: number;
   worldHeight: number;
+  /** Field grid resolution — lets the UI map a click to the exact paintable cell. */
+  gridCols: number;
+  gridRows: number;
   light: number;
   creatures: CreatureFrame;
   plants: PlantFrame;
@@ -119,13 +122,48 @@ export interface StatsPayload {
 // Commands (main → worker)  — SPEC.md §Data Flow sketch (canonical)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * A single typed, per-allele genome edit (Task 3.1). Either a trait/hue gene allele
+ * or one brain arrow on one homolog. Editing a homolog marks the derived-weights
+ * cache dirty and resets the recurrent `hidden` vector (stale recurrent state against
+ * a changed brain is undefined — zeroing is the pinned choice).
+ */
+export type GenomePatch =
+  | { kind: "trait"; gene: string; allele: 0 | 1; value: number }
+  | { kind: "arrow"; arrow: number; homolog: "A" | "B"; weight?: number; enabled?: 0 | 1 };
+
+/** A paintable field. Ledger fields move quanta; modulators are set directly. */
+export type PaintField = "fertility" | "light" | "water" | "temperature" | "scent";
+
+/**
+ * A minimal spawn genome spec: expressed trait values (per gene) + hue. The worker
+ * builds a diploid `Genome` from these (both alleles = the given value) with a
+ * default/jittered brain, so the UI never has to ship full diploid arrays.
+ */
+export interface SpawnSpec {
+  x: number;
+  y: number;
+  traits: Record<string, number>;
+  hue: number;
+  /** Energy/hydration to endow, drawn from the reservoir/water (never minted). */
+  energy: number;
+  hydration: number;
+}
+
 export type Command =
   | { t: "init"; seed: number; config: Config }
   | { t: "play" }
   | { t: "pause" }
   | { t: "speed"; ticksPerFrame: number }
   | { t: "inspect"; id: number }
-  | { t: "snapshot" };
+  | { t: "snapshot" }
+  // ── Phase 3 god-powers + stepping (all applied at the tick boundary) ──────────
+  | { t: "step"; ticks: number }
+  | { t: "spawn"; spec: SpawnSpec }
+  | { t: "delete"; id: number }
+  | { t: "editGenome"; id: number; patch: GenomePatch }
+  | { t: "paint"; field: PaintField; cell: number; delta: number; brush?: number }
+  | { t: "setParam"; key: string; value: number };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Events (worker → main)

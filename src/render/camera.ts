@@ -72,3 +72,12 @@ export function zoomAt(cam: Camera, factor: number, anchorX: number, anchorY: nu
 export function resize(cam: Camera, viewW: number, viewH: number): Camera {
   return { ...cam, viewW, viewH };
 }
+
+/**
+ * Re-center the camera on a world point (follow-cam), preserving zoom and viewport.
+ * A hard lock — no easing (SPEC.md §Visual Design: only the sim moves). The rAF loop
+ * calls this each frame with the followed creature's latest position.
+ */
+export function centerOn(cam: Camera, wx: number, wy: number): Camera {
+  return { ...cam, cx: wx, cy: wy };
+}

@@ -134,6 +134,8 @@ export function buildRenderFrame(world: World): RenderFrame {
     tick: world.tick,
     worldWidth: world.config.worldWidth,
     worldHeight: world.config.worldHeight,
+    gridCols: world.config.gridCols,
+    gridRows: world.config.gridRows,
     light: dayLight(world.tick, t.TICKS_PER_DAY),
     creatures,
     plants,
