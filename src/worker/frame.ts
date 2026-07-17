@@ -23,6 +23,7 @@ import type {
   PlantFrame,
   RenderFrame,
   StatsPayload,
+  TimelinePayload,
   TraitBins,
 } from "./protocol";
 
@@ -216,6 +217,21 @@ export function buildTraitBins(world: World): TraitBins {
   return bins;
 }
 
+/**
+ * The whole-run timeline overview (Phase 5B.1): the downsampled population history +
+ * extinction-event ticks. Reads `world.history` (already bounded/downsampled) and the
+ * `extinct` entries in the event log. Pure read.
+ */
+export function buildTimeline(world: World): TimelinePayload {
+  const points = world.history.map((h) => ({ tick: h.tick, population: h.population }));
+  const extinctionTicks: number[] = [];
+  for (let i = 0; i < world.eventLog.length; i++) {
+    const e = world.eventLog[i] as { tick: number; event: string };
+    if (e.event === "extinct") extinctionTicks.push(e.tick);
+  }
+  return { points, extinctionTicks, now: world.tick };
+}
+
 /** Assemble the periodic `StatsPayload` (world-health + lineage populations + bins). */
 export function buildStats(world: World): StatsPayload {
   const history: HealthHistory = {
@@ -234,5 +250,6 @@ export function buildStats(world: World): StatsPayload {
     behaviorNovelty: h.behaviorNovelty,
     population: populationByLineageRoot(world),
     traits: buildTraitBins(world),
+    timeline: buildTimeline(world),
   };
 }

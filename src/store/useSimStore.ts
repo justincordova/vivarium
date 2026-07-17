@@ -26,6 +26,7 @@ import type {
 import { create } from "zustand";
 import {
   exportWorld as exportWorldFile,
+  fetchColdOpen,
   importWorld as importWorldFile,
   parseHash,
 } from "../ui/share";
@@ -332,7 +333,15 @@ export function startWorker(): Worker {
   if (shared !== null) useSimStore.setState({ seed });
   const config = makeConfig(shared?.tunables ? { tunables: shared.tunables } : {});
   const { catchupEnabled } = useSimStore.getState();
-  send({ t: "boot", seed, config, catchupEnabled });
+
+  // A shared link (`#seed=..`) means the visitor wants THAT fresh world → skip the
+  // cold open. Otherwise fetch the pre-evolved cold-open snapshot (Phase 5B.2) and hand
+  // it to the worker, which uses it only if there is no saved world. The fetch is
+  // best-effort and never blocks: on failure the worker cold-starts from founders.
+  void (async () => {
+    const coldOpen = shared === null ? await fetchColdOpen() : null;
+    send({ t: "boot", seed, config, catchupEnabled, coldOpen: coldOpen ?? undefined });
+  })();
 
   // `visibilitychange` is a document (main-thread) event the worker cannot observe;
   // forward it as a `save` so the worker autosaves when the tab is hidden.

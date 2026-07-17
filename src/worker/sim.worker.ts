@@ -124,7 +124,7 @@ function loadSave(blob: SaveBlob): void {
  * frame and start autosave. Async (IndexedDB); the message handler fires it and it owns
  * all its own errors — a storage failure degrades to a cold start, never a crash.
  */
-async function boot(seed: number, config: Config): Promise<void> {
+async function boot(seed: number, config: Config, coldOpen?: SaveBlob): Promise<void> {
   stop();
   stopAutosave();
 
@@ -142,8 +142,20 @@ async function boot(seed: number, config: Config): Promise<void> {
     world = null;
   }
   if (world === null) {
-    world = createWorld(seed, config);
-    recordHistory(world);
+    // No saved world. First-time visitor: land in the pre-evolved cold-open snapshot if
+    // one was supplied (Phase 5B.2); otherwise a fresh founder start. Catch-up does NOT
+    // apply to a cold open (no lastSavedRealTime), so it appears immediately.
+    if (coldOpen !== undefined) {
+      try {
+        world = deserialize(coldOpen);
+      } catch {
+        world = null;
+      }
+    }
+    if (world === null) {
+      world = createWorld(seed, config);
+      recordHistory(world);
+    }
   }
 
   // Seed the autosaver with the loaded meta so the first save rotates to the OLDER
@@ -239,7 +251,7 @@ self.onmessage = (ev: MessageEvent<Command>): void => {
     case "boot":
       catchupEnabled = cmd.catchupEnabled;
       // Fire-and-forget: `boot` owns its own errors and posts progress/ready itself.
-      void boot(cmd.seed, cmd.config);
+      void boot(cmd.seed, cmd.config, cmd.coldOpen);
       break;
     case "setCatchup":
       catchupEnabled = cmd.enabled;

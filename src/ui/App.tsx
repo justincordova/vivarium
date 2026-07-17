@@ -6,11 +6,12 @@
  */
 
 import { startWorker, useSimStore } from "@store/useSimStore";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Charts } from "./Charts";
 import { ControlPanel } from "./ControlPanel";
 import { Inspector } from "./Inspector";
 import { SimCanvas } from "./SimCanvas";
+import { Timeline } from "./Timeline";
 import { Toolbar } from "./Toolbar";
 
 function fmt(n: number, digits = 0): string {
@@ -157,6 +158,54 @@ function WhileYouWereAwayReport(): React.ReactElement | null {
   );
 }
 
+/**
+ * Onboarding captions (Phase 5B.2) — a COLD OPEN, not a tutorial. On the first visit a
+ * few unobtrusive grayscale captions fade in over the already-living pre-evolved world,
+ * then fade out and get out of the way (SPEC.md §Player Experience). Shown once, gated
+ * by a localStorage flag; never on a returning visit.
+ */
+const VISITED_KEY = "vivarium:visited";
+function firstVisit(): boolean {
+  try {
+    if (localStorage.getItem(VISITED_KEY) === "1") return false;
+    localStorage.setItem(VISITED_KEY, "1");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function OnboardingCaptions(): React.ReactElement | null {
+  const [phase, setPhase] = useState<0 | 1 | 2>(0);
+  const report = useSimStore((s) => s.report);
+  useEffect(() => {
+    if (!firstVisit()) return;
+    setPhase(1);
+    const t1 = setTimeout(() => setPhase(2), 5200);
+    const t2 = setTimeout(() => setPhase(0), 6600);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, []);
+  // The report modal owns the screen; don't overlap captions with it.
+  if (phase === 0 || report !== null) return null;
+  return (
+    <div
+      className={`pointer-events-none absolute left-1/2 top-16 -translate-x-1/2 text-center transition-opacity duration-1000 ${
+        phase === 1 ? "opacity-100" : "opacity-0"
+      }`}
+    >
+      <div className="text-sm tracking-wide text-neutral-300">
+        This world has been evolving for thousands of generations.
+      </div>
+      <div className="mt-1 text-[11px] uppercase tracking-widest text-neutral-500">
+        nobody scripted what these creatures do · click one to read its genome
+      </div>
+    </div>
+  );
+}
+
 /** A subtle, auto-dismissing indicator that an autosave failed (non-fatal). */
 function PersistErrorBadge(): React.ReactElement | null {
   const persistError = useSimStore((s) => s.persistError);
@@ -183,12 +232,14 @@ export function App(): React.ReactElement {
       <Toolbar />
       <ControlPanel />
       <Charts />
+      <Timeline />
       <Inspector />
       <DetachedBadge />
       <PersistErrorBadge />
       <div className="tabular pointer-events-none absolute bottom-4 right-4 text-[10px] uppercase tracking-widest text-neutral-600">
         vivarium · seed {seed}
       </div>
+      <OnboardingCaptions />
       <CatchupOverlay />
       <WhileYouWereAwayReport />
     </div>

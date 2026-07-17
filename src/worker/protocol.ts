@@ -116,6 +116,22 @@ export interface StatsPayload {
   /** population per founder-lineage-root key. */
   population: Record<number, number>;
   traits: TraitBins;
+  /**
+   * The whole-run timeline (Phase 5B.1): the downsampled population history + the ticks
+   * of whole-world extinction events, for the always-visible scrubber. Bounded (history
+   * is downsampled), so it is cheap to resend on the stats cadence.
+   */
+  timeline: TimelinePayload;
+}
+
+/** The whole-run overview backing the timeline scrubber (Phase 5B.1). */
+export interface TimelinePayload {
+  /** Downsampled `{tick, population}` points spanning the full run. */
+  points: { tick: number; population: number }[];
+  /** Ticks at which a whole-world extinction event fired (chart tick-marks). */
+  extinctionTicks: number[];
+  /** The current tick (the scrubber's "now" marker). */
+  now: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -155,7 +171,10 @@ export type Command =
   // `boot` is the default entry: the worker loads the newest saved world (or creates
   // a fresh one from seed+config), replays owed ticks if `catchupEnabled`, then goes
   // live. `init` remains the explicit new-world / reset path (bypasses storage).
-  | { t: "boot"; seed: number; config: Config; catchupEnabled: boolean }
+  // `coldOpen` (Phase 5B.2): a pre-evolved snapshot loaded ONLY when there is no saved
+  // world — so a first-time visitor lands in a living, hunting world, not a cold founder
+  // start. A returning visitor's autosave always wins over it.
+  | { t: "boot"; seed: number; config: Config; catchupEnabled: boolean; coldOpen?: SaveBlob }
   | { t: "setCatchup"; enabled: boolean }
   // `save` = "autosave now". The worker owns the save logic + ~30s timer, but
   // `visibilitychange` is a `document` (main-thread) event, so the main thread

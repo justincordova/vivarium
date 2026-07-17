@@ -10,6 +10,7 @@
  */
 
 import { makeConfig } from "@sim/config";
+import { recordHistory } from "@sim/history";
 import { tick } from "@sim/tick";
 import type { Creature } from "@sim/types";
 import { createWorld } from "@sim/world";
@@ -161,5 +162,27 @@ describe("buildStats", () => {
     expect(Object.keys(stats.traits).length).toBeGreaterThan(0);
     const popTotal = Object.values(stats.population).reduce((a, b) => a + b, 0);
     expect(popTotal).toBe(world.creatures.length);
+  });
+});
+
+describe("buildTimeline", () => {
+  it("carries the downsampled population history + extinction ticks + now", () => {
+    const world = createWorld(1, makeConfig({}));
+    recordHistory(world); // t=0 baseline
+    for (let i = 0; i < 300; i++) {
+      tick(world);
+      recordHistory(world);
+    }
+    const tl = buildStats(world).timeline;
+    expect(tl.now).toBe(world.tick);
+    // History samples every HISTORY_SAMPLE_INTERVAL → at least a few points over 300 ticks.
+    expect(tl.points.length).toBeGreaterThanOrEqual(3);
+    // Points are tick-ordered.
+    for (let i = 1; i < tl.points.length; i++) {
+      expect((tl.points[i] as { tick: number }).tick).toBeGreaterThanOrEqual(
+        (tl.points[i - 1] as { tick: number }).tick,
+      );
+    }
+    expect(Array.isArray(tl.extinctionTicks)).toBe(true);
   });
 });

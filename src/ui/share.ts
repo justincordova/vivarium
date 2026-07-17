@@ -100,3 +100,30 @@ export async function importWorld(file: File): Promise<SaveBlob> {
   }
   return blob;
 }
+
+/**
+ * Fetch + gunzip the pre-evolved cold-open snapshot asset (Phase 5B.2), or null if it
+ * is missing/unreadable (the app then falls back to a fresh founder start). Best-effort:
+ * a failed fetch must never block boot.
+ */
+export async function fetchColdOpen(url = "cold-open.viv.gz"): Promise<SaveBlob | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    // Some servers (Vite dev, and any with gzip content-encoding on `.gz`) transparently
+    // DECOMPRESS the asset, so the bytes may already be raw JSON. Try gunzip first; on
+    // failure, fall back to treating the bytes as UTF-8 JSON directly.
+    let text: string;
+    try {
+      text = await gunzip(bytes);
+    } catch {
+      text = new TextDecoder().decode(bytes);
+    }
+    const blob = JSON.parse(text) as SaveBlob;
+    if (typeof blob.version !== "number" || blob.config === undefined) return null;
+    return blob;
+  } catch {
+    return null;
+  }
+}
