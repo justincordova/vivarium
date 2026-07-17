@@ -151,6 +151,17 @@ export interface SpawnSpec {
 }
 
 export type Command =
+  // ── Phase 5A: persistence-aware boot (load-or-create + offline catch-up) ──────
+  // `boot` is the default entry: the worker loads the newest saved world (or creates
+  // a fresh one from seed+config), replays owed ticks if `catchupEnabled`, then goes
+  // live. `init` remains the explicit new-world / reset path (bypasses storage).
+  | { t: "boot"; seed: number; config: Config; catchupEnabled: boolean }
+  | { t: "setCatchup"; enabled: boolean }
+  // `save` = "autosave now". The worker owns the save logic + ~30s timer, but
+  // `visibilitychange` is a `document` (main-thread) event, so the main thread
+  // forwards it as this command when the tab is hidden. Idempotent + guarded by the
+  // Autosaver's in-flight flag.
+  | { t: "save" }
   | { t: "init"; seed: number; config: Config }
   | { t: "play" }
   | { t: "pause" }
@@ -174,4 +185,10 @@ export type Event =
   | { t: "stats"; stats: StatsPayload }
   | { t: "creature"; data: Creature } // reply to `inspect`
   | { t: "snapshot"; world: SaveBlob } // reply to `snapshot`
-  | { t: "catchupProgress"; done: number; total: number };
+  // ── Phase 5A: persistence lifecycle ──────────────────────────────────────────
+  // `catchupProgress` drives the boot overlay (`total: 0` ⇒ no catch-up, skip it);
+  // `ready` fires once the first live frame is emitted (dismiss the overlay);
+  // `persistError` is a NON-FATAL autosave/storage failure (the world keeps running).
+  | { t: "catchupProgress"; done: number; total: number }
+  | { t: "ready" }
+  | { t: "persistError"; reason: string };

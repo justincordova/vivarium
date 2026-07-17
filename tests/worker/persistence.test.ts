@@ -88,6 +88,22 @@ describe("persistence — rotating slots", () => {
     expect(loaded?.lastSavedRealTime).toBe(5000);
     expect(loaded?.world.tick).toBe(w.tick);
     expect(loaded?.world.creatures.length).toBe(w.creatures.length);
+    expect(loaded?.meta.newest).toBe("a");
+  });
+
+  it("after loading from fallback, the next save rotates to the OTHER slot", async () => {
+    const store = memStore();
+    const w = createWorld(3, makeConfig({}));
+    const m1 = await autosave(store, w, null, 1000); // A valid, meta → a
+    for (let i = 0; i < 5; i++) tick(w);
+    await autosave(store, w, m1, 2000); // B valid, meta → b
+    // Corrupt newest (B) → load falls back to A; reported meta.newest must be 'a' so
+    // the next save writes B (older), not A (the slot we just loaded).
+    store.map.set(SLOT_B, { garbage: true } as unknown as SaveBlob);
+    const loaded = await loadNewest(store);
+    expect(loaded?.meta.newest).toBe("a");
+    const next = await autosave(store, loaded?.world ?? w, loaded?.meta ?? null, 3000);
+    expect(next.newest).toBe("b"); // rotated away from the loaded slot
   });
 
   it("cold start: no meta → loadNewest returns null", async () => {

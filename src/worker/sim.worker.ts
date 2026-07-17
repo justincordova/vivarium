@@ -15,12 +15,16 @@ import { serialize } from "@sim/serialize";
 import { tick } from "@sim/tick";
 import type { Config, World } from "@sim/types";
 import { createWorld } from "@sim/world";
+import { runCatchup, ticksOwed } from "./catchup";
 import { applyDelete, applyEditGenome, applyPaint, applySetParam, applySpawn } from "./commands";
 import { buildRenderFrame, buildStats, frameTransferables } from "./frame";
+import { Autosaver, idbStore, loadNewest, type Meta } from "./persistence";
 import type { Command, Event } from "./protocol";
 
 /** How often (in ticks) to emit a `stats` message; frames emit every render step. */
 const STATS_INTERVAL = 100;
+/** Real-time autosave cadence, ms (wall-clock, independent of MS_PER_TICK/speed). */
+const AUTOSAVE_INTERVAL_MS = 30_000;
 
 let world: World | null = null;
 let running = false;
@@ -29,6 +33,14 @@ let ticksPerFrame = 1;
 const rootOf = new Map<number, number>();
 /** Handle for the scheduled loop step, so pause/re-init can cancel it. */
 let loopHandle: ReturnType<typeof setTimeout> | null = null;
+
+// ── Phase 5A persistence state ───────────────────────────────────────────────
+/** The autosave coordinator (crash-safe rotating slots); null until the first boot. */
+let autosaver: Autosaver | null = null;
+/** The wall-clock autosave timer handle. */
+let autosaveHandle: ReturnType<typeof setInterval> | null = null;
+/** Whether offline catch-up replays owed ticks on boot (a user preference). */
+let catchupEnabled = true;
 
 function post(msg: Event, transfer?: ArrayBuffer[]): void {
   // `self.postMessage` in a worker; the transfer list donates buffers (zero-copy).
@@ -85,12 +97,90 @@ function stop(): void {
 
 function init(seed: number, config: Config): void {
   stop();
+  stopAutosave();
   rootOf.clear();
+  autosaver = new Autosaver(idbStore, null);
   world = createWorld(seed, config);
   recordHistory(world);
   // Emit an initial frame + stats so the UI paints the cold world before play.
   emitFrame();
   emitStats();
+  startAutosave();
+}
+
+/**
+ * Persistence-aware boot (Phase 5A): load the newest saved world, or create a fresh one
+ * from seed+config; replay owed ticks if catch-up is enabled; then emit the first live
+ * frame and start autosave. Async (IndexedDB); the message handler fires it and it owns
+ * all its own errors — a storage failure degrades to a cold start, never a crash.
+ */
+async function boot(seed: number, config: Config): Promise<void> {
+  stop();
+  stopAutosave();
+  rootOf.clear();
+
+  let loadedRealTime: number | null = null;
+  let loadedMeta: Meta | null = null;
+  try {
+    const loaded = await loadNewest(idbStore);
+    if (loaded !== null) {
+      world = loaded.world;
+      loadedRealTime = loaded.lastSavedRealTime;
+      loadedMeta = loaded.meta;
+    }
+  } catch {
+    // Storage read failed — fall through to a cold start.
+    world = null;
+  }
+  if (world === null) {
+    world = createWorld(seed, config);
+    recordHistory(world);
+  }
+
+  // Seed the autosaver with the loaded meta so the first save rotates to the OLDER
+  // slot and never overwrites the slot we just loaded from (a cold start seeds null →
+  // rotation begins at slot A).
+  autosaver = new Autosaver(idbStore, loadedMeta);
+
+  // Offline catch-up: replay ticks owed since the save, capped, with progress.
+  if (catchupEnabled && loadedRealTime !== null) {
+    const owed = ticksOwed(world, loadedRealTime, Date.now());
+    if (owed > 0) {
+      post({ t: "catchupProgress", done: 0, total: owed });
+      runCatchup(world, owed, (done, total) => post({ t: "catchupProgress", done, total }));
+    } else {
+      post({ t: "catchupProgress", done: 0, total: 0 });
+    }
+  } else {
+    post({ t: "catchupProgress", done: 0, total: 0 });
+  }
+
+  // First live frame + stats, then signal the UI it may reveal the world.
+  emitFrame();
+  emitStats();
+  post({ t: "ready" });
+  startAutosave();
+}
+
+/** Save now (crash-safe). Non-fatal: a failure posts `persistError` and keeps running. */
+async function saveNow(): Promise<void> {
+  if (world === null || autosaver === null) return;
+  const ok = await autosaver.save(world, Date.now());
+  if (!ok) post({ t: "persistError", reason: "autosave failed" });
+}
+
+function startAutosave(): void {
+  if (autosaveHandle !== null) return;
+  autosaveHandle = setInterval(() => {
+    void saveNow();
+  }, AUTOSAVE_INTERVAL_MS);
+}
+
+function stopAutosave(): void {
+  if (autosaveHandle !== null) {
+    clearInterval(autosaveHandle);
+    autosaveHandle = null;
+  }
 }
 
 /**
@@ -127,6 +217,19 @@ function repaintIfPaused(): void {
 self.onmessage = (ev: MessageEvent<Command>): void => {
   const cmd = ev.data;
   switch (cmd.t) {
+    case "boot":
+      catchupEnabled = cmd.catchupEnabled;
+      // Fire-and-forget: `boot` owns its own errors and posts progress/ready itself.
+      void boot(cmd.seed, cmd.config);
+      break;
+    case "setCatchup":
+      catchupEnabled = cmd.enabled;
+      break;
+    case "save":
+      // "Autosave now" — forwarded from the main thread on `visibilitychange` (a
+      // document event the worker cannot observe directly).
+      void saveNow();
+      break;
     case "init":
       init(cmd.seed, cmd.config);
       break;

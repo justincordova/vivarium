@@ -52,10 +52,13 @@ function slotKey(which: "a" | "b"): string {
   return which === "a" ? SLOT_A : SLOT_B;
 }
 
-/** A loaded, validated save: the live World plus the wall-clock it was saved at. */
+/** A loaded, validated save: the live World, the wall-clock it was saved at, and the
+ * `meta` it came from (so the Autosaver can seed its rotation to the OLDER slot and
+ * never overwrite the freshly-loaded newest slot on the first save). */
 export interface Loaded {
   world: World;
   lastSavedRealTime: number;
+  meta: Meta;
 }
 
 /** Validate + deserialize a candidate blob; returns null if it is unusable. */
@@ -85,7 +88,11 @@ export async function loadNewest(store: KeyValStore = idbStore): Promise<Loaded 
   for (const which of [primary, fallback]) {
     const blob = await store.get<SaveBlob>(slotKey(which));
     const world = tryLoadBlob(blob);
-    if (world !== null) return { world, lastSavedRealTime: meta.lastSavedRealTime };
+    if (world !== null) {
+      // Report the meta as if `which` is newest, so the Autosaver rotates to the OTHER
+      // slot first — the first post-load save never overwrites the slot we loaded from.
+      return { world, lastSavedRealTime: meta.lastSavedRealTime, meta: { ...meta, newest: which } };
+    }
   }
   return null;
 }
