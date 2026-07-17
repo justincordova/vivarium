@@ -40,14 +40,53 @@ describe("serialize — roundtrip identity", () => {
     );
   }, 120_000);
 
-  it("writes version 1 and does not serialize the derived brain cache", () => {
+  it("writes the current version and does not serialize the derived brain cache", () => {
     const w = createWorld(1, makeConfig({}));
     const blob = serialize(w);
     expect(blob.version).toBe(SAVE_VERSION);
-    expect(blob.version).toBe(1);
+    expect(blob.version).toBe(2); // Phase 4 bumped v1 → v2 (config-selectable brainKind)
     // Derived cache is absent from the blob; deserialized creatures have no `derived`.
     const round = deserialize(blob);
     for (const c of round.creatures) expect(c.derived).toBeUndefined();
+  });
+});
+
+describe("serialize — v1 → v2 migration (Phase 4 brainKind)", () => {
+  it("a v1 rule-based save (no brainKind) migrates, loads, and defaults to 'rule'", () => {
+    const w = createWorld(5, makeConfig({}));
+    for (let i = 0; i < 50; i++) tick(w);
+    // Simulate a genuine v1 blob: version 1, config missing brainKind.
+    const blob = serialize(w);
+    // biome-ignore lint/suspicious/noExplicitAny: intentionally degrade to a v1 shape
+    const v1 = { ...blob, version: 1, config: { ...blob.config } } as any;
+    v1.config.brainKind = undefined;
+
+    const round = deserialize(v1);
+    expect(round.config.brainKind).toBe("rule");
+    expect(round.creatures.length).toBe(w.creatures.length);
+  });
+
+  it("a migrated v1 save stays deterministic + conservative for N ticks", () => {
+    const w = createWorld(9, makeConfig({}));
+    for (let i = 0; i < 30; i++) tick(w);
+    const blob = serialize(w);
+    // biome-ignore lint/suspicious/noExplicitAny: v1 shape
+    const v1 = { ...blob, version: 1, config: { ...blob.config } } as any;
+    v1.config.brainKind = undefined;
+
+    const a = deserialize(v1);
+    const b = deserialize(v1);
+    const e0 = totalEnergy(a);
+    const wat0 = totalWater(a);
+    for (let i = 0; i < 200; i++) {
+      tick(a);
+      tick(b);
+      expect(totalEnergy(a)).toBe(e0);
+      expect(totalWater(a)).toBe(wat0);
+    }
+    const fa = a.creatures.map((c) => `${c.id}:${c.x}:${c.energy}`).join("|");
+    const fb = b.creatures.map((c) => `${c.id}:${c.x}:${c.energy}`).join("|");
+    expect(fa).toBe(fb);
   });
 });
 

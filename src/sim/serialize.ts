@@ -27,7 +27,15 @@ import type {
   World,
 } from "./types";
 
-export const SAVE_VERSION = 1;
+/**
+ * v1 → v2 (Phase 4): the active brain became config-selectable (`config.brainKind`).
+ * A v1 blob predates the field; the v1→v2 migration defaults it to `'rule'` (the only
+ * brain that existed at v1), so an old rule-based save loads and keeps running the
+ * rule policy. The `hidden` vector was already serialized at v1, so no per-creature
+ * migration is needed — an inherited-but-never-exercised brain simply starts computing
+ * once `brainKind` is switched to `'patchbay'`.
+ */
+export const SAVE_VERSION = 2;
 
 /** The serialized snapshot shape (all JSON-able; typed arrays become number[]). */
 export interface SaveBlob {
@@ -228,12 +236,18 @@ function deFields(s: SerFields): Fields {
   };
 }
 
+/** v1 → v2: default `config.brainKind` to `'rule'` if the blob predates the field. */
+function migrateV1toV2(b: SaveBlob): SaveBlob {
+  const config = { ...b.config, brainKind: b.config?.brainKind ?? "rule" };
+  return { ...b, config, version: 2 };
+}
+
 /** Forward-migration scaffold. Each `migrate_vN_to_vN1` upgrades in place. */
 function migrate(blob: SaveBlob): SaveBlob {
   let b = blob;
-  // v0/undefined → v1: nothing to do yet (v1 is the first version). Future:
-  // while (b.version < SAVE_VERSION) b = migrate_vN_to_vN1(b);
-  if (b.version === undefined) b = { ...b, version: SAVE_VERSION };
+  // A blob with no version predates versioning entirely — treat as v1.
+  if (b.version === undefined) b = { ...b, version: 1 };
+  if (b.version < 2) b = migrateV1toV2(b);
   return b;
 }
 
@@ -257,12 +271,17 @@ export function deserialize(data: SaveBlob): World {
     genome: deGenome(c.genome),
     // hidden is serialized runtime state; default to a zero vector if absent.
     hidden: c.hidden !== undefined ? Float32Array.from(c.hidden) : new Float32Array(hidden),
-    ruleState: c.ruleState ?? {
-      mode: "wander",
-      targetId: -1,
-      targetKind: "none",
-      committedTicks: 0,
-    },
+    // Spread-copy so two `deserialize` calls on the same blob never ALIAS the same
+    // mutable `ruleState` object — ticking mutates it (hysteresis/mode/target), so a
+    // shared reference would cross-corrupt two worlds loaded from one blob.
+    ruleState: c.ruleState
+      ? { ...c.ruleState }
+      : {
+          mode: "wander",
+          targetId: -1,
+          targetKind: "none",
+          committedTicks: 0,
+        },
     // Serialized behaviorNovelty accumulator; default to a zero histogram if a
     // pre-Phase-1 blob lacks it (optional/defaulted → no migration needed).
     actionWindow:

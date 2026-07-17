@@ -46,6 +46,55 @@ interface BrainTemplate {
   enabledB: Uint8Array;
 }
 
+// Arrow-index helpers for the pinned patchbay layout (must match brain.ts):
+//   sensors→hidden:  s*HIDDEN + h ; hidden→hidden: SH + j*HIDDEN + h ;
+//   hidden→actions:  SH + HH + h*ACTIONS + a.
+const SH = C.SENSORS * C.HIDDEN;
+const HH = C.HIDDEN * C.HIDDEN;
+function arrowSensorHidden(s: number, h: number): number {
+  return s * C.HIDDEN + h;
+}
+function arrowHiddenAction(h: number, a: number): number {
+  return SH + HH + h * C.ACTIONS + a;
+}
+
+/**
+ * Overlay the "minimal and clumsy" seed wiring onto a template (SPEC.md §Initial
+ * Conditions — "enough enabled arrows to move toward food and toward mates, nothing
+ * more"). Enables + weights a tiny purposeful sub-circuit on top of the sparse random
+ * base so a patchbay cold start can actually forage and seek mates instead of drifting
+ * randomly (a noise brain would fail to bootstrap the sexual population). Everything
+ * still evolves from here — the overlay is a starting bias, not a fixed policy.
+ *
+ * The circuit (both homologs identical so the expressed mean equals it):
+ *   - food angle (sensor 6)  → hidden 0 → turn (action 0): steer toward food.
+ *   - mate angle (sensor 10) → hidden 0 → turn: steer toward a mate too.
+ *   - bias (sensor 0)        → hidden 1 → accelerate (action 1): a forward drive.
+ *   - bias (sensor 0)        → hidden 2 → eat/mate gates (actions 2,5): try to
+ *     eat/mate when a target is in reach (the resolve path still gates on reach).
+ */
+function applySeedWiring(t: BrainTemplate): void {
+  const wire = (k: number, w: number): void => {
+    t.weightsA[k] = w;
+    t.weightsB[k] = w;
+    t.enabledA[k] = 1;
+    t.enabledB[k] = 1;
+  };
+  // Steering toward food/mate: a positive angle sensor drives a positive turn via
+  // hidden 0. tanhApprox is monotone through 0, so sign is preserved.
+  wire(arrowSensorHidden(6, 0), 1.5); // food angle → hidden 0
+  wire(arrowSensorHidden(10, 0), 1.0); // mate angle → hidden 0
+  wire(arrowHiddenAction(0, 0), 1.5); // hidden 0 → turn
+  // Forward drive from bias via hidden 1.
+  wire(arrowSensorHidden(0, 1), 1.0); // bias → hidden 1
+  wire(arrowHiddenAction(1, 1), 1.5); // hidden 1 → accelerate
+  // Eat/mate intent from bias via hidden 2 (gates fire above threshold; reach still
+  // enforced downstream so this is "attempt when adjacent", not "always fire").
+  wire(arrowSensorHidden(0, 2), 1.0); // bias → hidden 2
+  wire(arrowHiddenAction(2, 2), 2.0); // hidden 2 → eat
+  wire(arrowHiddenAction(2, 5), 2.0); // hidden 2 → mate
+}
+
 /**
  * Build the single shared founder brain template. Founders are *copies* of this with
  * light per-arrow jitter, so their expressed brains stay within
@@ -53,8 +102,14 @@ interface BrainTemplate {
  * interbreeding species (SPEC.md §Initial Conditions — "copies of a small number of
  * viable seed genomes"). Independent random brains would put founders ~10× past the
  * compatibility threshold and no one could mate.
+ *
+ * For `brainKind:'patchbay'` a minimal purposeful sub-circuit is overlaid (see
+ * `applySeedWiring`) so a cold start can forage/seek mates. For `brainKind:'rule'`
+ * the template is left as the sparse random base — the rule policy ignores the brain
+ * arrays, so overlaying wiring there would needlessly perturb the (determinism-tested)
+ * rule-world founder fingerprints for no behavioral gain.
  */
-function makeBrainTemplate(spawn: RNG): BrainTemplate {
+function makeBrainTemplate(spawn: RNG, brainKind: Config["brainKind"]): BrainTemplate {
   const weightsA = new Float32Array(C.ARROWS);
   const weightsB = new Float32Array(C.ARROWS);
   const enabledA = new Uint8Array(C.ARROWS);
@@ -67,7 +122,9 @@ function makeBrainTemplate(spawn: RNG): BrainTemplate {
     enabledA[i] = on;
     enabledB[i] = on;
   }
-  return { weightsA, weightsB, enabledA, enabledB };
+  const template = { weightsA, weightsB, enabledA, enabledB };
+  if (brainKind === "patchbay") applySeedWiring(template);
+  return template;
 }
 
 /** Build a founder genome: a lightly-jittered copy of the shared brain template. */
@@ -228,8 +285,8 @@ export function createWorld(seed: number, config: Config): World {
   }
 
   // One shared seed brain; every founder is a lightly-jittered copy (so they form one
-  // interbreeding species).
-  const brainTemplate = makeBrainTemplate(spawn);
+  // interbreeding species). Patchbay founders get the minimal purposeful seed wiring.
+  const brainTemplate = makeBrainTemplate(spawn, config.brainKind);
 
   // Founders: clustered into demes; genome jitter + placement from `spawn`.
   for (let f = 0; f < config.founderCount; f++) {

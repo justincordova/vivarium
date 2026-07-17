@@ -15,7 +15,11 @@
  */
 
 import type { Intents, Percept, RuleContext } from "./brain";
-import { ruleThink, tanhApprox } from "./brain";
+import { derive, patchbayThinkCached, ruleThink, tanhApprox } from "./brain";
+// Fixed brain-skeleton dimension (NOT a tunable — the umwelt length is permanent per
+// SPEC.md §Sensors; a change is a version bump, so it is read from constants directly
+// like world.ts does, not from world.config.tunables).
+import { SENSORS } from "./constants";
 import {
   type Compartment,
   cellCompartment,
@@ -26,7 +30,15 @@ import {
 } from "./energy";
 import { crossover, distance, expressTrait, mutate, plantSeed } from "./genetics";
 import { localDensity, SpatialHash, type SpatialPoint } from "./spatial";
-import { Action, type Config, type Corpse, type Creature, type Plant, type World } from "./types";
+import {
+  Action,
+  type Config,
+  type Corpse,
+  type Creature,
+  type Plant,
+  Sensor,
+  type World,
+} from "./types";
 
 // ── Expressed-trait helpers ──────────────────────────────────────────────────
 
@@ -139,6 +151,8 @@ function senseContext(
   mate: Percept | null;
   threat: Percept | null;
   mateInReachFull: boolean;
+  /** The 18-element sensor vector (SPEC.md §Sensors) — the patchbay `think` input. */
+  senses: Float32Array;
 } {
   const t = world.config.tunables;
   const senseRadius = expressTrait(self.genome.senseRadius);
@@ -209,10 +223,13 @@ function senseContext(
     }
   }
 
+  const energyFrac = Math.min(1, self.energy / maxEnergy(self, t));
+  const hydrationFrac = Math.min(1, self.hydration / maxHydration(self, t));
+
   const ctx: RuleContext = {
     selfId: self.id,
-    energyFrac: Math.min(1, self.energy / maxEnergy(self, t)),
-    hydrationFrac: Math.min(1, self.hydration / maxHydration(self, t)),
+    energyFrac,
+    hydrationFrac,
     localWater,
     nearestFood: food,
     nearestThreat: threat,
@@ -221,7 +238,44 @@ function senseContext(
     mateInReach,
     ruleState: self.ruleState,
   };
-  return { ctx, food, mate, threat, mateInReachFull };
+
+  // The 18-sensor umwelt (SPEC.md §Sensors — exact indices, polarities, normalizers).
+  // Distance sensors follow the pinned polarity: 0 = adjacent, 1 = at/beyond limit /
+  // absent (a null percept reads 1.0, indistinguishable from "nothing there").
+  const senses = new Float32Array(SENSORS);
+  const maxLife = expressTrait(self.genome.maxLifespan);
+  const light = world.fields.light[cellIdx] as number;
+  const temp = world.fields.temperature[cellIdx] as number;
+  const fertility = world.fields.fertility[cellIdx] as number;
+  const scent = world.fields.scent[cellIdx] as number;
+  const density = localDensity(snap.hash, self.x, self.y, t.DENSITY_RADIUS);
+  senses[Sensor.Bias] = 1;
+  senses[Sensor.OwnEnergy] = energyFrac;
+  senses[Sensor.OwnHydration] = hydrationFrac;
+  senses[Sensor.OwnAge] = maxLife > 0 ? Math.min(1, self.age / maxLife) : 1;
+  senses[Sensor.OwnHealth] = Math.min(1, self.health / maxHealth(self, t));
+  senses[Sensor.NearestFoodDistance] = food !== null ? food.distance : 1;
+  senses[Sensor.NearestFoodAngle] = food !== null ? food.angle : 0;
+  senses[Sensor.NearestThreatDistance] = threat !== null ? threat.distance : 1;
+  senses[Sensor.NearestThreatAngle] = threat !== null ? threat.angle : 0;
+  senses[Sensor.NearestMateDistance] = mate !== null ? mate.distance : 1;
+  senses[Sensor.NearestMateAngle] = mate !== null ? mate.angle : 0;
+  // Density normalizer: saturate at 2×REPRO_CROWD_LIMIT neighbors (a tunable referent,
+  // not an undefined quantity — SPEC.md §Sensors "every 0..1 sensor has a named
+  // referent"). `density` includes self, so subtract 1 for the neighbor count.
+  senses[Sensor.LocalDensity] = Math.min(1, Math.max(0, density - 1) / (2 * t.REPRO_CROWD_LIMIT));
+  senses[Sensor.LightLevel] = Math.min(1, light / t.LIGHT_SENSOR_MAX);
+  senses[Sensor.LocalTemperature] = clampUnit((temp - t.TEMP_MIN) / (t.TEMP_MAX - t.TEMP_MIN));
+  senses[Sensor.LocalWater] = localWater;
+  senses[Sensor.LocalFertility] = Math.min(1, fertility / t.FERTILITY_CELL_MAX);
+  senses[Sensor.ScentValue] = Math.min(1, scent / t.SCENT_SENSOR_MAX);
+  // Scent gradient direction (sensor 17): the signed relative angle toward the
+  // higher-scent neighbor cell. Fed 0 in v1 (a reserved sensor per SPEC.md §Sensors
+  // "some may be fed zeros initially and enabled one at a time") — deferring the
+  // gradient sample keeps "change one thing at a time" and avoids a second field pass.
+  senses[Sensor.ScentGradient] = 0;
+
+  return { ctx, food, mate, threat, mateInReachFull, senses };
 }
 
 function cellIndexOf(config: Config, x: number, y: number): number {
@@ -249,6 +303,60 @@ function shuffledIndices(n: number, rngNext: () => number): number[] {
   return idx;
 }
 
+// ── Patchbay action decoder ──────────────────────────────────────────────────
+
+/**
+ * Decode a patchbay `actions` vector (7 floats, each already in the activation's
+ * `[−1,1]` range) into the same `Intents` the rule policy emits, so the downstream
+ * resolve path is identical for both brains (SPEC.md §Actions).
+ *
+ *   - `turn` / `accelerate` (outputs 0/1) pass through as signed scalars. The
+ *     clamp-then-scale-by-metabolism happens in `applyCreature` (SPEC.md §Actions
+ *     "Output-clamp-then-scale ordering"); `accelerate ≤ 0` there means brake/rest,
+ *     so a negative neural output is a valid "hold" — no separate rest output.
+ *   - Gated actions (2–5) fire when their output exceeds the reserved per-action
+ *     threshold tunable (`EAT_THRESHOLD` … `MATE_THRESHOLD`).
+ *   - `emit` (6) fires above `EMIT_THRESHOLD`.
+ *
+ * Targets (which food/mate/threat) still come from the perceived percepts in the
+ * `PlannedAction`, exactly as under the rule policy — the brain chooses *whether*
+ * to eat/attack/mate, the sensors choose the nearest valid target.
+ */
+function decodeActions(actions: Float32Array, t: Config["tunables"]): Intents {
+  return {
+    turn: actions[Action.Turn] as number,
+    accelerate: actions[Action.Accelerate] as number,
+    eat: (actions[Action.Eat] as number) > t.EAT_THRESHOLD,
+    drink: (actions[Action.Drink] as number) > t.DRINK_THRESHOLD,
+    attack: (actions[Action.Attack] as number) > t.ATTACK_THRESHOLD,
+    mate: (actions[Action.Mate] as number) > t.MATE_THRESHOLD,
+    emit: (actions[Action.EmitScent] as number) > t.EMIT_THRESHOLD,
+  };
+}
+
+/**
+ * Run the active brain for one creature: the rule policy (Phases 0–3) or the
+ * patchbay forward pass (Phase 4), selected by `world.config.brainKind`. For the
+ * patchbay, derives-and-caches the expressed brain on `creature.derived`, runs the
+ * forward pass against `creature.hidden` (previous tick's recurrent state), writes
+ * the new hidden vector back, and decodes the action vector into intents.
+ *
+ * The `derived` cache is lazily populated once per creature and persists for its
+ * life (its homologs never change after birth — mutation applies only to newborns).
+ * God-power brain edits invalidate it by setting `creature.derived = undefined`
+ * (worker/commands.ts), forcing a re-derive here.
+ */
+function runBrain(world: World, self: Creature, ctx: RuleContext, senses: Float32Array): Intents {
+  if (world.config.brainKind === "rule") {
+    return ruleThink(ctx);
+  }
+  // Patchbay: derive-once-and-cache, then forward pass with recurrent memory.
+  if (self.derived === undefined) self.derived = derive(self.genome);
+  const { actions, hidden } = patchbayThinkCached(self.derived, senses, self.hidden);
+  self.hidden = hidden; // recurrent state for next tick (serialized runtime state)
+  return decodeActions(actions, world.config.tunables);
+}
+
 // ── The tick ─────────────────────────────────────────────────────────────────
 
 interface PlannedAction {
@@ -270,8 +378,10 @@ export function tick(world: World): void {
   const planned: PlannedAction[] = [];
   for (let i = 0; i < world.creatures.length; i++) {
     const c = world.creatures[i] as Creature;
-    const { ctx, food, mate, threat, mateInReachFull } = senseContext(c, snap, world);
-    const intents = ruleThink(ctx);
+    const { ctx, food, mate, threat, mateInReachFull, senses } = senseContext(c, snap, world);
+    // Active brain: rule policy (Phases 0–3) or patchbay forward pass (Phase 4),
+    // selected by config.brainKind. The patchbay writes c.hidden back for recurrence.
+    const intents = runBrain(world, c, ctx, senses);
     planned.push({
       creature: c,
       intents,
@@ -280,9 +390,6 @@ export function tick(world: World): void {
       threatId: threat?.id ?? null,
       mateInReach: mateInReachFull,
     });
-    // Recurrent memory: rule policy returns no hidden delta; keep a zero vector so
-    // the plumbing matches the Phase 4 swap.
-    // (c.hidden stays as-is; rule policy ignores it.)
   }
 
   // 4.1 Agent actions in resolve-shuffle order, creature-major.
