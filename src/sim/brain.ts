@@ -74,9 +74,14 @@ export function derive(genome: Genome): { weights: Float32Array; enabled: Uint8A
  *   hidden→hidden:   k = SH + j*HIDDEN + h         (prev-hidden j, hidden h)
  *   hidden→actions:  k = SH + HH + h*ACTIONS + a   (hidden h, action a)
  */
-const SENSORS_HIDDEN_BASE = 0;
-const HIDDEN_HIDDEN_BASE = C.SENSORS * C.HIDDEN;
-const HIDDEN_ACTIONS_BASE = C.SENSORS * C.HIDDEN + C.HIDDEN * C.HIDDEN;
+/**
+ * Arrow count for a given hidden-neuron count (SENSORS/ACTIONS are permanently fixed
+ * per SPEC.md §Sensors/§Actions; only HIDDEN varies — the enlargement experiment,
+ * Task 4.4). For the default `HIDDEN=10` this is `ARROWS=350`.
+ */
+export function arrowCount(hidden: number): number {
+  return C.SENSORS * hidden + hidden * hidden + hidden * C.ACTIONS;
+}
 
 /**
  * One deterministic patchbay forward pass over the derived (expressed) brain.
@@ -91,6 +96,12 @@ const HIDDEN_ACTIONS_BASE = C.SENSORS * C.HIDDEN + C.HIDDEN * C.HIDDEN;
  *   2. `newHidden[h] = tanhApprox(preActivation[h])`.
  *   3. `actions[a] = tanhApprox(Σ_h newHidden[h]·w·en (hidden→actions))`.
  *
+ * `hidden` defaults to `C.HIDDEN` (10) so every production caller stays bit-identical
+ * (the golden-vector test relies on this). The enlargement experiment (Task 4.4)
+ * passes a different `hidden` on FRESH worlds only — changing it reshapes the arrow
+ * count and the `hidden` vector length, so a HIDDEN=10 save cannot migrate to
+ * HIDDEN=20 (SPEC.md §Brain Design; this is world-creation geometry, not a live knob).
+ *
  * Returns `{ actions, hidden: newHidden }`; the caller writes `newHidden` back to
  * `creature.hidden` for next tick. Pure — no RNG (a forward pass is deterministic
  * given brain + senses + memory).
@@ -100,20 +111,25 @@ export function patchbayForward(
   enabled: Uint8Array,
   senses: Float32Array,
   memory: Float32Array,
+  hidden: number = C.HIDDEN,
 ): { actions: Float32Array; hidden: Float32Array } {
-  const newHidden = new Float32Array(C.HIDDEN);
+  const H = hidden;
+  const sensorsHiddenBase = 0;
+  const hiddenHiddenBase = C.SENSORS * H;
+  const hiddenActionsBase = C.SENSORS * H + H * H;
+  const newHidden = new Float32Array(H);
 
   // 1–2. Hidden pre-activations: sensors→hidden then hidden→hidden into one accumulator.
-  for (let h = 0; h < C.HIDDEN; h++) {
+  for (let h = 0; h < H; h++) {
     let sum = 0;
     // sensors → hidden (source-major: iterate sensors, fixed target h).
     for (let s = 0; s < C.SENSORS; s++) {
-      const k = SENSORS_HIDDEN_BASE + s * C.HIDDEN + h;
+      const k = sensorsHiddenBase + s * H + h;
       sum += (senses[s] as number) * (weights[k] as number) * (enabled[k] as number);
     }
     // hidden(prev) → hidden (source-major: iterate prev-hidden j, fixed target h).
-    for (let j = 0; j < C.HIDDEN; j++) {
-      const k = HIDDEN_HIDDEN_BASE + j * C.HIDDEN + h;
+    for (let j = 0; j < H; j++) {
+      const k = hiddenHiddenBase + j * H + h;
       sum += (memory[j] as number) * (weights[k] as number) * (enabled[k] as number);
     }
     newHidden[h] = tanhApprox(sum);
@@ -123,8 +139,8 @@ export function patchbayForward(
   const actions = new Float32Array(C.ACTIONS);
   for (let a = 0; a < C.ACTIONS; a++) {
     let sum = 0;
-    for (let h = 0; h < C.HIDDEN; h++) {
-      const k = HIDDEN_ACTIONS_BASE + h * C.ACTIONS + a;
+    for (let h = 0; h < H; h++) {
+      const k = hiddenActionsBase + h * C.ACTIONS + a;
       sum += (newHidden[h] as number) * (weights[k] as number) * (enabled[k] as number);
     }
     actions[a] = tanhApprox(sum);
@@ -183,8 +199,9 @@ export function patchbayThinkCached(
   derived: DerivedBrain,
   senses: Float32Array,
   memory: Float32Array,
+  hidden: number = C.HIDDEN,
 ): { actions: Float32Array; hidden: Float32Array } {
-  return patchbayForward(derived.weights, derived.enabled, senses, memory);
+  return patchbayForward(derived.weights, derived.enabled, senses, memory, hidden);
 }
 
 /**

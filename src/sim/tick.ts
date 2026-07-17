@@ -350,9 +350,16 @@ function runBrain(world: World, self: Creature, ctx: RuleContext, senses: Float3
   if (world.config.brainKind === "rule") {
     return ruleThink(ctx);
   }
-  // Patchbay: derive-once-and-cache, then forward pass with recurrent memory.
+  // Patchbay: derive-once-and-cache, then forward pass with recurrent memory. The
+  // hidden-neuron count is world-creation geometry (config.hidden), not a constant, so
+  // the enlargement experiment (Task 4.4) can run HIDDEN=20 fresh worlds.
   if (self.derived === undefined) self.derived = derive(self.genome);
-  const { actions, hidden } = patchbayThinkCached(self.derived, senses, self.hidden);
+  const { actions, hidden } = patchbayThinkCached(
+    self.derived,
+    senses,
+    self.hidden,
+    world.config.hidden,
+  );
   self.hidden = hidden; // recurrent state for next tick (serialized runtime state)
   return decodeActions(actions, world.config.tunables);
 }

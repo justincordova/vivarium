@@ -14,6 +14,7 @@
  * (SPEC.md §Initial Conditions). Part of `sim/`.
  */
 
+import { arrowCount } from "./brain";
 import * as C from "./constants";
 import { cellCompartment, fieldCompartment, transfer } from "./energy";
 import { TRAIT_GENES, TRAIT_RANGE, type TraitGene } from "./genetics";
@@ -46,16 +47,15 @@ interface BrainTemplate {
   enabledB: Uint8Array;
 }
 
-// Arrow-index helpers for the pinned patchbay layout (must match brain.ts):
-//   sensors→hidden:  s*HIDDEN + h ; hidden→hidden: SH + j*HIDDEN + h ;
-//   hidden→actions:  SH + HH + h*ACTIONS + a.
-const SH = C.SENSORS * C.HIDDEN;
-const HH = C.HIDDEN * C.HIDDEN;
-function arrowSensorHidden(s: number, h: number): number {
-  return s * C.HIDDEN + h;
+// Arrow-index helpers for the pinned patchbay layout (must match brain.ts), for a
+// given hidden-neuron count `H` (world-creation geometry — the enlargement experiment
+// runs H≠10 fresh worlds):
+//   sensors→hidden:  s*H + h ; hidden→hidden: SH + j*H + h ; hidden→actions: SH+HH + h*ACTIONS + a.
+function arrowSensorHidden(s: number, h: number, H: number): number {
+  return s * H + h;
 }
-function arrowHiddenAction(h: number, a: number): number {
-  return SH + HH + h * C.ACTIONS + a;
+function arrowHiddenAction(h: number, a: number, H: number): number {
+  return C.SENSORS * H + H * H + h * C.ACTIONS + a;
 }
 
 /**
@@ -73,7 +73,7 @@ function arrowHiddenAction(h: number, a: number): number {
  *   - bias (sensor 0)        → hidden 2 → eat/mate gates (actions 2,5): try to
  *     eat/mate when a target is in reach (the resolve path still gates on reach).
  */
-function applySeedWiring(t: BrainTemplate): void {
+function applySeedWiring(t: BrainTemplate, H: number): void {
   const wire = (k: number, w: number): void => {
     t.weightsA[k] = w;
     t.weightsB[k] = w;
@@ -82,17 +82,17 @@ function applySeedWiring(t: BrainTemplate): void {
   };
   // Steering toward food/mate: a positive angle sensor drives a positive turn via
   // hidden 0. tanhApprox is monotone through 0, so sign is preserved.
-  wire(arrowSensorHidden(6, 0), 1.5); // food angle → hidden 0
-  wire(arrowSensorHidden(10, 0), 1.0); // mate angle → hidden 0
-  wire(arrowHiddenAction(0, 0), 1.5); // hidden 0 → turn
+  wire(arrowSensorHidden(6, 0, H), 1.5); // food angle → hidden 0
+  wire(arrowSensorHidden(10, 0, H), 1.0); // mate angle → hidden 0
+  wire(arrowHiddenAction(0, 0, H), 1.5); // hidden 0 → turn
   // Forward drive from bias via hidden 1.
-  wire(arrowSensorHidden(0, 1), 1.0); // bias → hidden 1
-  wire(arrowHiddenAction(1, 1), 1.5); // hidden 1 → accelerate
+  wire(arrowSensorHidden(0, 1, H), 1.0); // bias → hidden 1
+  wire(arrowHiddenAction(1, 1, H), 1.5); // hidden 1 → accelerate
   // Eat/mate intent from bias via hidden 2 (gates fire above threshold; reach still
   // enforced downstream so this is "attempt when adjacent", not "always fire").
-  wire(arrowSensorHidden(0, 2), 1.0); // bias → hidden 2
-  wire(arrowHiddenAction(2, 2), 2.0); // hidden 2 → eat
-  wire(arrowHiddenAction(2, 5), 2.0); // hidden 2 → mate
+  wire(arrowSensorHidden(0, 2, H), 1.0); // bias → hidden 2
+  wire(arrowHiddenAction(2, 2, H), 2.0); // hidden 2 → eat
+  wire(arrowHiddenAction(2, 5, H), 2.0); // hidden 2 → mate
 }
 
 /**
@@ -109,12 +109,17 @@ function applySeedWiring(t: BrainTemplate): void {
  * arrays, so overlaying wiring there would needlessly perturb the (determinism-tested)
  * rule-world founder fingerprints for no behavioral gain.
  */
-function makeBrainTemplate(spawn: RNG, brainKind: Config["brainKind"]): BrainTemplate {
-  const weightsA = new Float32Array(C.ARROWS);
-  const weightsB = new Float32Array(C.ARROWS);
-  const enabledA = new Uint8Array(C.ARROWS);
-  const enabledB = new Uint8Array(C.ARROWS);
-  for (let i = 0; i < C.ARROWS; i++) {
+function makeBrainTemplate(
+  spawn: RNG,
+  brainKind: Config["brainKind"],
+  hidden: number,
+): BrainTemplate {
+  const arrows = arrowCount(hidden);
+  const weightsA = new Float32Array(arrows);
+  const weightsB = new Float32Array(arrows);
+  const enabledA = new Uint8Array(arrows);
+  const enabledB = new Uint8Array(arrows);
+  for (let i = 0; i < arrows; i++) {
     const w = gaussian(spawn) * 0.5;
     weightsA[i] = w;
     weightsB[i] = w;
@@ -123,7 +128,7 @@ function makeBrainTemplate(spawn: RNG, brainKind: Config["brainKind"]): BrainTem
     enabledB[i] = on;
   }
   const template = { weightsA, weightsB, enabledA, enabledB };
-  if (brainKind === "patchbay") applySeedWiring(template);
+  if (brainKind === "patchbay") applySeedWiring(template, hidden);
   return template;
 }
 
@@ -138,12 +143,14 @@ function makeFounderGenome(spawn: RNG, template: BrainTemplate, carnivore: boole
   };
 
   // Small per-arrow weight jitter around the shared template — keeps founders within
-  // the compatibility threshold while adding variation.
-  const weightsA = new Float32Array(C.ARROWS);
-  const weightsB = new Float32Array(C.ARROWS);
-  const enabledA = new Uint8Array(C.ARROWS);
-  const enabledB = new Uint8Array(C.ARROWS);
-  for (let i = 0; i < C.ARROWS; i++) {
+  // the compatibility threshold while adding variation. Arrow count comes from the
+  // template (sized to config.hidden), so HIDDEN=20 fresh worlds work unchanged.
+  const arrows = template.weightsA.length;
+  const weightsA = new Float32Array(arrows);
+  const weightsB = new Float32Array(arrows);
+  const enabledA = new Uint8Array(arrows);
+  const enabledB = new Uint8Array(arrows);
+  for (let i = 0; i < arrows; i++) {
     weightsA[i] = (template.weightsA[i] as number) + gaussian(spawn) * 0.02;
     weightsB[i] = (template.weightsB[i] as number) + gaussian(spawn) * 0.02;
     enabledA[i] = template.enabledA[i] as number;
@@ -286,7 +293,7 @@ export function createWorld(seed: number, config: Config): World {
 
   // One shared seed brain; every founder is a lightly-jittered copy (so they form one
   // interbreeding species). Patchbay founders get the minimal purposeful seed wiring.
-  const brainTemplate = makeBrainTemplate(spawn, config.brainKind);
+  const brainTemplate = makeBrainTemplate(spawn, config.brainKind, config.hidden);
 
   // Founders: clustered into demes; genome jitter + placement from `spawn`.
   for (let f = 0; f < config.founderCount; f++) {

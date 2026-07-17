@@ -86,6 +86,34 @@ describe("patchbay brain — conservation (exact, every tick)", () => {
   }, 120_000);
 });
 
+describe("patchbay brain — enlargement geometry (HIDDEN=20 fresh world)", () => {
+  it("a HIDDEN=20 fresh world sizes brain arrays to 900 arrows and a 20-vector", () => {
+    const w = createWorld(1, makeConfig({ brainKind: "patchbay", hidden: 20 }));
+    const c = w.creatures[0];
+    expect(c).toBeDefined();
+    if (c) {
+      // arrowCount(20) = 18*20 + 20*20 + 20*7 = 900.
+      expect(c.genome.weightsA).toHaveLength(900);
+      expect(c.genome.enabledA).toHaveLength(900);
+      expect(c.hidden).toHaveLength(20);
+    }
+  });
+
+  it("a HIDDEN=20 patchbay world stays deterministic + conservative for N ticks", () => {
+    const a = createWorld(3, makeConfig({ brainKind: "patchbay", hidden: 20 }));
+    const b = createWorld(3, makeConfig({ brainKind: "patchbay", hidden: 20 }));
+    const e0 = totalEnergy(a);
+    const wat0 = totalWater(a);
+    for (let i = 0; i < 300; i++) {
+      tick(a);
+      tick(b);
+      expect(totalEnergy(a)).toBe(e0);
+      expect(totalWater(a)).toBe(wat0);
+    }
+    expect(fingerprint(a)).toBe(fingerprint(b));
+  });
+});
+
 describe("patchbay brain — inherited brain arrays run under the swap", () => {
   it("a rule-world save switched to patchbay stays deterministic + conservative", () => {
     // Build a rule world, evolve it (brain arrays inherited but never exercised), save,
