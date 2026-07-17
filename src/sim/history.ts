@@ -148,10 +148,17 @@ export function detectLineageEvents(world: World): void {
   const snaps = world.rootPopSnapshots;
   const prev = snaps[snaps.length - 1];
 
-  // Extinction: a root that was alive at the previous snapshot and is now 0.
+  // Extinction: a root that was alive at the previous snapshot and is now 0. Iterate a
+  // SORTED key array — never `for...in`/`Object.keys` insertion order in `sim/` (the
+  // event push order is serialized + fingerprinted; ascending-id keeps it deterministic
+  // and cross-engine stable, honoring the stated purity rule rather than relying on the
+  // engine's integer-key ordering quirk).
   if (prev !== undefined) {
-    for (const root in prev.counts) {
-      const rootId = Number(root);
+    const prevRoots = Object.keys(prev.counts)
+      .map(Number)
+      .sort((a, b) => a - b);
+    for (let i = 0; i < prevRoots.length; i++) {
+      const rootId = prevRoots[i] as number;
       const before = prev.counts[rootId] ?? 0;
       if (before > 0 && (now.get(rootId) ?? 0) === 0) {
         pushLineageEvent(world, { kind: "extinction", tick: world.tick, lineage: rootId });
@@ -171,7 +178,11 @@ export function detectLineageEvents(world: World): void {
     }
   }
   if (ref !== undefined) {
-    for (const [rootId, count] of now) {
+    // Ascending-root order (deterministic + cross-engine stable) for the event push.
+    const nowRoots = Array.from(now.keys()).sort((a, b) => a - b);
+    for (let i = 0; i < nowRoots.length; i++) {
+      const rootId = nowRoots[i] as number;
+      const count = now.get(rootId) ?? 0;
       const past = ref.counts[rootId] ?? 0;
       if (past > 0 && count >= past * C.BOOM_FACTOR) {
         pushLineageEvent(world, {

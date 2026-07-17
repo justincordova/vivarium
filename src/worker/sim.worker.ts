@@ -39,6 +39,13 @@ let autosaver: Autosaver | null = null;
 let autosaveHandle: ReturnType<typeof setInterval> | null = null;
 /** Whether offline catch-up replays owed ticks on boot (a user preference). */
 let catchupEnabled = true;
+/**
+ * Monotonic boot token. `boot` is async (it awaits IndexedDB), so a later world-swap
+ * command (`init`/`loadSave`/another `boot`) could be dequeued during that await. Each
+ * such command bumps this; a boot that finds its token stale after the await bails,
+ * rather than stomping the newer world/autosaver.
+ */
+let bootGen = 0;
 
 function post(msg: Event, transfer?: ArrayBuffer[]): void {
   // `self.postMessage` in a worker; the transfer list donates buffers (zero-copy).
@@ -94,6 +101,7 @@ function stop(): void {
 }
 
 function init(seed: number, config: Config): void {
+  bootGen++; // supersede any in-flight async boot
   stop();
   stopAutosave();
   autosaver = new Autosaver(idbStore, null);
@@ -109,13 +117,23 @@ function init(seed: number, config: Config): void {
  * Load an imported save (Phase 5A.4): replace the live world with the deserialized
  * blob, repaint. Pure `deserialize` — a malformed blob throws; the main thread
  * validates the file before sending, so a bad import never reaches here.
+ *
+ * Mirrors `init`'s persistence reset: a fresh `Autosaver` (seeded null → the first save
+ * writes slot A and flips meta cleanly) and a restarted autosave timer. Without this the
+ * autosaver would keep the PRE-import meta, layering the imported world onto a stale
+ * rotation pointer — a crash mid-way could then restore a pre-import world (silent data
+ * divergence), and the imported world might never be autosaved at all.
  */
 function loadSave(blob: SaveBlob): void {
+  bootGen++; // supersede any in-flight async boot
   stop();
+  stopAutosave();
   world = deserialize(blob);
   recordHistory(world);
+  autosaver = new Autosaver(idbStore, null);
   emitFrame();
   emitStats();
+  startAutosave();
 }
 
 /**
@@ -125,6 +143,7 @@ function loadSave(blob: SaveBlob): void {
  * all its own errors — a storage failure degrades to a cold start, never a crash.
  */
 async function boot(seed: number, config: Config, coldOpen?: SaveBlob): Promise<void> {
+  const gen = ++bootGen;
   stop();
   stopAutosave();
 
@@ -132,12 +151,15 @@ async function boot(seed: number, config: Config, coldOpen?: SaveBlob): Promise<
   let loadedMeta: Meta | null = null;
   try {
     const loaded = await loadNewest(idbStore);
+    // A newer world-swap command arrived during the await → this boot is superseded.
+    if (gen !== bootGen) return;
     if (loaded !== null) {
       world = loaded.world;
       loadedRealTime = loaded.lastSavedRealTime;
       loadedMeta = loaded.meta;
     }
   } catch {
+    if (gen !== bootGen) return;
     // Storage read failed — fall through to a cold start.
     world = null;
   }
@@ -193,11 +215,18 @@ async function boot(seed: number, config: Config, coldOpen?: SaveBlob): Promise<
   startAutosave();
 }
 
-/** Save now (crash-safe). Non-fatal: a failure posts `persistError` and keeps running. */
+/**
+ * Save now (crash-safe). Non-fatal. Only a genuine FAILURE posts `persistError` (with
+ * the error detail); a `"skipped"` result is the in-flight guard working as designed
+ * (e.g. rapid tab-switching forwarding `save` while the timer save is in flight) and
+ * must NOT surface as an error.
+ */
 async function saveNow(): Promise<void> {
   if (world === null || autosaver === null) return;
-  const ok = await autosaver.save(world, Date.now());
-  if (!ok) post({ t: "persistError", reason: "autosave failed" });
+  const result = await autosaver.save(world, Date.now());
+  if (result === "failed") {
+    post({ t: "persistError", reason: autosaver.lastError ?? "autosave failed" });
+  }
 }
 
 function startAutosave(): void {

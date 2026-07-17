@@ -157,6 +157,8 @@ interface SimState {
 }
 
 let worker: Worker | null = null;
+/** Guards the one-time `visibilitychange` listener registration (see startWorker). */
+let visibilityBound = false;
 
 function send(cmd: Command): void {
   worker?.postMessage(cmd);
@@ -165,10 +167,26 @@ function send(cmd: Command): void {
 /** Pending export: resolved by the next `snapshot` event with the serialized world. */
 let pendingSnapshot: ((blob: SaveBlob) => void) | null = null;
 
-/** Request the worker's current world snapshot as a `SaveBlob` (one at a time). */
+/**
+ * Request the worker's current world snapshot as a `SaveBlob`. Serialized 1:1 with the
+ * worker's `snapshot` reply, so only ONE may be in flight — a concurrent request rejects
+ * (rather than overwriting the resolver, which would leak the first promise and resolve
+ * the second against the wrong reply). A timeout rejects if no reply arrives (e.g. the
+ * worker has no world yet) so the promise never hangs.
+ */
 function requestSnapshot(): Promise<SaveBlob> {
-  return new Promise((resolve) => {
-    pendingSnapshot = resolve;
+  if (pendingSnapshot !== null) {
+    return Promise.reject(new Error("a world export is already in progress"));
+  }
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pendingSnapshot = null;
+      reject(new Error("snapshot request timed out"));
+    }, 10_000);
+    pendingSnapshot = (blob) => {
+      clearTimeout(timer);
+      resolve(blob);
+    };
     send({ t: "snapshot" });
   });
 }
@@ -219,12 +237,26 @@ export const useSimStore = create<SimState>((set, get) => ({
     set({ inspected: null });
   },
   setSeed(seed) {
-    set({ seed });
+    // Guard against NaN/±Infinity from intermediate input states ("-", "1e") so a
+    // degenerate seed never reaches `init` (which would seed a non-reproducible world).
+    if (!Number.isFinite(seed)) return;
+    set({ seed: Math.trunc(seed) });
   },
   reinit() {
-    // Re-create the world on the current seed — a fresh, URL-attached world.
+    // Re-create the world on the current seed — a fresh, URL-attached world. The worker's
+    // `init` pauses the fresh world (stop()), so reconcile `running` and reset ALL derived
+    // series (population + lineage) so the charts don't show the previous world's data.
     send({ t: "init", seed: get().seed, config: makeConfig({}) });
-    set({ inspected: null, followId: null, detached: false, params: {}, popHistory: [] });
+    set({
+      inspected: null,
+      followId: null,
+      detached: false,
+      params: {},
+      popHistory: [],
+      lineageHistory: [],
+      topLineages: [],
+      running: false,
+    });
   },
   setParam(key, value) {
     send({ t: "setParam", key, value });
@@ -261,15 +293,37 @@ export const useSimStore = create<SimState>((set, get) => ({
     set({ report: null });
   },
   exportWorld() {
-    // Ask the worker for a snapshot, then gzip + download it. Fire-and-forget; the
-    // download is triggered when the snapshot arrives.
-    void requestSnapshot().then((blob) => exportWorldFile(blob));
+    // Ask the worker for a snapshot, then gzip + download it. A failure (concurrent
+    // export, timeout, or gzip error) surfaces as a non-fatal error indicator rather
+    // than an unhandled rejection.
+    requestSnapshot()
+      .then((blob) => exportWorldFile(blob))
+      .catch((e: unknown) => {
+        set({ persistError: e instanceof Error ? e.message : "export failed" });
+      });
   },
   async importWorld(file) {
-    const blob = await importWorldFile(file);
+    let blob: SaveBlob;
+    try {
+      blob = await importWorldFile(file);
+    } catch (e: unknown) {
+      // A corrupt or wrong-type file → surface a non-fatal error, leave the world as-is.
+      set({ persistError: e instanceof Error ? e.message : "import failed" });
+      return;
+    }
     send({ t: "loadSave", blob });
-    // The imported world is detached from any shareable URL (it is a full snapshot).
-    set({ detached: true, inspected: null, followId: null, popHistory: [] });
+    // The imported world is detached from any shareable URL (it is a full snapshot). The
+    // worker's `loadSave` pauses the loaded world (stop()), so reconcile `running` and
+    // reset the derived series so the charts don't show the old world's data.
+    set({
+      detached: true,
+      inspected: null,
+      followId: null,
+      popHistory: [],
+      lineageHistory: [],
+      topLineages: [],
+      running: false,
+    });
   },
 }));
 
@@ -304,8 +358,11 @@ export function startWorker(): Worker {
           const next = [...base, point];
           if (next.length > POP_HISTORY_MAX) next.splice(0, next.length - POP_HISTORY_MAX);
 
-          // Per-lineage speciation view (Phase 5C.2): plot the current top lineages by
-          // population. Keeping a stable top-set avoids the legend thrashing every tick.
+          // Per-lineage speciation view (Phase 5C.2). Record THIS tick's top lineages,
+          // then plot the stable UNION of roots seen across the retained window so a
+          // stacked band never spuriously drops to zero on the left just because a
+          // currently-top lineage wasn't top earlier (a lineage genuinely absent at a
+          // past tick is filled 0 in that row, which is correct — it had 0 population).
           const pop = msg.stats.population;
           const top = Object.keys(pop)
             .map(Number)
@@ -314,10 +371,34 @@ export function startWorker(): Worker {
           const lpoint: LineagePoint = { tick: point.tick };
           for (const root of top) lpoint[`l${root}`] = pop[root] ?? 0;
           const lbase = reset ? [] : s.lineageHistory;
-          const lnext = [...lbase, lpoint];
-          if (lnext.length > POP_HISTORY_MAX) lnext.splice(0, lnext.length - POP_HISTORY_MAX);
+          const lwindow = [...lbase, lpoint];
+          if (lwindow.length > POP_HISTORY_MAX) lwindow.splice(0, lwindow.length - POP_HISTORY_MAX);
 
-          return { stats: msg.stats, popHistory: next, lineageHistory: lnext, topLineages: top };
+          // The plotted key-set: the union of all `l<root>` keys across the window, kept
+          // deterministic by sorting on the LATEST-tick population (so the biggest bands
+          // stack at the bottom). Then normalize every point so each carries every key
+          // (missing ⇒ 0), which is what keeps Recharts from drawing gaps.
+          const unionRoots = new Set<number>();
+          for (const p of lwindow) {
+            for (const k of Object.keys(p)) {
+              if (k.startsWith("l")) unionRoots.add(Number(k.slice(1)));
+            }
+          }
+          const plotted = Array.from(unionRoots)
+            .sort((a, b) => (pop[b] ?? 0) - (pop[a] ?? 0))
+            .slice(0, LINEAGE_PLOT_MAX);
+          const lnext = lwindow.map((p) => {
+            const row: LineagePoint = { tick: p.tick };
+            for (const root of plotted) row[`l${root}`] = p[`l${root}`] ?? 0;
+            return row;
+          });
+
+          return {
+            stats: msg.stats,
+            popHistory: next,
+            lineageHistory: lnext,
+            topLineages: plotted,
+          };
         });
         break;
       }
@@ -378,8 +459,11 @@ export function startWorker(): Worker {
   })();
 
   // `visibilitychange` is a document (main-thread) event the worker cannot observe;
-  // forward it as a `save` so the worker autosaves when the tab is hidden.
-  if (typeof document !== "undefined") {
+  // forward it as a `save` so the worker autosaves when the tab is hidden. Registered
+  // exactly once behind its own guard (independent of the worker-creation guard above),
+  // so a future worker teardown/re-create never stacks duplicate listeners.
+  if (typeof document !== "undefined" && !visibilityBound) {
+    visibilityBound = true;
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "hidden") send({ t: "save" });
     });

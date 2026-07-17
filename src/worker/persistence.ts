@@ -113,8 +113,14 @@ export async function autosave(
   // First save (no prior meta) writes slot A; otherwise write whichever is older.
   const older: "a" | "b" = prevMeta === null ? "a" : prevMeta.newest === "a" ? "b" : "a";
   world.lastSavedRealTime = now;
-  await store.set(slotKey(older), serialize(world));
-  const meta: Meta = { newest: older, lastSavedRealTime: now, savedTick: world.tick };
+  // Serialize SYNCHRONOUSLY before the first await, so the scheduled `tick()` loop (a
+  // `setTimeout` macrotask) cannot mutate the World mid-serialization and produce a torn
+  // save. `serialize` is a pure synchronous function — do NOT make it await/chunk, or
+  // this structural guarantee breaks.
+  const blob = serialize(world);
+  const savedTick = world.tick;
+  await store.set(slotKey(older), blob);
+  const meta: Meta = { newest: older, lastSavedRealTime: now, savedTick };
   await store.set(META_KEY, meta);
   return meta;
 }
@@ -141,22 +147,29 @@ export class Autosaver {
   }
 
   /**
-   * Save `world` now, unless a save is already in flight (in which case this is a
-   * no-op — the in-flight save already captures at-or-after this world state closely
-   * enough for a ~30s autosave cadence). Returns true if it saved, false if skipped or
-   * failed. Never throws: a storage/quota failure resolves false so the worker can
-   * surface a non-fatal indicator and keep simulating.
+   * Save `world` now, unless a save is already in flight (in which case it is SKIPPED —
+   * the in-flight save already captures at-or-after this world state closely enough for
+   * a ~30s autosave cadence). Returns a tri-state so the caller can distinguish a
+   * benign skip from a real failure (only a failure warrants a user-facing error):
+   *   - `"saved"`   — written + meta flipped.
+   *   - `"skipped"` — a save was already in flight (the guard working as designed).
+   *   - `"failed"`  — a storage/quota error; `lastError` holds the detail. Never throws.
    */
-  async save(world: World, now: number): Promise<boolean> {
-    if (this.inFlight) return false;
+  async save(world: World, now: number): Promise<"saved" | "skipped" | "failed"> {
+    if (this.inFlight) return "skipped";
     this.inFlight = true;
     try {
       this.meta = await autosave(this.store, world, this.meta, now);
-      return true;
-    } catch {
-      return false;
+      this.lastError = null;
+      return "saved";
+    } catch (e) {
+      this.lastError = e instanceof Error ? e.message : String(e);
+      return "failed";
     } finally {
       this.inFlight = false;
     }
   }
+
+  /** Detail of the last failed save (e.g. a QuotaExceededError message), or null. */
+  lastError: string | null = null;
 }

@@ -114,10 +114,17 @@ export function ControlPanel(): React.ReactElement {
     // reproducible world, not the current evolved snapshot (that travels by export).
     const mut = params.MUT_GLOBAL;
     const url = shareUrl({ seed, tunables: mut !== undefined ? { MUT_GLOBAL: mut } : undefined });
-    void navigator.clipboard?.writeText(url).then(() => {
+    const flash = (): void => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    });
+    };
+    // `navigator.clipboard` is undefined on non-secure origins (and can reject on
+    // permission denial) — fall back to a prompt so the URL is always obtainable.
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(url).then(flash, () => window.prompt("Copy this link:", url));
+    } else {
+      window.prompt("Copy this link:", url);
+    }
   };
 
   const onImportFile = (e: React.ChangeEvent<HTMLInputElement>): void => {

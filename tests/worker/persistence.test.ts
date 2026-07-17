@@ -166,17 +166,18 @@ describe("Autosaver — in-flight guard + non-throwing", () => {
     const store = memStore();
     const w = createWorld(4, makeConfig({}));
     const saver = new Autosaver(store, null);
-    expect(await saver.save(w, 1000)).toBe(true);
+    expect(await saver.save(w, 1000)).toBe("saved");
     expect(saver.currentMeta()?.newest).toBe("a");
     for (let i = 0; i < 3; i++) tick(w);
-    expect(await saver.save(w, 2000)).toBe(true);
+    expect(await saver.save(w, 2000)).toBe("saved");
     expect(saver.currentMeta()?.newest).toBe("b");
   });
 
-  it("returns false (never throws) when the store write fails", async () => {
+  it("returns 'failed' (never throws) + records lastError when the store write fails", async () => {
     const store = crashingStore(1); // first set() throws
     const w = createWorld(4, makeConfig({}));
     const saver = new Autosaver(store, null);
-    expect(await saver.save(w, 1000)).toBe(false);
+    expect(await saver.save(w, 1000)).toBe("failed");
+    expect(saver.lastError).not.toBeNull();
   });
 });
