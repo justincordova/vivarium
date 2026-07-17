@@ -74,8 +74,13 @@ ui/       React chrome only — panels, charts, inspector. Never calls tick()
   `stats.ts`. Zero dependencies. Everything it needs arrives as arguments.
   Both the Phase 0 **rule-based policy** and the Phase 4 **patchbay network**
   implement the `BrainOps<B>` interface and live in `brain.ts` (as
-  `RuleBasedBrain` and `PatchbayBrain`); the tick loop calls `BrainOps.think`
-  without knowing which is behind it, so the Phase 4 swap touches one file.
+  `RuleBasedBrain` and `PatchbayBrain`); the tick loop calls the active brain via
+  `world.config.brainKind` (`'rule' | 'patchbay'`). The brain *representation* is
+  confined to `brain.ts`, but the swap was not literally one file: the rule policy
+  reads a hand-built `RuleContext` and emits `Intents` directly, so wiring the
+  patchbay in also required a **sensor-vector builder** (world → 18 floats) and an
+  **action-vector decoder** (7 floats → the same `Intents`) at the `tick.ts` seam.
+  Both brains then share the identical resolve path.
 - **`worker/`** — `sim.worker.ts` (owns the `World`, runs ticks, autosaves),
   `protocol.ts` (message types, imported by both sides). Never posts the whole
   World — only lean render snapshots (typed arrays) and periodic stats. UI
@@ -456,14 +461,26 @@ loop selects for that operation** — `create` gets `spawn`, `mutate` gets
 `mutation`, `crossover` gets `mating` (matching the RNG discipline). The interface
 takes one stream, not the whole bundle, precisely so an implementation cannot reach
 for the wrong stream; wiring the correct stream is the caller's responsibility and
-is fixed by this contract. `PatchbayBrain` implements it now; `NeatBrain` later. Two instruments, built into
-`stats.ts` from the start, decide when (if ever) to swap:
+is fixed by this contract. `PatchbayBrain` is implemented (Phase 4); `NeatBrain`
+later. Two instruments, in `stats.ts` (`meanEnabled`, and the enlargement run in
+`scripts/experiment-brain-capacity.ts`), decide when (if ever) to swap:
 
 - **Enable density** — track `mean(enabled)` over time. Climbs to 0.9+ and pins →
   evolution wants every arrow. Plateaus ~0.4 → capacity was never the constraint.
 - **The enlargement experiment** — same seed, 10 hidden vs. 20 hidden. World-
   health improves meaningfully → the ceiling binds. Indistinguishable → NEAT buys
-  nothing.
+  nothing. (`HIDDEN` is world-creation geometry — it reshapes the arrow count and the
+  `hidden` vector length — so the experiment runs fresh worlds at each `HIDDEN`; a
+  `HIDDEN=10` save cannot migrate into a `HIDDEN=20` build.)
+
+**Phase 4 verdict (measured, not designed — see `docs/findings/phase-4-brain-
+capacity.md`): keep the patchbay.** Enable density plateaus well below 0.5 (robust
+across seeds) → capacity is not the constraint; the enlargement instrument is
+seed-noisy and inconclusive at short horizons and does not override that. A separate
+**heritability gate** (mean parent↔child expressed-brain distance / mean pairwise
+distance ≤ `HERITABILITY_MAX`) passes, so behavior can accumulate under selection
+despite meiotic resampling of the expressed brain. NEAT stays out of beta, gated on a
+long-horizon re-run of these instruments.
 
 ### The sensor/action ladder — walk in order, do not jump to the top
 
@@ -546,7 +563,7 @@ quantity.
 | 14 | local water | 0..1 | water-field sample (drives `drink` seeking) |
 | 15 | local fertility | 0..1 | fertility-field sample (soil richness) |
 | 16 | scent value at self | 0..1 | emitted-signal field |
-| 17 | scent gradient direction | −1..1 | direction of increasing scent |
+| 17 | scent gradient direction | −1..1 | direction of increasing scent — **fed 0 in v1** (the one reserved sensor deferred per "add sensors slowly"; all other 17 are live) |
 
 **Field sampling at continuous positions uses nearest-cell lookup** (deterministic
 and cheap), not bilinear interpolation. Vision is **nearest-object scalars, not
@@ -1078,10 +1095,14 @@ Allee effect makes small populations spiral.
   findable despite the Allee effect.
 - **Plants:** pre-seeded at moderate density so the first eaters do not starve by
   chance.
-- **Seed brains (Phase 4).** When brains replace rule-based agents, founder brains
-  are **minimal and clumsy** — enough enabled arrows to move toward food and
-  toward mates, nothing more. Everything interesting still evolves from there; a
-  non-random generation zero does not cheapen emergent behavior.
+- **Seed brains (Phase 4, shipped).** Under `brainKind:'patchbay'`, founder brains
+  are **minimal and clumsy** — a small purposeful sub-circuit overlaid on the sparse
+  random base (food/mate angle → a hidden neuron → turn; bias → forward drive; bias →
+  eat/mate gates), enough to forage and seek mates, nothing more. Everything
+  interesting still evolves from there; a non-random generation zero does not cheapen
+  emergent behavior. Under `brainKind:'rule'` the founder template is left as the
+  sparse random base (the rule policy ignores brain arrays), so rule-world founder
+  fingerprints are unchanged.
 - A **pure-noise start** is offered as a config option for those who want to watch
   bootstrapping succeed or fail.
 - Note: in Phases 0–3 agents are rule-based, so the founder-brain decision only
@@ -1182,13 +1203,21 @@ summer adaptation is winter maladaptation — the optimum *moves*).
 
 - `serialize()` / `deserialize()` live in `sim/`, pure and versioned. Autosave,
   download, and headless checkpointing all call the same two functions.
-- **`version: 1` in every snapshot from the first write.**
+- **A `version` in every snapshot from the first write** (started at `1`; **now
+  `2`** — Phase 4 bumped it when the active brain became config-selectable). The v1→v2
+  migration defaults a missing `config.brainKind` to `'rule'`, so a pre-Phase-4 save
+  loads and keeps running the rule policy; the `hidden` vector was already serialized
+  at v1, so an inherited-but-never-exercised brain just starts computing when
+  `brainKind` is switched to `'patchbay'`.
 - **Save-migration policy (overlooked-item fix, decided now):** forward migrations
   live in `serialize.ts` as `migrate_vN_to_vN+1()` functions; `deserialize()`
   detects an older `version` and upgrades in place before use. Old worlds are
   never silently discarded. Every serialized field is individually optional/
   defaulted so a `version: N` reader can load a `version: <N` blob. Seed
   reproducibility is guaranteed *within* a version, not necessarily across.
+  (`deserialize()` also spread-copies mutable per-creature sub-objects like
+  `ruleState`, so two loads of one blob never alias shared state — a determinism
+  bug found and fixed during Phase 4.)
 - **World dimensions, grid resolution, all tunable constants, and the RNG
   sub-stream layout are part of the serialized snapshot**, so a save is
   self-describing.
@@ -1288,7 +1317,7 @@ efficiently.
 | **1 — the instrument** | Headless runner, world-health metrics, sweep script, throwaway ~50-line debug canvas. **Do not proceed until a config oscillates and diversifies for 100k ticks.** |
 | **2 — the window** | Web Worker, real canvas renderer, genome-derived appearance, day/night tint, trails, camera. |
 | **3 — the sandbox** | Inspector, param sliders, spawn/delete/paint, follow-cam, pause/step/speed. **Ship it.** |
-| **4 — brains** | Swap rule-based agents for patchbay networks; compare against the same seed. The headline result. |
+| **4 — brains** ✅ shipped | Config-selectable `PatchbayBrain` (fixed-skeleton forward pass, pinned activation, recurrence); sensor/action seam in `tick.ts`; same-seed A/B vs rule (`scripts/compare.ts`); brain-capacity instruments + verdict (`docs/findings/phase-4-brain-capacity.md`). **Verdict: keep patchbay.** Save format bumped v1→v2. |
 | **5+** | Persistence + catch-up → observability charts → cold open → fields/seasons/terrain depth → speciation charts & lineage tree → Terrarium / Laboratory modes → LLM naturalist. |
 
 ---
@@ -1377,6 +1406,10 @@ These do not block `types.ts` and can be resolved during the relevant phase:
 - Whether to add ray-cast vision, a second signal channel, or a share-energy
   action (each a version bump; deferred to the sensor/action ladder).
 - When (if ever) to swap PatchbayBrain → NeatBrain (gated on the two instruments).
+  **Interim answer (Phase 4): keep the patchbay** — enable density plateaus below 0.5;
+  the enlargement instrument is inconclusive at short horizons. Revisit after a
+  long-horizon (≥50k-tick, multi-seed) re-run. See `docs/findings/phase-4-brain-
+  capacity.md`.
 - Cross-engine determinism: whether to actually pay for it (only if a shared
   leaderboard ships).
 
