@@ -11,7 +11,7 @@
  */
 
 import { recordHistory } from "@sim/history";
-import { serialize } from "@sim/serialize";
+import { deserialize, type SaveBlob, serialize } from "@sim/serialize";
 import { tick } from "@sim/tick";
 import type { Config, World } from "@sim/types";
 import { createWorld } from "@sim/world";
@@ -103,6 +103,19 @@ function init(seed: number, config: Config): void {
   emitFrame();
   emitStats();
   startAutosave();
+}
+
+/**
+ * Load an imported save (Phase 5A.4): replace the live world with the deserialized
+ * blob, repaint. Pure `deserialize` — a malformed blob throws; the main thread
+ * validates the file before sending, so a bad import never reaches here.
+ */
+function loadSave(blob: SaveBlob): void {
+  stop();
+  world = deserialize(blob);
+  recordHistory(world);
+  emitFrame();
+  emitStats();
 }
 
 /**
@@ -238,6 +251,9 @@ self.onmessage = (ev: MessageEvent<Command>): void => {
       break;
     case "init":
       init(cmd.seed, cmd.config);
+      break;
+    case "loadSave":
+      loadSave(cmd.blob);
       break;
     case "play":
       start();

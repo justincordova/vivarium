@@ -163,6 +163,9 @@ export type Command =
   // Autosaver's in-flight flag.
   | { t: "save" }
   | { t: "init"; seed: number; config: Config }
+  // Load a world from an imported save blob (Phase 5A.4 file import) — replaces the
+  // live world with the deserialized one, then repaints.
+  | { t: "loadSave"; blob: SaveBlob }
   | { t: "play" }
   | { t: "pause" }
   | { t: "speed"; ticksPerFrame: number }

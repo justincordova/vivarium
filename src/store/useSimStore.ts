@@ -12,6 +12,7 @@
  */
 
 import { makeConfig } from "@sim/config";
+import type { SaveBlob } from "@sim/serialize";
 import type { Creature, LineageEvent } from "@sim/types";
 import type {
   Command,
@@ -23,6 +24,11 @@ import type {
   StatsPayload,
 } from "@worker/protocol";
 import { create } from "zustand";
+import {
+  exportWorld as exportWorldFile,
+  importWorld as importWorldFile,
+  parseHash,
+} from "../ui/share";
 
 /** Non-reactive latest render frame, written by the worker message handler, read by
  * the canvas rAF loop. Deliberately outside Zustand so frames don't trigger renders. */
@@ -126,12 +132,27 @@ interface SimState {
   setFollow(id: number | null): void;
   setCatchupEnabled(enabled: boolean): void;
   dismissReport(): void;
+  /** Export the current world as a gzipped `.viv.gz` download (Phase 5A.4). */
+  exportWorld(): void;
+  /** Import a `.viv.gz` file, replacing the live world (Phase 5A.4). */
+  importWorld(file: File): Promise<void>;
 }
 
 let worker: Worker | null = null;
 
 function send(cmd: Command): void {
   worker?.postMessage(cmd);
+}
+
+/** Pending export: resolved by the next `snapshot` event with the serialized world. */
+let pendingSnapshot: ((blob: SaveBlob) => void) | null = null;
+
+/** Request the worker's current world snapshot as a `SaveBlob` (one at a time). */
+function requestSnapshot(): Promise<SaveBlob> {
+  return new Promise((resolve) => {
+    pendingSnapshot = resolve;
+    send({ t: "snapshot" });
+  });
 }
 
 export const useSimStore = create<SimState>((set, get) => ({
@@ -219,6 +240,17 @@ export const useSimStore = create<SimState>((set, get) => ({
   dismissReport() {
     set({ report: null });
   },
+  exportWorld() {
+    // Ask the worker for a snapshot, then gzip + download it. Fire-and-forget; the
+    // download is triggered when the snapshot arrives.
+    void requestSnapshot().then((blob) => exportWorldFile(blob));
+  },
+  async importWorld(file) {
+    const blob = await importWorldFile(file);
+    send({ t: "loadSave", blob });
+    // The imported world is detached from any shareable URL (it is a full snapshot).
+    set({ detached: true, inspected: null, followId: null, popHistory: [] });
+  },
 }));
 
 /**
@@ -257,6 +289,13 @@ export function startWorker(): Worker {
       case "creature":
         useSimStore.setState({ inspected: msg.data });
         break;
+      case "snapshot":
+        // Fulfill a pending export request with the serialized world.
+        if (pendingSnapshot !== null) {
+          pendingSnapshot(msg.world);
+          pendingSnapshot = null;
+        }
+        break;
       case "catchupProgress":
         // total 0 ⇒ no catch-up (fresh/same-session world) → no overlay.
         useSimStore.setState({
@@ -282,8 +321,18 @@ export function startWorker(): Worker {
   // Persistence-aware boot: load-or-create + optional offline catch-up. `ready` (not
   // this call) flips the store ready and starts play, so the UI shows the catch-up
   // overlay first when there are owed ticks.
-  const { seed, catchupEnabled } = useSimStore.getState();
-  send({ t: "boot", seed, config: makeConfig({}), catchupEnabled });
+  //
+  // A shareable-URL hash (`#seed=..&mut=..`) overrides the default seed/config for a
+  // fresh reproducible world (Phase 5A.4). A stored autosave still wins on the WORKER
+  // side (loadNewest) — the hash only sets the cold-start parameters if there is no
+  // save. This keeps "reopen finds my world" while still honoring a shared link on a
+  // clean browser.
+  const shared = typeof location !== "undefined" ? parseHash(location.hash) : null;
+  const seed = shared?.seed ?? useSimStore.getState().seed;
+  if (shared !== null) useSimStore.setState({ seed });
+  const config = makeConfig(shared?.tunables ? { tunables: shared.tunables } : {});
+  const { catchupEnabled } = useSimStore.getState();
+  send({ t: "boot", seed, config, catchupEnabled });
 
   // `visibilitychange` is a document (main-thread) event the worker cannot observe;
   // forward it as a `save` so the worker autosaves when the tab is hidden.

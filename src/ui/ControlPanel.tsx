@@ -12,7 +12,8 @@
  */
 
 import { useSimStore } from "@store/useSimStore";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { shareUrl } from "./share";
 
 /** A live-editable tunable: key, label, range, default, and value formatting. */
 interface SliderDef {
@@ -101,7 +102,29 @@ export function ControlPanel(): React.ReactElement {
   const reinit = useSimStore((s) => s.reinit);
   const catchupEnabled = useSimStore((s) => s.catchupEnabled);
   const setCatchupEnabled = useSimStore((s) => s.setCatchupEnabled);
+  const params = useSimStore((s) => s.params);
+  const exportWorld = useSimStore((s) => s.exportWorld);
+  const importWorld = useSimStore((s) => s.importWorld);
   const [open, setOpen] = useState(true);
+  const [copied, setCopied] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const copyShare = (): void => {
+    // The URL encodes the INITIAL config (seed + mutation-rate override) — a fresh
+    // reproducible world, not the current evolved snapshot (that travels by export).
+    const mut = params.MUT_GLOBAL;
+    const url = shareUrl({ seed, tunables: mut !== undefined ? { MUT_GLOBAL: mut } : undefined });
+    void navigator.clipboard?.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
+
+  const onImportFile = (e: React.ChangeEvent<HTMLInputElement>): void => {
+    const file = e.target.files?.[0];
+    if (file) void importWorld(file);
+    e.target.value = ""; // allow re-importing the same file
+  };
 
   const doStep = (n: number): void => {
     if (running) pause();
@@ -198,6 +221,42 @@ export function ControlPanel(): React.ReactElement {
           aria-label="catch up offline"
         />
       </label>
+
+      {/* Share (URL) + export/import (file) — Phase 5A.4. */}
+      <div className="mt-2 flex gap-1 border-t border-neutral-800 pt-2">
+        <button
+          type="button"
+          onClick={copyShare}
+          className="flex-1 rounded bg-neutral-800 px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-700"
+          title="copy a shareable link to this world's initial config"
+        >
+          {copied ? "copied" : "share"}
+        </button>
+        <button
+          type="button"
+          onClick={exportWorld}
+          className="flex-1 rounded bg-neutral-800 px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-700"
+          title="download this evolved world as a .viv.gz file"
+        >
+          export
+        </button>
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          className="flex-1 rounded bg-neutral-800 px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-700"
+          title="load a .viv.gz world file"
+        >
+          import
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".gz,.viv,application/gzip"
+          onChange={onImportFile}
+          className="hidden"
+          aria-label="import world file"
+        />
+      </div>
 
       {open && (
         <div className="mt-2 border-t border-neutral-800 pt-1">
