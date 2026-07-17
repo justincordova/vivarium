@@ -35,7 +35,15 @@ import type {
  * migration is needed — an inherited-but-never-exercised brain simply starts computing
  * once `brainKind` is switched to `'patchbay'`.
  */
-export const SAVE_VERSION = 2;
+/**
+ * v2 → v3 (Phase 5A.3): typed lineage events + stable lineage identity became
+ * serialized runtime state (`lineageRoots`, `lineageEvents`, `dominant`,
+ * `rootPopSnapshots`). A v2 blob predates them; the v2→v3 migration defaults them
+ * (empty map/arrays, null dominant) — the world loads and starts lineage tracking from
+ * reload. No historical events are fabricated (we cannot invent a past we did not
+ * record); the report only narrates events fired from here forward.
+ */
+export const SAVE_VERSION = 3;
 
 /** The serialized snapshot shape (all JSON-able; typed arrays become number[]). */
 export interface SaveBlob {
@@ -51,6 +59,11 @@ export interface SaveBlob {
   fields: SerFields;
   eventLog: { tick: number; event: string }[];
   history: World["history"];
+  /** Phase 5A.3 (v3): serialized lineage identity + typed events + detection state. */
+  lineageRoots?: Record<number, number>;
+  lineageEvents?: World["lineageEvents"];
+  dominant?: World["dominant"];
+  rootPopSnapshots?: World["rootPopSnapshots"];
   lastSavedRealTime: number;
 }
 
@@ -192,6 +205,13 @@ export function serialize(world: World): SaveBlob {
     },
     eventLog: world.eventLog.map((e) => ({ ...e })),
     history: world.history.map((h) => ({ ...h })),
+    lineageRoots: { ...world.lineageRoots },
+    lineageEvents: world.lineageEvents.map((e) => ({ ...e })),
+    dominant: world.dominant === null ? null : { ...world.dominant },
+    rootPopSnapshots: world.rootPopSnapshots.map((s) => ({
+      tick: s.tick,
+      counts: { ...s.counts },
+    })),
     lastSavedRealTime: world.lastSavedRealTime,
   };
 }
@@ -242,12 +262,25 @@ function migrateV1toV2(b: SaveBlob): SaveBlob {
   return { ...b, config, version: 2 };
 }
 
+/** v2 → v3: default the Phase-5A.3 lineage fields (start tracking from reload). */
+function migrateV2toV3(b: SaveBlob): SaveBlob {
+  return {
+    ...b,
+    lineageRoots: b.lineageRoots ?? {},
+    lineageEvents: b.lineageEvents ?? [],
+    dominant: b.dominant ?? null,
+    rootPopSnapshots: b.rootPopSnapshots ?? [],
+    version: 3,
+  };
+}
+
 /** Forward-migration scaffold. Each `migrate_vN_to_vN1` upgrades in place. */
 function migrate(blob: SaveBlob): SaveBlob {
   let b = blob;
   // A blob with no version predates versioning entirely — treat as v1.
   if (b.version === undefined) b = { ...b, version: 1 };
   if (b.version < 2) b = migrateV1toV2(b);
+  if (b.version < 3) b = migrateV2toV3(b);
   return b;
 }
 
@@ -315,6 +348,14 @@ export function deserialize(data: SaveBlob): World {
     rng,
     eventLog: (blob.eventLog ?? []).map((e) => ({ ...e })),
     history: (blob.history ?? []).map((h) => ({ ...h })),
+    // Phase 5A.3 lineage state (migration defaults these for a v2 blob).
+    lineageRoots: { ...(blob.lineageRoots ?? {}) },
+    lineageEvents: (blob.lineageEvents ?? []).map((e) => ({ ...e })),
+    dominant: blob.dominant ?? null,
+    rootPopSnapshots: (blob.rootPopSnapshots ?? []).map((s) => ({
+      tick: s.tick,
+      counts: { ...s.counts },
+    })),
     lastSavedRealTime: blob.lastSavedRealTime ?? 0,
   };
 }

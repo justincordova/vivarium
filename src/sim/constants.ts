@@ -448,6 +448,30 @@ export const HISTORY_DOWNSAMPLE_TICKS = 1000;
 export const HISTORY_SAMPLE_INTERVAL = 100;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Phase 5A.3 — typed lineage events (the "while you were away" report)
+//
+// Read only by `history.ts` on the sampling cadence (outside `tick()`), keyed on the
+// stable founder-lineage-root id. Deterministic (functions of sampled per-root
+// population), so they fire identically live or during offline catch-up.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * A `lineageBoom` fires when a lineage's population ≥ `BOOM_FACTOR`× its value
+ * `BOOM_WINDOW` ticks ago. `BOOM_WINDOW` is measured in ticks (compared against the
+ * retained history samples). (tunable) */
+export const BOOM_WINDOW = 2000;
+export const BOOM_FACTOR = 2;
+/**
+ * A `newDominant` fires when a DIFFERENT lineage becomes the largest by population and
+ * holds the lead for at least this many ticks — a hold requirement so a flapping tie
+ * near parity does not spam events. (tunable) */
+export const DOMINANCE_WINDOW = 1000;
+/**
+ * Ring cap on `world.lineageEvents` — an ancient world keeps only the most recent
+ * events (the report only ever narrates a recent slice). (tunable) */
+export const MAX_LINEAGE_EVENTS = 500;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Phase 1 — sweep ranking (plan Task 1.5)
 //
 // The ranking scalarization's *shape* is pinned (so two implementers build the same

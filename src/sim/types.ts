@@ -244,6 +244,19 @@ export interface SimEvent {
   event: string;
 }
 
+/**
+ * A typed lineage event (Phase 5A.3) — the structured, deterministic drama the
+ * "while you were away" report narrates. Keyed on the STABLE founder-lineage-root id
+ * (`world.lineageRoots`), not a cluster label (labels aren't stable across recomputes)
+ * nor hue (hue drifts). Detected on the history cadence in `history.ts`; serialized so
+ * events fired during offline catch-up survive. Narrated by tick/generation, never
+ * wall-clock (invalid across a catch-up boundary).
+ */
+export type LineageEvent =
+  | { kind: "extinction"; tick: number; lineage: number }
+  | { kind: "lineageBoom"; tick: number; lineage: number; factor: number }
+  | { kind: "newDominant"; tick: number; lineage: number };
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Downsampled history  (SPEC.md §Lineage — part of the v1 schema from the start)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -416,6 +429,32 @@ export interface World {
   eventLog: SimEvent[];
   /** Downsampled long-run history (part of the v1 schema from the start). */
   history: HistorySample[];
+  /**
+   * Cumulative creature-id → founder-lineage-root-id map (Phase 5A.3). A founder
+   * (`parentId === null`) is its own root; anyone else inherits their parent's root.
+   * Never pruned (a dead parent still resolves its children). Serialized so lineage
+   * identity survives catch-up + reload — the stable key the typed events and stats key
+   * on. Populated at founder construction (`world.ts`) and birth (`tick.ts`).
+   */
+  lineageRoots: Record<number, number>;
+  /**
+   * Typed lineage events (Phase 5A.3) — the deterministic drama the report narrates.
+   * A bounded ring (oldest dropped past `MAX_LINEAGE_EVENTS`). Serialized so events
+   * fired during offline catch-up survive to be reported.
+   */
+  lineageEvents: LineageEvent[];
+  /**
+   * Dominance tracker for `newDominant` detection: the currently-dominant lineage root
+   * and the tick it took the lead. `null` until a first dominant is seen. Serialized.
+   */
+  dominant: { lineage: number; sinceTick: number } | null;
+  /**
+   * Bounded ring of recent per-root population snapshots (Phase 5A.3), one per history
+   * sample, covering ≥`BOOM_WINDOW` ticks — the basis for boom/extinction detection
+   * over a window without bloating `history`. Oldest dropped once older than the
+   * window. Serialized (so catch-up detection is continuous across a save boundary).
+   */
+  rootPopSnapshots: { tick: number; counts: Record<number, number> }[];
   /** Wall-clock of last save; attached outside sim/ for catch-up. Not read by tick(). */
   lastSavedRealTime: number;
 }

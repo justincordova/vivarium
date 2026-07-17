@@ -78,6 +78,10 @@ function makeWorld(opts: {
     rng: {} as any,
     eventLog: [],
     history: [],
+    lineageRoots: {},
+    lineageEvents: [],
+    dominant: null,
+    rootPopSnapshots: [],
     lastSavedRealTime: 0,
   };
 }

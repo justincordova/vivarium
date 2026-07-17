@@ -18,7 +18,37 @@
 import * as C from "./constants";
 import { expressTrait, TRAIT_GENES, type TraitGene } from "./genetics";
 import { speciesClusters } from "./stats";
-import type { Creature, HistorySample, World } from "./types";
+import type { Creature, HistorySample, LineageEvent, World } from "./types";
+
+// ── Lineage-root registration (Phase 5A.3) ───────────────────────────────────
+
+/**
+ * Register a creature's founder-lineage root in `world.lineageRoots` (idempotent). A
+ * founder (`parentId === null`) is its own root; anyone else inherits their parent's
+ * root (falling back to self if the parent somehow isn't mapped). Called at founder
+ * construction (`world.ts`) and at each birth (`tick.ts`) — parents are always mapped
+ * before their children exist, so the chain resolves. Deterministic; part of `sim/`.
+ */
+export function registerLineage(world: World, id: number, parentId: number | null): void {
+  if (world.lineageRoots[id] !== undefined) return;
+  if (parentId === null) {
+    world.lineageRoots[id] = id;
+  } else {
+    world.lineageRoots[id] = world.lineageRoots[parentId] ?? id;
+  }
+}
+
+/** Live population per founder-lineage root over the currently-alive creatures. */
+export function populationByRoot(world: World): Map<number, number> {
+  const counts = new Map<number, number>();
+  const cs = world.creatures;
+  for (let i = 0; i < cs.length; i++) {
+    const c = cs[i] as Creature;
+    const root = world.lineageRoots[c.id] ?? c.id;
+    counts.set(root, (counts.get(root) ?? 0) + 1);
+  }
+  return counts;
+}
 
 /** Per-gene population mean + variance of expressed value over the current creatures. */
 function traitMomentsOf(creatures: readonly Creature[]): {
@@ -90,8 +120,108 @@ export function recordHistory(world: World): void {
   if (sample.population === 0 && prev !== undefined && prev.population > 0) {
     world.eventLog.push({ tick: world.tick, event: "extinct" });
   }
+  // Typed lineage events (Phase 5A.3) — detected on this same cadence so they fire
+  // identically live or during offline catch-up (deterministic; no RNG/wall-clock).
+  detectLineageEvents(world);
   world.history.push(sample);
   downsampleOldHistory(world);
+}
+
+// ── Typed lineage-event detection (Phase 5A.3) ───────────────────────────────
+
+/** Push a lineage event, keeping `lineageEvents` a bounded ring. */
+function pushLineageEvent(world: World, ev: LineageEvent): void {
+  world.lineageEvents.push(ev);
+  const overflow = world.lineageEvents.length - C.MAX_LINEAGE_EVENTS;
+  if (overflow > 0) world.lineageEvents.splice(0, overflow);
+}
+
+/**
+ * Detect `extinction` / `lineageBoom` / `newDominant` from per-founder-lineage-root
+ * populations, comparing NOW against the previous snapshot (extinction) and against the
+ * snapshot ~`BOOM_WINDOW` ticks ago (boom). Purely a function of sampled populations,
+ * so deterministic and identical during catch-up. Maintains the serialized
+ * `rootPopSnapshots` ring and the `dominant` tracker.
+ */
+export function detectLineageEvents(world: World): void {
+  const now = populationByRoot(world);
+  const snaps = world.rootPopSnapshots;
+  const prev = snaps[snaps.length - 1];
+
+  // Extinction: a root that was alive at the previous snapshot and is now 0.
+  if (prev !== undefined) {
+    for (const root in prev.counts) {
+      const rootId = Number(root);
+      const before = prev.counts[rootId] ?? 0;
+      if (before > 0 && (now.get(rootId) ?? 0) === 0) {
+        pushLineageEvent(world, { kind: "extinction", tick: world.tick, lineage: rootId });
+      }
+    }
+  }
+
+  // Boom: population ≥ BOOM_FACTOR× its value at the oldest snapshot still within
+  // BOOM_WINDOW ticks (so "boom over the window", not a single-sample blip).
+  const windowStart = world.tick - C.BOOM_WINDOW;
+  let ref: { tick: number; counts: Record<number, number> } | undefined;
+  for (let i = 0; i < snaps.length; i++) {
+    const s = snaps[i] as { tick: number; counts: Record<number, number> };
+    if (s.tick >= windowStart) {
+      ref = s;
+      break;
+    }
+  }
+  if (ref !== undefined) {
+    for (const [rootId, count] of now) {
+      const past = ref.counts[rootId] ?? 0;
+      if (past > 0 && count >= past * C.BOOM_FACTOR) {
+        pushLineageEvent(world, {
+          kind: "lineageBoom",
+          tick: world.tick,
+          lineage: rootId,
+          factor: count / past,
+        });
+      }
+    }
+  }
+
+  // Dominance: the largest root by population (ties broken by ascending id → stable).
+  let leadRoot = -1;
+  let leadCount = 0;
+  // Iterate a sorted key list so the tiebreak is deterministic (Map order is insertion).
+  const roots = Array.from(now.keys()).sort((a, b) => a - b);
+  for (let i = 0; i < roots.length; i++) {
+    const r = roots[i] as number;
+    const c = now.get(r) ?? 0;
+    if (c > leadCount) {
+      leadCount = c;
+      leadRoot = r;
+    }
+  }
+  if (leadRoot !== -1) {
+    if (world.dominant === null || world.dominant.lineage !== leadRoot) {
+      // A new leader took the top spot — start its hold clock (no event yet).
+      world.dominant = { lineage: leadRoot, sinceTick: world.tick };
+    } else {
+      const sinceTick = world.dominant.sinceTick;
+      const alreadyFired = world.lineageEvents.some(
+        (e) => e.kind === "newDominant" && e.lineage === leadRoot && e.tick >= sinceTick,
+      );
+      if (sinceTick <= world.tick - C.DOMINANCE_WINDOW && !alreadyFired) {
+        // Held the lead for DOMINANCE_WINDOW ticks → fire once (guarded against
+        // re-firing for the same uninterrupted reign).
+        pushLineageEvent(world, { kind: "newDominant", tick: world.tick, lineage: leadRoot });
+      }
+    }
+  }
+
+  // Record this snapshot and drop any older than the boom window (keep one extra).
+  snaps.push({ tick: world.tick, counts: Object.fromEntries(now) });
+  while (
+    snaps.length > 1 &&
+    (snaps[0] as { tick: number }).tick < windowStart - C.HISTORY_SAMPLE_INTERVAL
+  ) {
+    snaps.shift();
+  }
 }
 
 /**

@@ -117,19 +117,18 @@ describe("frameTransferables", () => {
 });
 
 describe("populationByLineageRoot", () => {
-  it("founders are their own root; the cumulative map survives parent death", () => {
+  it("founders are their own root; roots trace back through parent death", () => {
     const world = createWorld(1, makeConfig({}));
-    const rootOf = new Map<number, number>();
-    const counts0 = populationByLineageRoot(world, rootOf);
+    const counts0 = populationByLineageRoot(world);
     // Every founder maps to itself → one creature per root at t0.
     const total0 = Object.values(counts0).reduce((a, b) => a + b, 0);
     expect(total0).toBe(world.creatures.length);
     for (const c of world.creatures) {
-      expect(rootOf.get(c.id)).toBe(c.id);
+      expect(world.lineageRoots[c.id]).toBe(c.id);
     }
     // Run: births inherit their parent's root; roots stay bounded by founder count.
     for (let i = 0; i < 300; i++) tick(world);
-    const counts = populationByLineageRoot(world, rootOf);
+    const counts = populationByLineageRoot(world);
     const total = Object.values(counts).reduce((a, b) => a + b, 0);
     expect(total).toBe(world.creatures.length);
     // Never more distinct roots than founders (all lineages trace to a founder).
@@ -155,7 +154,7 @@ describe("buildStats", () => {
   it("assembles world-health + lineage populations + trait bins", () => {
     const world = createWorld(1, makeConfig({}));
     for (let i = 0; i < 120; i++) tick(world);
-    const stats = buildStats(world, new Map());
+    const stats = buildStats(world);
     expect(stats.tick).toBe(world.tick);
     expect(stats.survivalTicks).toBe(world.tick);
     expect(stats.speciesCount).toBeGreaterThanOrEqual(0);

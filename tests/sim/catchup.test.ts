@@ -38,6 +38,10 @@ function fingerprint(w: World): string {
   for (const co of w.corpses) parts.push(`C${co.id}:${co.energy}`);
   parts.push(`H:${w.history.length}:${JSON.stringify(w.history[w.history.length - 1] ?? null)}`);
   parts.push(`E:${w.eventLog.length}`);
+  // Phase 5A.3: lineage roots + typed events must replay bit-identically during catch-up.
+  parts.push(`LR:${JSON.stringify(w.lineageRoots)}`);
+  parts.push(`LE:${JSON.stringify(w.lineageEvents)}`);
+  parts.push(`DOM:${JSON.stringify(w.dominant)}`);
   parts.push(`RNG:${w.rng.mutation.state}:${w.rng.mating.state}:${w.rng.resolve.state}`);
   return parts.join("|");
 }

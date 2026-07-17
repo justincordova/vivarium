@@ -95,6 +95,68 @@ function CatchupOverlay(): React.ReactElement | null {
   );
 }
 
+/**
+ * The "while you were away" report (Phase 5A.3). Shown after a reopen whose offline
+ * catch-up produced lineage drama. Narrated by GENERATION/TICK — never wall-clock,
+ * which is invalid across a catch-up boundary. Grayscale chrome; the report is a
+ * modal-ish panel the visitor dismisses to enter the (already-live) world.
+ */
+function WhileYouWereAwayReport(): React.ReactElement | null {
+  const report = useSimStore((s) => s.report);
+  const dismiss = useSimStore((s) => s.dismissReport);
+  if (report === null) return null;
+
+  // Narrate the most dramatic events (cap the list; extinctions + booms lead).
+  const lines = report.events
+    .slice()
+    .sort((a, b) => a.tick - b.tick)
+    .map((e) => {
+      if (e.kind === "extinction") return `Lineage #${e.lineage} went extinct.`;
+      if (e.kind === "lineageBoom") {
+        return `Lineage #${e.lineage} boomed ${e.factor.toFixed(1)}×.`;
+      }
+      return `Lineage #${e.lineage} became dominant.`;
+    });
+  const shown = lines.slice(-6);
+  const extraCount = lines.length - shown.length;
+
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-[#08080a]/95 backdrop-blur-sm">
+      <div className="w-80 rounded-md border border-neutral-800 bg-neutral-950/90 p-5">
+        <div className="mb-1 text-[10px] uppercase tracking-widest text-neutral-500">
+          while you were away
+        </div>
+        <div className="tabular mb-4 text-lg text-neutral-100">
+          Generation {fmt(report.nowTick)}
+        </div>
+        <ul className="mb-5 space-y-1.5">
+          {shown.map((line, i) => (
+            <li
+              // biome-ignore lint/suspicious/noArrayIndexKey: static narration lines, stable order
+              key={i}
+              className="tabular text-sm text-neutral-300"
+            >
+              {line}
+            </li>
+          ))}
+          {extraCount > 0 && (
+            <li className="text-[11px] uppercase tracking-wider text-neutral-600">
+              + {fmt(extraCount)} more events
+            </li>
+          )}
+        </ul>
+        <button
+          type="button"
+          onClick={dismiss}
+          className="w-full rounded bg-neutral-200 px-2 py-1.5 text-sm text-neutral-950 hover:bg-white"
+        >
+          enter world
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** A subtle, auto-dismissing indicator that an autosave failed (non-fatal). */
 function PersistErrorBadge(): React.ReactElement | null {
   const persistError = useSimStore((s) => s.persistError);
@@ -128,6 +190,7 @@ export function App(): React.ReactElement {
         vivarium · seed {seed}
       </div>
       <CatchupOverlay />
+      <WhileYouWereAwayReport />
     </div>
   );
 }

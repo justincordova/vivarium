@@ -12,7 +12,7 @@
  */
 
 import { makeConfig } from "@sim/config";
-import type { Creature } from "@sim/types";
+import type { Creature, LineageEvent } from "@sim/types";
 import type {
   Command,
   Event,
@@ -47,6 +47,13 @@ export type Tool = "inspect" | "spawn" | "delete" | "paintWaterDown" | "paintWat
 export interface CatchupState {
   done: number;
   total: number;
+}
+
+/** The "while you were away" report (Phase 5A.3): drama that happened during catch-up. */
+export interface Report {
+  sinceTick: number;
+  nowTick: number;
+  events: LineageEvent[];
 }
 
 /** localStorage key for the "replay while I was away" preference. */
@@ -98,6 +105,8 @@ interface SimState {
   catchupEnabled: boolean;
   /** Last non-fatal persistence error (e.g. autosave failed), or null. Surfaced subtly. */
   persistError: string | null;
+  /** The "while you were away" report, shown after a catch-up with drama; null to dismiss. */
+  report: Report | null;
 
   play(): void;
   pause(): void;
@@ -116,6 +125,7 @@ interface SimState {
   setTool(tool: Tool): void;
   setFollow(id: number | null): void;
   setCatchupEnabled(enabled: boolean): void;
+  dismissReport(): void;
 }
 
 let worker: Worker | null = null;
@@ -139,6 +149,7 @@ export const useSimStore = create<SimState>((set, get) => ({
   catchup: null,
   catchupEnabled: readCatchupPref(),
   persistError: null,
+  report: null,
 
   play() {
     send({ t: "play" });
@@ -205,6 +216,9 @@ export const useSimStore = create<SimState>((set, get) => ({
     send({ t: "setCatchup", enabled });
     set({ catchupEnabled: enabled });
   },
+  dismissReport() {
+    set({ report: null });
+  },
 }));
 
 /**
@@ -257,6 +271,11 @@ export function startWorker(): Worker {
         break;
       case "persistError":
         useSimStore.setState({ persistError: msg.reason });
+        break;
+      case "report":
+        useSimStore.setState({
+          report: { sinceTick: msg.sinceTick, nowTick: msg.nowTick, events: msg.events },
+        });
         break;
     }
   };

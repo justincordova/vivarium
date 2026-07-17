@@ -14,7 +14,7 @@
  */
 
 import type { SaveBlob } from "@sim/serialize";
-import type { Config, Creature } from "@sim/types";
+import type { Config, Creature, LineageEvent } from "@sim/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Lean render frame (struct-of-arrays)
@@ -191,4 +191,8 @@ export type Event =
   // `persistError` is a NON-FATAL autosave/storage failure (the world keeps running).
   | { t: "catchupProgress"; done: number; total: number }
   | { t: "ready" }
-  | { t: "persistError"; reason: string };
+  | { t: "persistError"; reason: string }
+  // The "while you were away" report (Phase 5A.3): posted once after a catch-up that
+  // produced lineage events. `sinceTick`/`nowTick` frame the window (narrated by
+  // generation/tick, never wall-clock). Absent ⇒ no report (no catch-up or no drama).
+  | { t: "report"; sinceTick: number; nowTick: number; events: LineageEvent[] };

@@ -29,6 +29,7 @@ import {
   transferUpTo,
 } from "./energy";
 import { crossover, distance, expressTrait, mutate, plantSeed } from "./genetics";
+import { registerLineage } from "./history";
 import { localDensity, SpatialHash, type SpatialPoint } from "./spatial";
 import {
   Action,
@@ -736,6 +737,8 @@ function tryMate(
   world.creatures.push(child);
   world.creatureIds.push(child.id);
   byId.set(child.id, child);
+  // Inherit the parent's founder-lineage root (Phase 5A.3) — the initiating parent `a`.
+  registerLineage(world, child.id, a.id);
   world.eventLog.push({ tick: world.tick, event: `birth:${child.id}` });
 }
 

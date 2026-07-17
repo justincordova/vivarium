@@ -44,7 +44,7 @@ describe("serialize — roundtrip identity", () => {
     const w = createWorld(1, makeConfig({}));
     const blob = serialize(w);
     expect(blob.version).toBe(SAVE_VERSION);
-    expect(blob.version).toBe(2); // Phase 4 bumped v1 → v2 (config-selectable brainKind)
+    expect(blob.version).toBe(3); // v1→v2 brainKind (Phase 4), v2→v3 lineage events (5A.3)
     // Derived cache is absent from the blob; deserialized creatures have no `derived`.
     const round = deserialize(blob);
     for (const c of round.creatures) expect(c.derived).toBeUndefined();
@@ -64,6 +64,36 @@ describe("serialize — v1 → v2 migration (Phase 4 brainKind)", () => {
     const round = deserialize(v1);
     expect(round.config.brainKind).toBe("rule");
     expect(round.creatures.length).toBe(w.creatures.length);
+  });
+
+  it("a v2 save (no lineage fields) migrates to v3 with defaulted lineage state", () => {
+    const w = createWorld(6, makeConfig({}));
+    for (let i = 0; i < 50; i++) tick(w);
+    const blob = serialize(w);
+    // Simulate a v2 blob: strip the Phase-5A.3 fields and set version 2.
+    // biome-ignore lint/suspicious/noExplicitAny: intentionally degrade to a v2 shape
+    const v2 = { ...blob, version: 2 } as any;
+    v2.lineageRoots = undefined;
+    v2.lineageEvents = undefined;
+    v2.dominant = undefined;
+    v2.rootPopSnapshots = undefined;
+
+    const round = deserialize(v2);
+    expect(round.lineageRoots).toEqual({});
+    expect(round.lineageEvents).toEqual([]);
+    expect(round.dominant).toBeNull();
+    expect(round.rootPopSnapshots).toEqual([]);
+    expect(round.creatures.length).toBe(w.creatures.length);
+  });
+
+  it("a v3 roundtrip preserves lineage roots + typed events", () => {
+    const w = createWorld(8, makeConfig({}));
+    // Run long enough to accumulate lineage roots (births) and history samples.
+    for (let i = 0; i < 400; i++) tick(w);
+    const round = deserialize(serialize(w));
+    expect(round.lineageRoots).toEqual(w.lineageRoots);
+    expect(round.lineageEvents).toEqual(w.lineageEvents);
+    expect(round.dominant).toEqual(w.dominant);
   });
 
   it("a migrated v1 save stays deterministic + conservative for N ticks", () => {

@@ -174,33 +174,17 @@ export function frameTransferables(frame: RenderFrame): ArrayBuffer[] {
 }
 
 /**
- * Founder-lineage-root population counts. The map is CUMULATIVE and passed in by the
- * caller (the worker keeps it across ticks): a founder (`parentId === null`) is its
- * own root; any other creature's root is its parent's root. Because parents are
- * recorded before their children ever exist and the map is never pruned, a child's
- * root resolves even after its parent has died. Returns `{ root -> liveCount }` over
- * the currently-alive creatures only.
+ * Founder-lineage-root population counts over the currently-alive creatures. Reads the
+ * single source of truth — `world.lineageRoots` (Phase 5A.3), the serialized cumulative
+ * id→root map populated at founder construction + birth in `sim/`. Returns
+ * `{ root -> liveCount }`.
  */
-export function populationByLineageRoot(
-  world: World,
-  rootOf: Map<number, number>,
-): Record<number, number> {
+export function populationByLineageRoot(world: World): Record<number, number> {
   const cs = world.creatures;
-  for (let i = 0; i < cs.length; i++) {
-    const c = cs[i] as Creature;
-    if (rootOf.has(c.id)) continue;
-    if (c.parentId === null) {
-      rootOf.set(c.id, c.id);
-    } else {
-      const parentRoot = rootOf.get(c.parentId);
-      // Parent existed earlier, so it is mapped; fall back to self if somehow not.
-      rootOf.set(c.id, parentRoot ?? c.id);
-    }
-  }
   const counts: Record<number, number> = {};
   for (let i = 0; i < cs.length; i++) {
     const c = cs[i] as Creature;
-    const root = rootOf.get(c.id) ?? c.id;
+    const root = world.lineageRoots[c.id] ?? c.id;
     counts[root] = (counts[root] ?? 0) + 1;
   }
   return counts;
@@ -233,7 +217,7 @@ export function buildTraitBins(world: World): TraitBins {
 }
 
 /** Assemble the periodic `StatsPayload` (world-health + lineage populations + bins). */
-export function buildStats(world: World, rootOf: Map<number, number>): StatsPayload {
+export function buildStats(world: World): StatsPayload {
   const history: HealthHistory = {
     populationSeries: recentPopulationSeries(world),
     extinctionEvents: countExtinctionEvents(world),
@@ -248,7 +232,7 @@ export function buildStats(world: World, rootOf: Map<number, number>): StatsPayl
     speciesCount: h.speciesCount,
     extinctionEvents: h.extinctionEvents,
     behaviorNovelty: h.behaviorNovelty,
-    population: populationByLineageRoot(world, rootOf),
+    population: populationByLineageRoot(world),
     traits: buildTraitBins(world),
   };
 }

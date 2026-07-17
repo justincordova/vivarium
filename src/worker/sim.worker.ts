@@ -29,8 +29,6 @@ const AUTOSAVE_INTERVAL_MS = 30_000;
 let world: World | null = null;
 let running = false;
 let ticksPerFrame = 1;
-/** Cumulative id→lineage-root map (never pruned) — see frame.populationByLineageRoot. */
-const rootOf = new Map<number, number>();
 /** Handle for the scheduled loop step, so pause/re-init can cancel it. */
 let loopHandle: ReturnType<typeof setTimeout> | null = null;
 
@@ -55,7 +53,7 @@ function emitFrame(): void {
 
 function emitStats(): void {
   if (world === null) return;
-  post({ t: "stats", stats: buildStats(world, rootOf) });
+  post({ t: "stats", stats: buildStats(world) });
 }
 
 /**
@@ -98,7 +96,6 @@ function stop(): void {
 function init(seed: number, config: Config): void {
   stop();
   stopAutosave();
-  rootOf.clear();
   autosaver = new Autosaver(idbStore, null);
   world = createWorld(seed, config);
   recordHistory(world);
@@ -117,7 +114,6 @@ function init(seed: number, config: Config): void {
 async function boot(seed: number, config: Config): Promise<void> {
   stop();
   stopAutosave();
-  rootOf.clear();
 
   let loadedRealTime: number | null = null;
   let loadedMeta: Meta | null = null;
@@ -142,7 +138,9 @@ async function boot(seed: number, config: Config): Promise<void> {
   // rotation begins at slot A).
   autosaver = new Autosaver(idbStore, loadedMeta);
 
-  // Offline catch-up: replay ticks owed since the save, capped, with progress.
+  // Offline catch-up: replay ticks owed since the save, capped, with progress. Capture
+  // the tick BEFORE catch-up so the report can slice the events that fired while away.
+  const bootTick = world.tick;
   if (catchupEnabled && loadedRealTime !== null) {
     const owed = ticksOwed(world, loadedRealTime, Date.now());
     if (owed > 0) {
@@ -159,6 +157,14 @@ async function boot(seed: number, config: Config): Promise<void> {
   emitFrame();
   emitStats();
   post({ t: "ready" });
+
+  // "While you were away" report (Phase 5A.3): the lineage events fired during the
+  // replayed catch-up ticks. No events (or no catch-up) ⇒ no report.
+  const awayEvents = world.lineageEvents.filter((e) => e.tick > bootTick);
+  if (awayEvents.length > 0) {
+    post({ t: "report", sinceTick: bootTick, nowTick: world.tick, events: awayEvents });
+  }
+
   startAutosave();
 }
 

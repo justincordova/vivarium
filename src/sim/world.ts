@@ -18,6 +18,7 @@ import { arrowCount } from "./brain";
 import * as C from "./constants";
 import { cellCompartment, fieldCompartment, transfer } from "./energy";
 import { TRAIT_GENES, TRAIT_RANGE, type TraitGene } from "./genetics";
+import { registerLineage } from "./history";
 import { createRngBundle, gaussian } from "./rng";
 import type {
   Allele,
@@ -274,6 +275,10 @@ export function createWorld(seed: number, config: Config): World {
     rng,
     eventLog: [],
     history: [],
+    lineageRoots: {},
+    lineageEvents: [],
+    dominant: null,
+    rootPopSnapshots: [],
     lastSavedRealTime: 0,
   };
 
@@ -329,6 +334,8 @@ export function createWorld(seed: number, config: Config): World {
 
     world.creatures.push(creature);
     world.creatureIds.push(creature.id);
+    // A founder is its own lineage root (Phase 5A.3).
+    registerLineage(world, creature.id, null);
   }
 
   // Plants: pre-seeded at moderate density, placed from `spawn`; energy from reservoir.
