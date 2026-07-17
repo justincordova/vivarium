@@ -57,8 +57,12 @@ export const MS_PER_TICK = 50;
  * bound, leaving headroom for slower machines):
  * `MAX_OFFLINE_TICKS × ms/tick = 3600 × 5.5 ms ≈ 19.8 s < 20 s`. The rate is
  * grid-resolution-specific (SPEC §Space & Fields — grid resolution is a
- * catch-up-speed knob); this derivation is for 64×64. Serialized, so re-deriving is
- * safe. (bench, Phase 4 Task 4.3b)
+ * catch-up-speed knob); this derivation is for 64×64.
+ *
+ * **Re-measured with seasons ON (Phase 5C.1):** ~5.26 ms/tick at cap — the O(cells)
+ * temperature-field write is negligible against per-creature sensing, so the seasonal
+ * work did NOT move the worst case and the bound stays conservative. Serialized, so
+ * re-deriving is safe. (bench, Phase 4 Task 4.3b + Phase 5C.1)
  */
 export const MAX_OFFLINE_TICKS = 3_600;
 
@@ -343,6 +347,25 @@ export const MAX_HEALTH_PER_ARMOR = 40;
 /** Temperature sensor normalization range (sensor 13). (tunable) */
 export const TEMP_MIN = -10;
 export const TEMP_MAX = 40;
+/**
+ * Seasonal + day/night temperature model (Phase 5C.1; SPEC.md §Space & Fields "Day/night
+ * is selection pressure"). Temperature is a **deterministic pure function of
+ * `world.tick`** (no RNG/wall-clock) and is a non-conserved modulator field, so it never
+ * touches the ledger. Actual temperature at a tick:
+ *   `TEMP_BASELINE + TEMP_SEASON_AMPLITUDE·sin(seasonPhase) − (isNight ? TEMP_NIGHT_DROP : 0)`.
+ * (tunable) */
+export const TEMP_BASELINE = 18;
+export const TEMP_SEASON_AMPLITUDE = 14;
+export const TEMP_NIGHT_DROP = 10;
+/**
+ * Cold-temperature metabolic surcharge (SPEC.md §"Temperature is a cost modulator"):
+ * below `TEMP_COMFORT`, a creature pays extra metabolic energy proportional to the cold
+ * deficit and INVERSELY to `size` (small bodies lose heat faster → cold taxes them more).
+ * Surcharge = `TEMP_COLD_COEF · max(0, TEMP_COMFORT − localTemp) / size`, quantized, routed
+ * to `solarReservoir` as heat (conserved). No new gene — the pressure is felt through the
+ * existing `size` (and `circadian`, via the night drop). (tunable) */
+export const TEMP_COMFORT = 10;
+export const TEMP_COLD_COEF = 0.08;
 /** Light sensor normalization ceiling (sensor 12). (tunable) */
 export const LIGHT_SENSOR_MAX = 100;
 /** Scent sensor normalization ceiling (sensor 16). (tunable) */

@@ -485,6 +485,18 @@ function applyCreature(
   const baseline = toQuantum(1 + size * metabolism * t.METABOLIC_COST_COEF);
   transferUpTo(cEnergy, reservoir, baseline);
 
+  // Cold-temperature metabolic surcharge (Phase 5C.1) → reservoir (heat). Below
+  // TEMP_COMFORT, a creature pays extra INVERSELY to size (small bodies lose heat faster),
+  // so cold cells select for larger size and (via the night drop) diurnal/circadian
+  // adaptation — a real heritable pressure with no new gene. Conserved: creature energy →
+  // solarReservoir, quantized. Temperature is read from the (deterministic) field.
+  const localTemp = world.fields.temperature[cellIndexOf(world.config, c.x, c.y)] as number;
+  const coldDeficit = t.TEMP_COMFORT - localTemp;
+  if (coldDeficit > 0 && size > 0) {
+    const surcharge = toQuantum((coldDeficit * t.TEMP_COLD_COEF) / size);
+    if (surcharge > 0) transferUpTo(cEnergy, reservoir, surcharge);
+  }
+
   // Density surcharge (crowding) → reservoir. Reuses the snapshot hash (start-of-tick
   // positions — consistent with double-buffering) instead of rebuilding per creature.
   const density = localDensity(snap.hash, c.x, c.y, t.DENSITY_RADIUS);
@@ -928,6 +940,13 @@ function resolveFields(world: World, reservoir: Compartment): void {
     }
   }
 
+  // Seasonal + day/night temperature (Phase 5C.1). A DETERMINISTIC pure function of
+  // `world.tick` — a triangle-wave season (NOT `Math.sin`, which isn't bit-identical
+  // cross-engine) plus a night drop. Temperature is a non-conserved modulator field, so
+  // writing it never touches the ledger; it feeds sensor 13 and the cold surcharge.
+  const temp = temperatureAt(world.tick, t);
+  for (let i = 0; i < cells; i++) world.fields.temperature[i] = temp;
+
   // scent field decay (non-conserved modulator).
   for (let i = 0; i < cells; i++) {
     world.fields.scent[i] = (world.fields.scent[i] as number) * 0.9;
@@ -966,6 +985,25 @@ function clamp(v: number, lo: number, hi: number): number {
 }
 function clampSigned(v: number): number {
   return v < -1 ? -1 : v > 1 ? 1 : v;
+}
+
+/**
+ * Deterministic seasonal + day/night temperature at a tick (Phase 5C.1). A TRIANGLE-WAVE
+ * season over `DAYS_PER_SEASON` days (piecewise-linear → cross-engine bit-identical,
+ * unlike `Math.sin`) in `[−amplitude, +amplitude]` around the baseline, minus a night
+ * drop during the dark half of the day. Pure function of `tick` + tunables — no RNG, no
+ * wall-clock. `realTime` never enters this (SPEC.md §Determinism).
+ */
+export function temperatureAt(tick: number, t: Config["tunables"]): number {
+  const seasonTicks = t.TICKS_PER_DAY * t.DAYS_PER_SEASON;
+  // Triangle wave in [0,1) → [-1,1]: rises 0→1 over the first half, falls 1→0 over the
+  // second, mapped so the peak is mid-season (summer) and the trough is season edges.
+  const phase = seasonTicks > 0 ? (tick % seasonTicks) / seasonTicks : 0;
+  const tri = phase < 0.5 ? phase * 2 : 2 - phase * 2; // 0→1→0
+  const season = (tri * 2 - 1) * t.TEMP_SEASON_AMPLITUDE; // [-amp, +amp]
+  const dayPhase = (tick % t.TICKS_PER_DAY) / t.TICKS_PER_DAY;
+  const isNight = dayPhase >= 0.5;
+  return t.TEMP_BASELINE + season - (isNight ? t.TEMP_NIGHT_DROP : 0);
 }
 function clampUnit(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;

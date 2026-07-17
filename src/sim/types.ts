@@ -358,6 +358,11 @@ export interface Tunables {
   MAX_HEALTH_PER_ARMOR: number;
   TEMP_MIN: number;
   TEMP_MAX: number;
+  TEMP_BASELINE: number;
+  TEMP_SEASON_AMPLITUDE: number;
+  TEMP_NIGHT_DROP: number;
+  TEMP_COMFORT: number;
+  TEMP_COLD_COEF: number;
   LIGHT_SENSOR_MAX: number;
   SCENT_SENSOR_MAX: number;
   WATER_CELL_MAX: number;
