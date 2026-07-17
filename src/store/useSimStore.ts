@@ -42,8 +42,21 @@ export interface PopPoint {
   species: number;
 }
 
+/**
+ * One point in the per-lineage population time-series (Phase 5C.2): a tick plus the
+ * live population of each tracked founder-lineage root (keyed by `l<root>`). Sparse —
+ * a lineage absent this tick is simply missing; the chart treats missing as 0.
+ */
+export interface LineagePoint {
+  tick: number;
+  [lineageKey: string]: number;
+}
+
 /** How many stats points the population chart retains (a rolling window). */
 const POP_HISTORY_MAX = 240;
+
+/** How many top lineages the speciation view plots (Phase 5C.2) — keeps it legible. */
+const LINEAGE_PLOT_MAX = 6;
 
 export type Speed = 1 | 2 | 4 | 8;
 
@@ -91,6 +104,10 @@ interface SimState {
   stats: StatsPayload | null;
   /** Rolling population/species time-series for the always-visible charts. */
   popHistory: PopPoint[];
+  /** Rolling per-lineage population time-series (Phase 5C.2 speciation view). */
+  lineageHistory: LineagePoint[];
+  /** The founder-lineage roots to plot (the current largest, by population). */
+  topLineages: number[];
   /** The creature returned by the last `inspect`, or null. */
   inspected: Creature | null;
   /** True once the worker has been created and `init` sent. */
@@ -162,6 +179,8 @@ export const useSimStore = create<SimState>((set, get) => ({
   seed: 1, // the Phase 1 gate seed — the world that oscillates and diversifies
   stats: null,
   popHistory: [],
+  lineageHistory: [],
+  topLineages: [],
   inspected: null,
   ready: false,
   params: {},
@@ -278,12 +297,27 @@ export function startWorker(): Worker {
           species: msg.stats.speciesCount,
         };
         useSimStore.setState((s) => {
-          // A tick going backwards means a re-init happened — reset the series.
+          // A tick going backwards means a re-init/load happened — reset the series.
           const prev = s.popHistory[s.popHistory.length - 1];
-          const base = prev !== undefined && point.tick < prev.tick ? [] : s.popHistory;
+          const reset = prev !== undefined && point.tick < prev.tick;
+          const base = reset ? [] : s.popHistory;
           const next = [...base, point];
           if (next.length > POP_HISTORY_MAX) next.splice(0, next.length - POP_HISTORY_MAX);
-          return { stats: msg.stats, popHistory: next };
+
+          // Per-lineage speciation view (Phase 5C.2): plot the current top lineages by
+          // population. Keeping a stable top-set avoids the legend thrashing every tick.
+          const pop = msg.stats.population;
+          const top = Object.keys(pop)
+            .map(Number)
+            .sort((a, b) => (pop[b] ?? 0) - (pop[a] ?? 0))
+            .slice(0, LINEAGE_PLOT_MAX);
+          const lpoint: LineagePoint = { tick: point.tick };
+          for (const root of top) lpoint[`l${root}`] = pop[root] ?? 0;
+          const lbase = reset ? [] : s.lineageHistory;
+          const lnext = [...lbase, lpoint];
+          if (lnext.length > POP_HISTORY_MAX) lnext.splice(0, lnext.length - POP_HISTORY_MAX);
+
+          return { stats: msg.stats, popHistory: next, lineageHistory: lnext, topLineages: top };
         });
         break;
       }
