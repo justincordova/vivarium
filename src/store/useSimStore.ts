@@ -43,6 +43,32 @@ export type Speed = 1 | 2 | 4 | 8;
 /** The active canvas interaction mode (god-power tools land in Phase 3B). */
 export type Tool = "inspect" | "spawn" | "delete" | "paintWaterDown" | "paintWaterUp";
 
+/** Offline catch-up progress while replaying owed ticks on boot (Phase 5A). */
+export interface CatchupState {
+  done: number;
+  total: number;
+}
+
+/** localStorage key for the "replay while I was away" preference. */
+const CATCHUP_PREF_KEY = "vivarium:catchup";
+
+/** Read the catch-up preference (default ON). Guarded for non-DOM/test contexts. */
+function readCatchupPref(): boolean {
+  try {
+    return localStorage.getItem(CATCHUP_PREF_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+
+function writeCatchupPref(enabled: boolean): void {
+  try {
+    localStorage.setItem(CATCHUP_PREF_KEY, enabled ? "on" : "off");
+  } catch {
+    // Non-DOM / storage-denied context — the pref is best-effort.
+  }
+}
+
 interface SimState {
   running: boolean;
   speed: Speed;
@@ -66,6 +92,12 @@ interface SimState {
   tool: Tool;
   /** Creature id the camera is locked to (follow-cam), or null. */
   followId: number | null;
+  /** Non-null while offline catch-up is replaying owed ticks on boot (drives the overlay). */
+  catchup: CatchupState | null;
+  /** Whether offline catch-up replays owed ticks on reopen (a persisted user pref). */
+  catchupEnabled: boolean;
+  /** Last non-fatal persistence error (e.g. autosave failed), or null. Surfaced subtly. */
+  persistError: string | null;
 
   play(): void;
   pause(): void;
@@ -83,6 +115,7 @@ interface SimState {
   paint(field: PaintField, cell: number, delta: number, brush?: number): void;
   setTool(tool: Tool): void;
   setFollow(id: number | null): void;
+  setCatchupEnabled(enabled: boolean): void;
 }
 
 let worker: Worker | null = null;
@@ -103,6 +136,9 @@ export const useSimStore = create<SimState>((set, get) => ({
   detached: false,
   tool: "inspect",
   followId: null,
+  catchup: null,
+  catchupEnabled: readCatchupPref(),
+  persistError: null,
 
   play() {
     send({ t: "play" });
@@ -164,6 +200,11 @@ export const useSimStore = create<SimState>((set, get) => ({
   setFollow(id) {
     set({ followId: id });
   },
+  setCatchupEnabled(enabled) {
+    writeCatchupPref(enabled);
+    send({ t: "setCatchup", enabled });
+    set({ catchupEnabled: enabled });
+  },
 }));
 
 /**
@@ -202,11 +243,35 @@ export function startWorker(): Worker {
       case "creature":
         useSimStore.setState({ inspected: msg.data });
         break;
-      // `snapshot` / `catchupProgress` are wired in later phases (persistence).
+      case "catchupProgress":
+        // total 0 ⇒ no catch-up (fresh/same-session world) → no overlay.
+        useSimStore.setState({
+          catchup: msg.total > 0 ? { done: msg.done, total: msg.total } : null,
+        });
+        break;
+      case "ready":
+        // Boot (load + any catch-up) complete: dismiss the overlay and auto-play so a
+        // visitor sees a living world immediately.
+        useSimStore.setState({ catchup: null, ready: true });
+        useSimStore.getState().play();
+        break;
+      case "persistError":
+        useSimStore.setState({ persistError: msg.reason });
+        break;
     }
   };
-  const seed = useSimStore.getState().seed;
-  send({ t: "init", seed, config: makeConfig({}) });
-  useSimStore.setState({ ready: true });
+  // Persistence-aware boot: load-or-create + optional offline catch-up. `ready` (not
+  // this call) flips the store ready and starts play, so the UI shows the catch-up
+  // overlay first when there are owed ticks.
+  const { seed, catchupEnabled } = useSimStore.getState();
+  send({ t: "boot", seed, config: makeConfig({}), catchupEnabled });
+
+  // `visibilitychange` is a document (main-thread) event the worker cannot observe;
+  // forward it as a `save` so the worker autosaves when the tab is hidden.
+  if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") send({ t: "save" });
+    });
+  }
   return worker;
 }

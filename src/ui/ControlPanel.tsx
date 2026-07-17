@@ -99,6 +99,8 @@ export function ControlPanel(): React.ReactElement {
   const pause = useSimStore((s) => s.pause);
   const setSeed = useSimStore((s) => s.setSeed);
   const reinit = useSimStore((s) => s.reinit);
+  const catchupEnabled = useSimStore((s) => s.catchupEnabled);
+  const setCatchupEnabled = useSimStore((s) => s.setCatchupEnabled);
   const [open, setOpen] = useState(true);
 
   const doStep = (n: number): void => {
@@ -181,6 +183,21 @@ export function ControlPanel(): React.ReactElement {
           re-init
         </button>
       </div>
+
+      {/* Offline catch-up preference: when on, reopening replays the ticks owed while
+          away; when off, the world resumes at its saved tick (time "paused"). */}
+      <label className="mt-2 flex items-center justify-between border-t border-neutral-800 pt-2">
+        <span className="text-[10px] uppercase tracking-wide text-neutral-500">
+          catch up offline
+        </span>
+        <input
+          type="checkbox"
+          checked={catchupEnabled}
+          onChange={(e) => setCatchupEnabled(e.target.checked)}
+          className="h-3 w-3 cursor-pointer accent-neutral-300"
+          aria-label="catch up offline"
+        />
+      </label>
 
       {open && (
         <div className="mt-2 border-t border-neutral-800 pt-1">

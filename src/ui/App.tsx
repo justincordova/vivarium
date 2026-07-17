@@ -61,12 +61,57 @@ function DetachedBadge(): React.ReactElement | null {
   );
 }
 
+/**
+ * The offline catch-up overlay (Phase 5A). A full-screen grayscale scrim shown only
+ * while the worker replays owed ticks on reopen — the world underneath is hidden until
+ * it has caught up, so the reveal is of the *current* world, not a stale one. Chrome
+ * only: no saturated color (the world is the sole saturated element on screen).
+ */
+function CatchupOverlay(): React.ReactElement | null {
+  const catchup = useSimStore((s) => s.catchup);
+  if (catchup === null) return null;
+  const pct = catchup.total > 0 ? Math.min(1, catchup.done / catchup.total) : 0;
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-[#08080a]/95 backdrop-blur-sm">
+      <div className="w-72 px-2">
+        <div className="mb-3 text-[10px] uppercase tracking-widest text-neutral-500">
+          while you were away
+        </div>
+        <div className="tabular mb-3 text-sm text-neutral-300">
+          catching up · generation {fmt(catchup.done)}
+        </div>
+        {/* Thin grayscale progress rail — the moving number is the real feedback. */}
+        <div className="h-px w-full bg-neutral-800">
+          <div
+            className="h-px bg-neutral-400 transition-[width] duration-150 ease-out"
+            style={{ width: `${(pct * 100).toFixed(1)}%` }}
+          />
+        </div>
+        <div className="tabular mt-2 text-right text-[10px] tracking-wider text-neutral-600">
+          {fmt(catchup.done)} / {fmt(catchup.total)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** A subtle, auto-dismissing indicator that an autosave failed (non-fatal). */
+function PersistErrorBadge(): React.ReactElement | null {
+  const persistError = useSimStore((s) => s.persistError);
+  if (persistError === null) return null;
+  return (
+    <div className="pointer-events-none absolute right-4 top-4 rounded border border-neutral-800 bg-neutral-950/85 px-2 py-1 text-[10px] uppercase tracking-widest text-neutral-500">
+      autosave failed
+    </div>
+  );
+}
+
 export function App(): React.ReactElement {
   const seed = useSimStore((s) => s.seed);
-  // Boot the worker once; auto-play so a visitor sees a living world immediately.
+  // Boot the worker once. Auto-play is driven by the worker's `ready` event (after any
+  // offline catch-up), NOT here — so the catch-up overlay shows first when ticks are owed.
   useEffect(() => {
     startWorker();
-    useSimStore.getState().play();
   }, []);
 
   return (
@@ -78,9 +123,11 @@ export function App(): React.ReactElement {
       <Charts />
       <Inspector />
       <DetachedBadge />
+      <PersistErrorBadge />
       <div className="tabular pointer-events-none absolute bottom-4 right-4 text-[10px] uppercase tracking-widest text-neutral-600">
         vivarium · seed {seed}
       </div>
+      <CatchupOverlay />
     </div>
   );
 }
