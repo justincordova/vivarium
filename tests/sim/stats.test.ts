@@ -2,7 +2,14 @@ import { makeConfig } from "@sim/config";
 import * as C from "@sim/constants";
 import { TRAIT_GENES, TRAIT_RANGE, type TraitGene } from "@sim/genetics";
 import { mulberry32 } from "@sim/rng";
-import { behaviorNovelty, speciesClusters, traitVariance, worldHealth } from "@sim/stats";
+import {
+  behaviorNovelty,
+  heritability,
+  meanEnabled,
+  speciesClusters,
+  traitVariance,
+  worldHealth,
+} from "@sim/stats";
 import type { Creature, Genome, World } from "@sim/types";
 import { createWorld } from "@sim/world";
 import { describe, expect, it } from "vitest";
@@ -208,5 +215,81 @@ describe("worldHealth", () => {
     w.creatures = [creatureAt(0, 0, genomeWith(0))];
     const h = worldHealth(w, { populationSeries: [5, 5, 5, 5], extinctionEvents: 0 });
     expect(h.populationVariance).toBeCloseTo(0, 10);
+  });
+});
+
+// ── meanEnabled (Phase 4 enable-density instrument) ──────────────────────────
+
+describe("meanEnabled", () => {
+  it("all arrows enabled → 1", () => {
+    const g = genomeWith(0); // genomeWith fills both enabled masks with 1
+    expect(meanEnabled([creatureAt(0, 0, g)])).toBeCloseTo(1, 10);
+  });
+
+  it("no arrows enabled → 0", () => {
+    const g = genomeWith(0);
+    g.enabledA = new Uint8Array(C.ARROWS);
+    g.enabledB = new Uint8Array(C.ARROWS);
+    expect(meanEnabled([creatureAt(0, 0, g)])).toBe(0);
+  });
+
+  it("OR-of-homologs: half on A, other half on B → all expressed on", () => {
+    const g = genomeWith(0);
+    const a = new Uint8Array(C.ARROWS);
+    const b = new Uint8Array(C.ARROWS);
+    for (let k = 0; k < C.ARROWS; k++) {
+      if (k % 2 === 0) a[k] = 1;
+      else b[k] = 1;
+    }
+    g.enabledA = a;
+    g.enabledB = b;
+    // Expressed = A | B = all on.
+    expect(meanEnabled([creatureAt(0, 0, g)])).toBeCloseTo(1, 10);
+  });
+
+  it("empty population → 0", () => {
+    expect(meanEnabled([])).toBe(0);
+  });
+});
+
+// ── heritability (Phase 4 heritability gate) ─────────────────────────────────
+
+describe("heritability", () => {
+  it("identical parent+child → parent↔child distance 0, ratio 0", () => {
+    const w = emptyWorld();
+    const g = genomeWith(0);
+    const parent = creatureAt(0, 0, g);
+    const child = creatureAt(1, 1, genomeWith(0));
+    child.parentId = parent.id;
+    // A third, DIFFERENT creature so mean pairwise distance is positive.
+    const other = creatureAt(2, 2, genomeWith(3));
+    w.creatures = [parent, child, other];
+    const her = heritability(w);
+    expect(her.pairs).toBe(1);
+    expect(her.meanParentChild).toBeCloseTo(0, 6);
+    expect(her.ratio).toBeCloseTo(0, 6);
+  });
+
+  it("is deterministic and returns zero for a population with no tracked parents", () => {
+    const w = emptyWorld();
+    w.creatures = [creatureAt(0, 0, genomeWith(0)), creatureAt(1, 1, genomeWith(3))];
+    const a = heritability(w);
+    const b = heritability(w);
+    expect(a).toEqual(b);
+    expect(a.pairs).toBe(0);
+    expect(a.meanParentChild).toBe(0);
+  });
+
+  it("ratio rises when children diverge from parents", () => {
+    const w = emptyWorld();
+    // Parent at fill 0; child noticeably diverged; a spread of others for the baseline.
+    const parent = creatureAt(0, 0, genomeWith(0));
+    const child = creatureAt(1, 1, genomeWith(1));
+    child.parentId = parent.id;
+    const others = [creatureAt(2, 2, genomeWith(0)), creatureAt(3, 3, genomeWith(0.2))];
+    w.creatures = [parent, child, ...others];
+    const her = heritability(w);
+    expect(her.meanParentChild).toBeGreaterThan(0);
+    expect(her.ratio).toBeGreaterThan(0);
   });
 });

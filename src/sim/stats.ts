@@ -16,6 +16,7 @@
  * Part of `sim/`: imports only sibling `sim/` modules.
  */
 
+import { derive } from "./brain";
 import { distance, expressTrait, TRAIT_GENES, TRAIT_RANGE, type TraitGene } from "./genetics";
 import { SpatialHash, type SpatialPoint } from "./spatial";
 import type { Creature, World } from "./types";
@@ -313,6 +314,100 @@ function variance(xs: readonly number[]): number {
     s += d * d;
   }
   return s / xs.length;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 4 — brain-capacity instruments (read only outside tick(), plan Task 4.3/4.4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Mean expressed enable density over the population — `mean over creatures of
+ * (fraction of expressed/OR-ed arrows that are enabled)` (SPEC.md §"Why not NEAT" —
+ * the enable-density instrument). Climbs to 0.9+ and pins → evolution wants every
+ * arrow (the patchbay ceiling binds); plateaus ~0.4 → capacity was never the
+ * constraint. Uses the OR-ed expressed mask (`derive`), matching what the forward
+ * pass actually runs. Empty population → 0.
+ */
+export function meanEnabled(creatures: readonly Creature[]): number {
+  const n = creatures.length;
+  if (n === 0) return 0;
+  let sumFrac = 0;
+  for (let i = 0; i < n; i++) {
+    const { enabled } = derive((creatures[i] as Creature).genome);
+    let on = 0;
+    for (let k = 0; k < enabled.length; k++) on += enabled[k] as number;
+    sumFrac += enabled.length > 0 ? on / enabled.length : 0;
+  }
+  return sumFrac / n;
+}
+
+/** The heritability instrument result (plan Task 4.3). */
+export interface HeritabilityResult {
+  /** Mean parent↔child expressed-brain distance over living children with a living parent. */
+  meanParentChild: number;
+  /** Mean pairwise expressed-brain distance over a deterministic subsample. */
+  meanPairwise: number;
+  /** `meanParentChild / meanPairwise` — the gated ratio (0 when undefined). */
+  ratio: number;
+  /** Number of parent↔child pairs measured. */
+  pairs: number;
+}
+
+/**
+ * Brain heritability (plan Task 4.3 — the strongest remaining project risk, so it
+ * gets a measured gate). Because expression is mean-of-alleles but inheritance is
+ * meiotic per-arrow segregation, a child inherits a *resampled* expressed brain; if
+ * the parent↔child expressed-brain distance is large relative to the population's
+ * mean pairwise distance, selection fights inheritance noise and behavior cannot
+ * reliably accumulate.
+ *
+ * `meanParentChild` averages `distance(child.genome, parent.genome)` over every
+ * living child whose `parentId` is a living creature (the initiating parent recorded
+ * at birth — the other parent is not tracked, so this is a lower bound on true
+ * mid-parent distance, which is the conservative direction for a risk gate).
+ * `meanPairwise` averages `distance` over a deterministic ascending-id subsample of
+ * up to `NOVELTY_SAMPLE` creatures. Pure; reads `world.config.tunables`. Read only by
+ * `scripts/compare.ts`, never by `tick()`.
+ */
+export function heritability(world: World): HeritabilityResult {
+  const t = world.config.tunables;
+  const creatures = world.creatures;
+  const n = creatures.length;
+  if (n < 2) return { meanParentChild: 0, meanPairwise: 0, ratio: 0, pairs: 0 };
+
+  const byId = new Map<number, Creature>();
+  for (let i = 0; i < n; i++) {
+    const c = creatures[i] as Creature;
+    byId.set(c.id, c);
+  }
+
+  // Parent↔child: iterate children in ascending array order (deterministic).
+  let pcSum = 0;
+  let pcPairs = 0;
+  for (let i = 0; i < n; i++) {
+    const child = creatures[i] as Creature;
+    if (child.parentId === null) continue;
+    const parent = byId.get(child.parentId);
+    if (parent === undefined) continue;
+    pcSum += distance(child.genome, parent.genome, t);
+    pcPairs++;
+  }
+  const meanParentChild = pcPairs > 0 ? pcSum / pcPairs : 0;
+
+  // Population mean pairwise over a deterministic ascending-id subsample.
+  const sorted = creatures.slice().sort((a, b) => a.id - b.id);
+  const sampleN = Math.min(n, t.NOVELTY_SAMPLE);
+  let pwSum = 0;
+  let pwPairs = 0;
+  for (let a = 0; a < sampleN; a++) {
+    for (let b = a + 1; b < sampleN; b++) {
+      pwSum += distance((sorted[a] as Creature).genome, (sorted[b] as Creature).genome, t);
+      pwPairs++;
+    }
+  }
+  const meanPairwise = pwPairs > 0 ? pwSum / pwPairs : 0;
+  const ratio = meanPairwise > 0 ? meanParentChild / meanPairwise : 0;
+  return { meanParentChild, meanPairwise, ratio, pairs: pcPairs };
 }
 
 /**

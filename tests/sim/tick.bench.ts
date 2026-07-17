@@ -35,9 +35,28 @@ import { bench, describe } from "vitest";
  * capacity band (~100 creatures) and plants reach realistic density, so the bench
  * measures the true per-creature cost rather than the sparse founder state.
  */
-function warmWorld(): World {
-  const world = createWorld(1, makeConfig({}));
+function warmWorld(brainKind: "rule" | "patchbay" = "rule"): World {
+  const world = createWorld(1, makeConfig({ brainKind }));
   for (let i = 0; i < 600; i++) {
+    tick(world);
+    recordHistory(world);
+  }
+  return world;
+}
+
+/**
+ * An EVOLVED, high-enable-density patchbay world (plan Task 4.3b). Enable density
+ * climbs over evolutionary time, and the masked-accumulation cost scales with it, so
+ * the worst-case `MAX_OFFLINE_TICKS` promise must be derived from an evolved world,
+ * not fresh founders. Grown with an elevated `ENABLE_ON_RATE` so `mean(enabled)`
+ * reaches a high level within a benchable horizon (a proxy for a gen-2000+ snapshot).
+ */
+function evolvedPatchbayWorld(): World {
+  const world = createWorld(
+    1,
+    makeConfig({ brainKind: "patchbay", tunables: { ENABLE_ON_RATE: 0.05, ENABLE_OFF_RATE: 0 } }),
+  );
+  for (let i = 0; i < 2000; i++) {
     tick(world);
     recordHistory(world);
   }
@@ -48,8 +67,20 @@ describe("tick loop", () => {
   // A fresh warmed world; `tick` mutates it, so each iteration advances one tick
   // from steady state — representative of the sustained hot path.
   const world = warmWorld();
-  bench("tick(world) at steady-state population", () => {
+  bench("tick(world) at steady-state population (rule)", () => {
     tick(world);
+  });
+
+  // Patchbay steady-state: the 350-arrow forward pass replaces the rule policy.
+  const patchWorld = warmWorld("patchbay");
+  bench("tick(world) at steady-state population (patchbay)", () => {
+    tick(patchWorld);
+  });
+
+  // Worst-case: evolved, high-enable-density patchbay world (Task 4.3b derivation).
+  const evolved = evolvedPatchbayWorld();
+  bench("tick(world) evolved high-enable patchbay (worst case)", () => {
+    tick(evolved);
   });
 });
 

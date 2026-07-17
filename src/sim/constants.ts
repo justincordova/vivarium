@@ -40,13 +40,25 @@ export const MS_PER_TICK = 50;
  * (SPEC.md §Offline Catch-up). Catch-up is compute-bound: it calls `tick()` N times
  * as fast as possible.
  *
- * **PROVISIONAL (Phase 1 Task 1.4); MUST be re-derived after Phase 4.** The measured
- * rate is ~5.5 ms/tick under the *rule* policy (`tick.bench.ts`, after the
- * hungry-wander exploration fix). Documented inequality:
- * `MAX_OFFLINE_TICKS × ms/tick = 3600 × 5.5 ms ≈ 19.8 s < 20 s`. The Phase-4
- * 350-arrow `PatchbayBrain.think` is far heavier than the rule policy, so this rate
- * over-estimates post-brain throughput and this ceiling must drop after that swap or
- * the 20 s guarantee breaks. Serialized, so re-deriving is safe. (bench)
+ * **Re-derived at Phase 4 Task 4.3b (grid 64×64).** Measured rates (`tick.bench.ts`
+ * + direct timing, this machine):
+ *   - rule steady-state at cap (~120 pop):        ~4.8–5.5 ms/tick  ← WORST CASE
+ *   - patchbay steady-state (~50 pop):            ~3.9 ms/tick
+ *   - evolved high-enable patchbay (mean(enabled)≈0.27, ~30 pop): ~1.2–4.2 ms/tick
+ *
+ * **Finding:** the 350-arrow forward pass is NOT the dominant cost — per-tick cost is
+ * dominated by the per-creature spatial-hash sensing that BOTH brains pay, so it
+ * scales with **population**, not enable density. Patchbay worlds run smaller
+ * populations and tick no slower than the rule policy; enable density climbing to 0.27
+ * did not make the worst case. The worst realistic tick is therefore still the
+ * high-population rule/patchbay world near `CREATURE_CAP`, at ≤ ~5.5 ms/tick.
+ *
+ * Documented inequality (kept conservative — the measured worst is faster than the
+ * bound, leaving headroom for slower machines):
+ * `MAX_OFFLINE_TICKS × ms/tick = 3600 × 5.5 ms ≈ 19.8 s < 20 s`. The rate is
+ * grid-resolution-specific (SPEC §Space & Fields — grid resolution is a
+ * catch-up-speed knob); this derivation is for 64×64. Serialized, so re-deriving is
+ * safe. (bench, Phase 4 Task 4.3b)
  */
 export const MAX_OFFLINE_TICKS = 3_600;
 
@@ -82,6 +94,18 @@ export const ACTIONS = 7;
 export const ARROWS = 350;
 /** Fraction of arrows enabled in a newborn — sparse start (SPEC.md §"Newborns are sparse"). (tunable) */
 export const NEWBORN_ENABLE_FRAC = 0.15;
+/**
+ * Phase 4 heritability gate (plan Task 4.3). Because brain *expression* is
+ * mean-of-alleles but *inheritance* is meiotic per-arrow segregation, a child
+ * inherits a resampled expressed brain — injecting per-generation phenotypic variance
+ * from inheritance alone. The heritability metric is
+ * `mean(parent↔child expressed-brain distance) / mean(population pairwise expressed-
+ * brain distance)`. If that ratio exceeds this threshold — a child more than
+ * ~half-as-far from its parents as two random creatures are from each other — behavior
+ * cannot reliably accumulate under selection, and the deferred per-locus linkage
+ * version-bump moves in-scope. This is a decision gate, not a live tick input (read
+ * only by `scripts/compare.ts`). (analysis threshold) */
+export const HERITABILITY_MAX = 0.5;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Activation function (pinned)  (SPEC.md §"Activation function (pinned)")
