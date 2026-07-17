@@ -1,6 +1,9 @@
 # Vivarium — Evolutionary Ecosystem Simulator
 
-> **Status:** Pre-implementation specification. No application code written yet.
+> **Status:** Phases 0–5C shipped; the **beta definition-of-done is met** (persist +
+> offline catch-up + "while you were away" report). This spec is the source of truth
+> for the rules; where the shipped code refined a decision, the relevant section notes
+> it. Post-beta modes (Terrarium/Laboratory, LLM naturalist) remain deferred (§Non-Goals).
 > **Purpose:** Fully pin the simulation rules — sensors, actions, parameters and
 > their costs, removal conditions, plant lifecycle, energy return, contest
 > resolution, initial conditions, tick semantics and units — before any code
@@ -1204,11 +1207,15 @@ summer adaptation is winter maladaptation — the optimum *moves*).
 - `serialize()` / `deserialize()` live in `sim/`, pure and versioned. Autosave,
   download, and headless checkpointing all call the same two functions.
 - **A `version` in every snapshot from the first write** (started at `1`; **now
-  `2`** — Phase 4 bumped it when the active brain became config-selectable). The v1→v2
-  migration defaults a missing `config.brainKind` to `'rule'`, so a pre-Phase-4 save
-  loads and keeps running the rule policy; the `hidden` vector was already serialized
-  at v1, so an inherited-but-never-exercised brain just starts computing when
-  `brainKind` is switched to `'patchbay'`.
+  `3`**). v1→v2 (Phase 4) defaults a missing `config.brainKind` to `'rule'` so a
+  pre-brain save keeps running the rule policy; v2→v3 (Phase 5A.3) defaults the
+  lineage-identity + typed-event fields (`lineageRoots`, `lineageEvents`, `dominant`,
+  `rootPopSnapshots`) so an older save loads and simply starts lineage tracking from
+  reload (no fabricated history). Rotating-slot autosave + offline catch-up are live:
+  the worker autosaves to IndexedDB (`world:a`/`world:b` + `meta`, write-older-then-flip)
+  on a ~30 s wall-clock timer and on tab-hide; on reopen it replays the ticks owed since
+  the save (capped at `MAX_OFFLINE_TICKS`) using the same `tick()` — bit-identical to
+  live ticks (`tests/sim/catchup.test.ts`).
 - **Save-migration policy (overlooked-item fix, decided now):** forward migrations
   live in `serialize.ts` as `migrate_vN_to_vN+1()` functions; `deserialize()`
   detects an older `version` and upgrades in place before use. Old worlds are
@@ -1318,7 +1325,8 @@ efficiently.
 | **2 — the window** | Web Worker, real canvas renderer, genome-derived appearance, day/night tint, trails, camera. |
 | **3 — the sandbox** | Inspector, param sliders, spawn/delete/paint, follow-cam, pause/step/speed. **Ship it.** |
 | **4 — brains** ✅ shipped | Config-selectable `PatchbayBrain` (fixed-skeleton forward pass, pinned activation, recurrence); sensor/action seam in `tick.ts`; same-seed A/B vs rule (`scripts/compare.ts`); brain-capacity instruments + verdict (`docs/findings/phase-4-brain-capacity.md`). **Verdict: keep patchbay.** Save format bumped v1→v2. |
-| **5+** | Persistence + catch-up → observability charts → cold open → fields/seasons/terrain depth → speciation charts & lineage tree → Terrarium / Laboratory modes → LLM naturalist. |
+| **5A–5C** ✅ shipped | Persistence (IndexedDB rotating slots) + offline catch-up + "while you were away" report → shareable URL + gzip export/import → observability (timeline scrubber, lineage-population speciation view) + pre-evolved cold open → seasonal/day-night temperature (a cold metabolic surcharge selecting through `size`). **Beta DoD met.** |
+| **5D+** (post-beta) | Terrarium / Laboratory modes → LLM naturalist → hall-of-fame backend. Deferred (§Non-Goals); gated on demand. |
 
 ---
 

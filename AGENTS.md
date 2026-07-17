@@ -5,16 +5,27 @@ world of agents with evolved brains that live, compete, reproduce, and speciate.
 TypeScript + Vite + React (chrome only) + a Web Worker running a pure, deterministic
 simulation. The interesting artifact is emergent behavior, not the code.
 
-**Status:** early execution. Phase 0 (pure `sim/` core) is being built now; no UI,
-worker, or renderer yet. Global conventions (git format, planning workflow) come from
-the root `~/agent/AGENTS.md` and are not repeated here.
+**Status:** Phases 0–5C shipped. The **beta definition-of-done is met** (persist +
+offline catch-up + "while you were away" report; brains swapped in at Phase 4;
+sandbox, renderer, observability, cold open, seasons all live). Post-beta modes
+(Terrarium/Laboratory, 5D) are deferred per SPEC §Non-Goals. Global conventions (git
+format, planning workflow) come from the root `~/agent/AGENTS.md` and are not repeated
+here.
 
 ## Repo layout
 
 - `src/sim/` — the pure simulation (see purity rule below)
-- `docs/` — SPEC.md, plans, VERSIONING.md
+- `src/worker/` — owns the `World`, runs ticks, persistence (`persistence.ts`
+  IndexedDB rotating slots), offline catch-up (`catchup.ts`), the render/stats frame
+  builders (`frame.ts`), and the worker↔main protocol (`protocol.ts`)
+- `src/render/` — pure canvas renderer (a function of a frame snapshot)
+- `src/ui/` — React chrome (charts, timeline, inspector, controls, `share.ts` URL/file)
+- `src/store/` — the Zustand store + worker handle (`useSimStore.ts`)
+- `docs/` — SPEC.md, plans, VERSIONING.md, `findings/`, `designs/`
+- `public/` — `cold-open.viv.gz` (the pre-evolved first-visit snapshot asset)
 - `assets/` — brand mark
-- `tests/`, `scripts/` — populated per phase (empty scaffold now)
+- `tests/`, `scripts/` — `scripts/` has the headless runner, sweep, A/B compare,
+  brain-capacity experiment, and cold-open generator
 
 ## Commands
 
@@ -35,6 +46,8 @@ committing.** (lefthook runs `biome check` on staged files automatically.)
 | Property tests | fast-check — most sim tests are invariants over random inputs |
 | Lint/format | Biome 2.x, `indentStyle: space`. `noRestrictedImports`/`noRestrictedGlobals` scoped to `src/sim/**` enforce purity |
 | Package manager | pnpm 11 — build-script approvals live in `pnpm-workspace.yaml` `allowBuilds:` |
+| UI | React 19 (chrome only) + Zustand store; Recharts for charts; Tailwind 4 |
+| Persistence | `idb-keyval` (IndexedDB, worker-side); gzip export via `CompressionStream` |
 
 ## Key architectural patterns
 
@@ -65,7 +78,17 @@ committing.** (lefthook runs `biome check` on staged files automatically.)
   brain-weights pair is a cache and is NOT serialized (re-derived on load). Do not
   confuse them.
 - **`realTime` never lives in `sim/`** — it's non-deterministic wall-clock; the
-  worker attaches it outside the sim. The `sim/` event log is `{tick, event}` only.
+  worker attaches it outside the sim. The `sim/` event log is `{tick, event}` only;
+  typed `lineageEvents` (extinction/boom/dominance) are detected on the history
+  cadence and narrated by tick/generation, never wall-clock.
+- **Save format is `version: 3`** with a forward-migration chain in `serialize.ts`
+  (v1→v2 added `brainKind`; v2→v3 added lineage identity/events). A `version: N` reader
+  loads any `version: <N` blob (every field optional/defaulted). Bump + migrate on any
+  breaking schema change; never tie the save integer to a git tag.
+- **Offline catch-up must be bit-identical to live ticks** — it calls the same
+  `tick()`+`recordHistory()`, stripping only observation (no frame/stats emission).
+  `tests/sim/catchup.test.ts` is the guard; never sneak a side effect into a
+  catch-up-only path.
 - **pnpm 11 + lefthook:** if scripts loop on `runDepsStatusCheck`, the lefthook
   build is unapproved — set `allowBuilds: {lefthook: true}` in `pnpm-workspace.yaml`
   and reinstall.
@@ -75,7 +98,8 @@ committing.** (lefthook runs `biome check` on staged files automatically.)
 - **`docs/SPEC.md`** — the full simulation specification (source of truth). Read the
   relevant section before implementing; it preserves the *reasoning*, not just the
   decision.
-- **`docs/plans/phase-N-plan.md`** — the current execution plan. Phase 0 is the pure
-  core; later phases are gated on empirical results and planned just-in-time.
+- **`docs/plans/phase-N-plan.md`** — the per-phase execution plans (0–5 shipped).
+  **`docs/findings/`** records empirical verdicts (e.g. the Phase 4 keep-patchbay
+  decision). Post-beta modes (5D) remain planned-but-deferred.
 - **`docs/VERSIONING.md`** — the three version tracks (commits, `v0.x.0` milestone
   tags per phase gate, and the serialized save-format integer).

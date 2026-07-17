@@ -1,7 +1,7 @@
 /**
  * persistence.ts — crash-safe rotating-slot autosave/restore over IndexedDB.
  *
- * The worker owns the World, so it owns persistence (design: phase-5a-persistence).
+ * The worker owns the World, so it owns persistence (SPEC.md §Persistence & Save Format).
  * This module is the storage plumbing only: it (de)serializes via the pure Phase-0.9
  * `serialize`/`deserialize` and reads/writes a key-value store. It imports NO DOM
  * lifecycle (the worker wires the ~30s timer + `visibilitychange`) and nothing from
