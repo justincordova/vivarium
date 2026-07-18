@@ -196,8 +196,13 @@ function main(): void {
   // threshold — the patchbay is the brain that actually runs the forward pass, so its
   // inheritance noise is the one that matters for "behavior accumulates".
   const ratio = patch.summary.heritabilityRatio;
-  const gate =
-    ratio <= HERITABILITY_MAX
+  // Gate on survival FIRST: `heritability()` returns ratio 0 for an extinct (or
+  // pair-less) world, and `0 <= HERITABILITY_MAX` would otherwise print a misleading
+  // "PASS" for a collapsed run — the most favorable-looking verdict for the worst outcome.
+  // A dead world has undefined heritability, so report N/A rather than PASS.
+  const gate = !patch.summary.survived
+    ? `N/A (patchbay went extinct at tick ${patch.summary.finalTick} — heritability undefined)`
+    : ratio <= HERITABILITY_MAX
       ? `PASS (patchbay heritability ${fmt(ratio)} <= ${HERITABILITY_MAX})`
       : `FAIL (patchbay heritability ${fmt(ratio)} > ${HERITABILITY_MAX} — per-locus linkage moves in-scope)`;
   process.stdout.write(`# heritability gate: ${gate}\n`);

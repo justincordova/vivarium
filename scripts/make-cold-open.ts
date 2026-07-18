@@ -43,6 +43,14 @@ function parseArgs(argv: string[]): Args {
     else if (a === "--out") args.out = next();
     else throw new Error(`unknown argument: ${a}`);
   }
+  // Validate: this script's output is a SHIPPED asset (public/cold-open.viv.gz). A
+  // malformed `--ticks` (e.g. "20k" → NaN) would make the tick loop run zero iterations
+  // and silently ship a tick-0 founder snapshot — the exact opposite of a pre-evolved
+  // cold open. Fail loudly instead (mirrors headless.ts / compare.ts arg validation).
+  if (!Number.isFinite(args.seed)) throw new Error("--seed must be a finite number");
+  if (!Number.isInteger(args.ticks) || args.ticks <= 0) {
+    throw new Error("--ticks must be a positive integer");
+  }
   return args;
 }
 

@@ -130,8 +130,13 @@ function main(): void {
   const p10 = proxy(h10);
   const p20 = proxy(h20);
   const rel = p10 > 0 ? (p20 - p10) / p10 : 0;
-  const enlargeVerdict =
-    Math.abs(rel) < 0.1
+  // Both worlds must be viable for the enlargement proxy to mean anything: if either
+  // collapsed, `proxy` is ~0 and `rel` forces to 0 → "INDISTINGUISHABLE/KEEP PATCHBAY",
+  // which would silently pass the most-favorable verdict for two DEAD worlds. Guard it.
+  const bothViable = base.world.creatures.length > 0 && big.world.creatures.length > 0;
+  const enlargeVerdict = !bothViable
+    ? "UNDEFINED (a world went extinct — enlargement proxy not meaningful; pick another seed)"
+    : Math.abs(rel) < 0.1
       ? `INDISTINGUISHABLE (health proxy Δ=${fmt(rel * 100)}% — NEAT buys nothing)`
       : rel > 0
         ? `CEILING BINDS (HIDDEN=20 improves health proxy by ${fmt(rel * 100)}%)`
@@ -140,7 +145,9 @@ function main(): void {
   process.stdout.write(`# enlargement verdict: ${enlargeVerdict}\n`);
 
   // ── Combined verdict ──
-  const keepPatchbay = finalEnable < 0.9 && rel < 0.1;
+  // Only assert "keep patchbay" when both worlds were viable; a non-viable run can't
+  // support either instrument's conclusion.
+  const keepPatchbay = bothViable && finalEnable < 0.9 && rel < 0.1;
   process.stdout.write(
     `# COMBINED VERDICT: ${keepPatchbay ? "KEEP PATCHBAY (neither instrument says the ceiling binds)" : "CONSIDER NEAT (an instrument indicates the ceiling binds — see above)"}\n`,
   );
