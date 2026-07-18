@@ -351,8 +351,11 @@ export const TEMP_MAX = 40;
  * Seasonal + day/night temperature model (Phase 5C.1; SPEC.md §Space & Fields "Day/night
  * is selection pressure"). Temperature is a **deterministic pure function of
  * `world.tick`** (no RNG/wall-clock) and is a non-conserved modulator field, so it never
- * touches the ledger. Actual temperature at a tick:
- *   `TEMP_BASELINE + TEMP_SEASON_AMPLITUDE·sin(seasonPhase) − (isNight ? TEMP_NIGHT_DROP : 0)`.
+ * touches the ledger. The seasonal cycle is a **triangle wave** (see `temperatureAt` in
+ * tick.ts), NOT `Math.sin` — sin is not bit-identical across JS engines and would break
+ * cross-engine determinism. Actual temperature at a tick:
+ *   `TEMP_BASELINE + TEMP_SEASON_AMPLITUDE·triangle(seasonPhase) − (isNight ? TEMP_NIGHT_DROP : 0)`,
+ * where `triangle` ramps linearly from −1→+1→−1 over the season.
  * (tunable) */
 export const TEMP_BASELINE = 18;
 export const TEMP_SEASON_AMPLITUDE = 14;

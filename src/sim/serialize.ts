@@ -286,7 +286,11 @@ function migrate(blob: SaveBlob): SaveBlob {
 
 export function deserialize(data: SaveBlob): World {
   const blob = migrate(data);
-  const config = blob.config;
+  // Deep-copy `config` so two `deserialize` calls on one blob never alias it. Nested
+  // `tunables` is mutated in place by god-powers (worker `setParam`), so a shared
+  // reference would cross-corrupt two worlds loaded from the same blob — the same
+  // class of aliasing bug the `ruleState` spread-copy below guards against.
+  const config = structuredClone(blob.config);
   const hidden = config.hidden;
 
   const creatures: Creature[] = (blob.creatures ?? []).map((c) => ({
@@ -351,7 +355,9 @@ export function deserialize(data: SaveBlob): World {
     // Phase 5A.3 lineage state (migration defaults these for a v2 blob).
     lineageRoots: { ...(blob.lineageRoots ?? {}) },
     lineageEvents: (blob.lineageEvents ?? []).map((e) => ({ ...e })),
-    dominant: blob.dominant ?? null,
+    // Spread-copy (not a bare reference) to keep the "two loads never share mutable
+    // state" invariant uniform, independent of whether a downstream mutates in place.
+    dominant: blob.dominant ? { ...blob.dominant } : null,
     rootPopSnapshots: (blob.rootPopSnapshots ?? []).map((s) => ({
       tick: s.tick,
       counts: { ...s.counts },

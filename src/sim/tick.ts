@@ -216,7 +216,9 @@ function senseContext(
   let mateInReach = false;
   let mateInReachFull = false;
   if (mate !== null) {
-    const mateCreature = snap.creatures.find((o) => o.id === mate.id);
+    // O(1) via the snapshot's id index (same object as a linear `find`), off the
+    // O(N²) mate-sensing path that would otherwise dominate the hottest loop.
+    const mateCreature = snap.byId.get(mate.id);
     if (mateCreature !== undefined) {
       const d = dist(self.x, self.y, mateCreature.x, mateCreature.y);
       mateInReach = d <= reach(self, t) * 0.6;
@@ -716,7 +718,18 @@ function tryMate(
 
   const invA = toQuantum(expressTrait(a.genome.offspringInvestment));
   const invB = toQuantum(expressTrait(b.genome.offspringInvestment));
-  if (invA > a.energy || invB > b.energy) return; // can't afford
+  if (invA > a.energy || invB > b.energy) return; // can't afford (energy)
+  // Note: no hydration gate is needed here. A child born at hydration 0 would die the
+  // same tick in `resolveRemovals`, but that is UNREACHABLE, given TWO premises:
+  //   (1) the initiator `a` always has `hydration >= 1` — creatures with `hydration <= 0`
+  //       are skipped before `applyCreature` ever calls `tryMate` (see tick.ts ~L416); and
+  //   (2) `offspringInvestment ∈ [1, 500]` (genetics.ts, clamped on every mutation), so
+  //       `invA >= 1` ⇒ `toQuantum(invA * 0.5) >= 1`.
+  // Together: `waterA = min(toQuantum(invA*0.5), a.hydration) >= 1`, so the child always
+  // seeds with positive hydration even when the co-parent `b` is fully dehydrated (waterB
+  // may be 0). Gating on `b`'s hydration here would instead wrongly refuse a viable birth
+  // that `a`'s water can fund. If premise (2) ever changes (a lower investment floor), the
+  // child could round to hydration 0 and this reasoning must be revisited.
 
   const childGenome = crossover(a.genome, b.genome, world.rng.mating);
   mutate(childGenome, world.rng.mutation, t);

@@ -113,8 +113,8 @@ export function serializeRng(bundle: RngBundle): SerializedRng {
 
 /**
  * Rebuild a bundle from serialized per-stream state words, resuming each stream
- * mid-sequence. A missing stream defaults to state 0 (a future migration concern;
- * v1 always writes all 7).
+ * mid-sequence. Every save version writes all stream states; the `?? 0` default is
+ * migration insurance for a partial/older blob that lacks one.
  */
 export function deserializeRng(data: Partial<SerializedRng> | Record<string, number>): RngBundle {
   const bundle = {} as RngBundle;
