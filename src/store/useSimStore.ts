@@ -252,6 +252,11 @@ export const useSimStore = create<SimState>((set, get) => ({
       followId: null,
       detached: false,
       params: {},
+      // Null `stats` too: it backs the Timeline scrubber and trait histogram. Without
+      // this the previous world's whole-run timeline/traits stay on screen until the new
+      // (paused) world emits its first stats — which never happens if the user doesn't
+      // press play. Blank them so the charts reflect the new world immediately.
+      stats: null,
       popHistory: [],
       lineageHistory: [],
       topLineages: [],
@@ -319,6 +324,9 @@ export const useSimStore = create<SimState>((set, get) => ({
       detached: true,
       inspected: null,
       followId: null,
+      // Blank `stats` (timeline + trait histogram) so the old world's history doesn't
+      // linger under the freshly imported, paused world. See `reinit` for the rationale.
+      stats: null,
       popHistory: [],
       lineageHistory: [],
       topLineages: [],
@@ -374,18 +382,23 @@ export function startWorker(): Worker {
           const lwindow = [...lbase, lpoint];
           if (lwindow.length > POP_HISTORY_MAX) lwindow.splice(0, lwindow.length - POP_HISTORY_MAX);
 
-          // The plotted key-set: the union of all `l<root>` keys across the window, kept
-          // deterministic by sorting on the LATEST-tick population (so the biggest bands
-          // stack at the bottom). Then normalize every point so each carries every key
-          // (missing ⇒ 0), which is what keeps Recharts from drawing gaps.
-          const unionRoots = new Set<number>();
+          // The plotted key-set: the union of all `l<root>` keys across the window, ranked
+          // by each root's PEAK population across the window (not the latest tick). Ranking
+          // by the latest tick would drop a lineage that dominated the window's history but
+          // is absent NOW — its `pop[root]` is 0, so it sorts last and gets sliced off,
+          // erasing its whole band and reintroducing the spurious drop this normalization
+          // exists to prevent. Peak keeps historically-big bands in the plotted set. Then
+          // fill every point with every plotted key (missing ⇒ 0) so Recharts draws no gaps.
+          const rootPeak = new Map<number, number>();
           for (const p of lwindow) {
             for (const k of Object.keys(p)) {
-              if (k.startsWith("l")) unionRoots.add(Number(k.slice(1)));
+              if (!k.startsWith("l")) continue;
+              const root = Number(k.slice(1));
+              rootPeak.set(root, Math.max(rootPeak.get(root) ?? 0, p[k] ?? 0));
             }
           }
-          const plotted = Array.from(unionRoots)
-            .sort((a, b) => (pop[b] ?? 0) - (pop[a] ?? 0))
+          const plotted = Array.from(rootPeak.keys())
+            .sort((a, b) => (rootPeak.get(b) ?? 0) - (rootPeak.get(a) ?? 0))
             .slice(0, LINEAGE_PLOT_MAX);
           const lnext = lwindow.map((p) => {
             const row: LineagePoint = { tick: p.tick };
