@@ -133,6 +133,10 @@ export async function autosave(
 export class Autosaver {
   private meta: Meta | null;
   private inFlight = false;
+  /** Set when a save arrives mid-flight; drives exactly one coalesced re-save after. */
+  private pendingResave: { world: World; now: number } | null = null;
+  /** Once stopped (on a world-swap), this instance performs no further writes. */
+  private stopped = false;
 
   constructor(
     private readonly store: KeyValStore,
@@ -147,16 +151,36 @@ export class Autosaver {
   }
 
   /**
-   * Save `world` now, unless a save is already in flight (in which case it is SKIPPED —
-   * the in-flight save already captures at-or-after this world state closely enough for
-   * a ~30s autosave cadence). Returns a tri-state so the caller can distinguish a
-   * benign skip from a real failure (only a failure warrants a user-facing error):
+   * Retire this autosaver: cancel any queued trailing re-save and reject future saves.
+   * Called when the worker swaps worlds (boot/init/loadSave) so an ABANDONED autosaver
+   * instance can't flush a stale world onto the new rotation after a fresh autosaver has
+   * taken over — closing the same stale-write window the worker guards on the module side.
+   */
+  stop(): void {
+    this.stopped = true;
+    this.pendingResave = null;
+  }
+
+  /**
+   * Save `world` now. If a save is already in flight, this call is COALESCED into a single
+   * trailing re-save of the LATEST world rather than dropped: the last-chance
+   * `visibilitychange` save must not be silently lost just because the 30s timer save
+   * happened to be writing at that instant. The trailing save runs once after the
+   * in-flight one settles, capturing the newest state (repeated mid-flight calls collapse
+   * to one). Returns a tri-state so the caller distinguishes a benign coalesce from a
+   * real failure (only a failure warrants a user-facing error):
    *   - `"saved"`   — written + meta flipped.
-   *   - `"skipped"` — a save was already in flight (the guard working as designed).
+   *   - `"skipped"` — coalesced into the in-flight save's trailing re-save (by design).
    *   - `"failed"`  — a storage/quota error; `lastError` holds the detail. Never throws.
    */
   async save(world: World, now: number): Promise<"saved" | "skipped" | "failed"> {
-    if (this.inFlight) return "skipped";
+    // A retired instance never writes (a world-swap has installed a fresh autosaver).
+    if (this.stopped) return "skipped";
+    if (this.inFlight) {
+      // Remember the latest requested state; the running save re-runs once with it.
+      this.pendingResave = { world, now };
+      return "skipped";
+    }
     this.inFlight = true;
     try {
       this.meta = await autosave(this.store, world, this.meta, now);
@@ -167,6 +191,14 @@ export class Autosaver {
       return "failed";
     } finally {
       this.inFlight = false;
+      // Flush exactly one coalesced trailing save (which may itself coalesce further
+      // arrivals), unless retired mid-flight. Fire-and-forget: the original caller already
+      // returned.
+      const pending = this.pendingResave;
+      if (pending !== null && !this.stopped) {
+        this.pendingResave = null;
+        void this.save(pending.world, pending.now);
+      }
     }
   }
 

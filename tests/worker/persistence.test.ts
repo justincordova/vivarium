@@ -180,4 +180,55 @@ describe("Autosaver — in-flight guard + non-throwing", () => {
     expect(await saver.save(w, 1000)).toBe("failed");
     expect(saver.lastError).not.toBeNull();
   });
+
+  it("a save arriving mid-flight is COALESCED into one trailing re-save (not dropped)", async () => {
+    // A store whose writes we can hold open, so a second save() lands while the first is
+    // in flight. The mid-flight call must return "skipped" but then trigger exactly one
+    // trailing re-save with the LATEST world once the first settles.
+    let release: (() => void) | null = null;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    let firstWriteSeen = false;
+    const writes: number[] = [];
+    const map = new Map<string, unknown>();
+    const store: KeyValStore = {
+      get: async <T>(key: string): Promise<T | undefined> => map.get(key) as T | undefined,
+      set: async (key: string, value: unknown): Promise<void> => {
+        writes.push(1);
+        // Hold only the FIRST slot write open so the second save() overlaps it.
+        if (!firstWriteSeen && key !== META_KEY) {
+          firstWriteSeen = true;
+          await gate;
+        }
+        map.set(key, value);
+      },
+    };
+    const w = createWorld(4, makeConfig({}));
+    const saver = new Autosaver(store, null);
+
+    const first = saver.save(w, 1000); // begins, blocks on the held slot write
+    await Promise.resolve(); // let the first save reach the awaited write
+    const second = await saver.save(w, 2000); // lands mid-flight → coalesced
+    expect(second).toBe("skipped");
+
+    (release as unknown as () => void)(); // let the first save finish
+    expect(await first).toBe("saved");
+    // The trailing re-save runs fire-and-forget in the finally; flush microtasks/awaits.
+    await new Promise((r) => setTimeout(r, 0));
+    // Two full saves' worth of writes happened (the coalesced one wasn't dropped).
+    expect(writes.length).toBeGreaterThanOrEqual(4); // 2 slot writes + 2 meta flips
+    expect(saver.currentMeta()?.newest).toBe("b"); // rotated twice: a → b
+  });
+
+  it("a stopped autosaver performs no further writes (retired on world-swap)", async () => {
+    const store = memStore();
+    const w = createWorld(4, makeConfig({}));
+    const saver = new Autosaver(store, null);
+    expect(await saver.save(w, 1000)).toBe("saved");
+    const writesBefore = store.map.size;
+    saver.stop();
+    expect(await saver.save(w, 2000)).toBe("skipped"); // retired → no write
+    expect(store.map.size).toBe(writesBefore);
+  });
 });

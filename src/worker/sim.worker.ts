@@ -146,6 +146,16 @@ async function boot(seed: number, config: Config, coldOpen?: SaveBlob): Promise<
   const gen = ++bootGen;
   stop();
   stopAutosave();
+  // Null the live world + autosaver synchronously BEFORE the IndexedDB await below (the
+  // old autosaver was already retired by `stopAutosave()` above). Otherwise a `save`
+  // forwarded from the main thread (e.g. `visibilitychange` while the tab hides) during
+  // the await would call `saveNow`, see the PREVIOUS session's world + autosaver, and write
+  // a stale world onto the rotation using a meta this boot is about to supersede — silently
+  // clobbering a slot and desyncing the newest-pointer. With these nulled, an interleaved
+  // `saveNow` no-ops (its `world === null` guard) until boot installs the freshly-loaded
+  // world + meta-seeded autosaver.
+  world = null;
+  autosaver = null;
 
   let loadedRealTime: number | null = null;
   let loadedMeta: Meta | null = null;
@@ -241,6 +251,12 @@ function stopAutosave(): void {
     clearInterval(autosaveHandle);
     autosaveHandle = null;
   }
+  // Retire the current autosaver instance so any queued trailing re-save is cancelled and
+  // the abandoned instance can never flush a stale world after a fresh one takes over.
+  // (The caller reassigns `autosaver` immediately after; a subsequent `.stop()` on the new
+  // instance would be wrong, so retirement is tied to the timer-stop, which every
+  // world-swap performs before installing the replacement.)
+  autosaver?.stop();
 }
 
 /**
