@@ -207,8 +207,9 @@ change.
 ### Task 5D.1: Laboratory (forking)
 
 - **What:** Snapshot at any tick, branch, change one parameter, run both, compare.
-- **Why:** SPEC.md §Player Experience: "the killer feature nobody builds"; the save
-  format was kept fork-ready from Phase 0.9.
+- **Why:** SPEC.md §Player Experience frames Laboratory (snapshot → branch → change one
+  parameter → run both → compare) as the standout mode; the save format was kept
+  fork-ready from Phase 0.9.
 - **How:** **Load `frontend-design` skill first.** Fork = serialize current world →
   spawn a second worker from the same snapshot → change one param on one branch →
   run both → side-by-side world-health compare (reuse Phase 1 metrics + Phase 3
@@ -221,14 +222,14 @@ change.
 
 - **What:** A stewardship-budget mode scoring worlds by *interestingness*, with a
   shareable-seed leaderboard.
-- **Why:** SPEC.md §Player Experience (opt-in mode); scoring philosophy: "how
-  strange can you make it?" not "survive longest."
+- **Why:** SPEC.md §Player Experience (opt-in mode); scoring philosophy rewards
+  interestingness (how strange can you make it?), not surviving longest.
 - **How:** **Load `frontend-design` skill first.** A refilling influence budget
   (seed plant cheap, spawn predator expensive, meteor very expensive); score via
   the WorldHealth metrics (reward oscillation/diversity, punish stagnation). The
-  leaderboard is the one place a serverless function may appear (SPEC.md §Non-Goals:
-  "not a backend framework; a function") — defer the backend until this mode is
-  actually built.
+  leaderboard is the one place a serverless function may appear — SPEC.md §Non-Goals
+  states "No backend, no auth, no server-side persistence," so defer any backend until
+  this mode is actually built.
 - **Verify:** Budget refills; expensive actions cost more; a stable multi-species
   world scores higher than an immortal monoculture; shareable seeds rank.
 

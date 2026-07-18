@@ -13,11 +13,14 @@
 
 ## Scope & guardrails
 
-- **The swap touches essentially one file** by design (SPEC.md §Architecture): the
-  genome already carries the 350-arrow diploid brain arrays from Phase 0, and
-  `genetics.ts`/`serialize.ts`/`distance` already exercise them. Phase 4 supplies a
-  `PatchbayBrain.think` (real forward pass) and flips the active `BrainOps`
-  implementation. `RuleBasedBrain` stays in the tree for A/B comparison.
+- **The swap is confined to the brain representation** in `brain.ts`, plus a
+  sensor-vector builder and an action-vector decoder at the `tick.ts` seam (SPEC.md
+  §Architecture documents that it was *not* literally one file: the rule policy reads a
+  hand-built `RuleContext`, so wiring the patchbay in also required marshaling a sensor
+  vector and decoding an action vector). The genome already carries the 350-arrow diploid
+  brain arrays from Phase 0, and `genetics.ts`/`serialize.ts`/`distance` already exercise
+  them. Phase 4 supplies a `PatchbayBrain.think` (real forward pass) and flips the active
+  `BrainOps` implementation. `RuleBasedBrain` stays in the tree for A/B comparison.
 - **Determinism constraints are non-negotiable** (SPEC.md §Determinism): the
   activation function is the **pinned rational tanh approximation** (not
   `Math.tanh`); forward-pass accumulation order is **fixed and index-based**; the

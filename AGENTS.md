@@ -21,7 +21,9 @@ here.
 - `src/render/` — pure canvas renderer (a function of a frame snapshot)
 - `src/ui/` — React chrome (charts, timeline, inspector, controls, `share.ts` URL/file)
 - `src/store/` — the Zustand store + worker handle (`useSimStore.ts`)
-- `docs/` — SPEC.md, plans, VERSIONING.md, `findings/`, `designs/`
+- `docs/` — SPEC.md, plans, VERSIONING.md, `findings/`, and `designs/` (the
+  session-boundary artifact for in-flight features; currently empty — implemented
+  designs were retired into SPEC.md by sync-docs, and new ones are created on demand)
 - `public/` — `cold-open.viv.gz` (the pre-evolved first-visit snapshot asset)
 - `assets/` — brand mark
 - `tests/`, `scripts/` — `scripts/` has the headless runner, sweep, A/B compare,
