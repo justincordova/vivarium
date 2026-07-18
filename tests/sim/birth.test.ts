@@ -83,12 +83,10 @@ describe("localized birth-transfer invariant", () => {
     const e0 = totalEnergy(w);
     const wat0 = totalWater(w);
 
-    const before = w.creatures.length;
-    let births = 0;
-    for (let i = 0; i < 50 && births === 0; i++) {
+    // A birth is detected purely by a child appearing (parentId !== null); conservation
+    // must hold every tick regardless of whether a birth fired this tick.
+    for (let i = 0; i < 50; i++) {
       tick(w);
-      births = w.creatures.length - before + countRemoved(w);
-      // Conservation must hold every tick regardless.
       expect(totalEnergy(w)).toBe(e0);
       expect(totalWater(w)).toBe(wat0);
       if (w.creatures.some((c) => c.parentId !== null)) break;
@@ -98,9 +96,38 @@ describe("localized birth-transfer invariant", () => {
   });
 });
 
-function countRemoved(_w: World): number {
-  return 0;
-}
+describe("a birth never produces a stillborn (child born hydration 0)", () => {
+  it("newborns always start with positive hydration, funded by the initiating parent", () => {
+    // A child born at hydration 0 would die in `resolveRemovals` the SAME tick, wasting
+    // the parents' investment. This is unreachable in the sim: the initiating parent
+    // always has hydration >= 1 (creatures at hydration <= 0 are skipped before they can
+    // initiate mating), so its water seeds every child. This test pins that invariant:
+    // across a run where births occur, EVERY newborn (parentId !== null) has hydration > 0
+    // on the tick it appears. It also holds conservation every tick.
+    const w = twoMateWorld(1, 1); // adjacent, well-fed → births fire quickly
+    const e0 = totalEnergy(w);
+    const wat0 = totalWater(w);
+    const seen = new Set<number>();
+    let sawBirth = false;
+
+    for (let i = 0; i < 80; i++) {
+      tick(w);
+      expect(totalEnergy(w)).toBe(e0);
+      expect(totalWater(w)).toBe(wat0);
+      for (const c of w.creatures) {
+        if (c.parentId !== null && !seen.has(c.id)) {
+          seen.add(c.id);
+          sawBirth = true;
+          // The newborn is not a stillborn: it carries hydration to survive its first
+          // removal pass.
+          expect(c.hydration).toBeGreaterThan(0);
+        }
+      }
+    }
+    // Guard against a vacuous pass: a birth actually occurred in the window.
+    expect(sawBirth).toBe(true);
+  });
+});
 
 describe("rendezvous produces a birth within bounded ticks", () => {
   it("two compatible well-fed creatures, initially out of reach but in sense, breed", () => {

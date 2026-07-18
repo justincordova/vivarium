@@ -31,9 +31,10 @@ export default defineConfig({
     // to half the machine — the long live-tick properties then get real CPU and finish
     // well inside their timeouts (determinism/gate are load-bearing, not flaky).
     maxWorkers: "50%",
-    // Scaffold has no tests yet; real tests land in Phase 0.1+. Remove once
-    // the first test exists if you want zero-test runs to fail.
-    passWithNoTests: true,
+    // Fail loudly on a zero-test run: the suite is the primary bug detector (determinism,
+    // conservation, catch-up bit-identity), so an accidentally-empty run — e.g. a typo in
+    // the include glob — must not pass green.
+    passWithNoTests: false,
     include: ["tests/**/*.test.ts"],
     benchmark: {
       include: ["tests/**/*.bench.ts"],
