@@ -42,7 +42,20 @@ export function fitCamera(
 
 /** World point → screen pixel. */
 export function worldToScreen(cam: Camera, wx: number, wy: number): [number, number] {
-  return [(wx - cam.cx) * cam.zoom + cam.viewW / 2, (wy - cam.cy) * cam.zoom + cam.viewH / 2];
+  return [worldToScreenX(cam, wx), worldToScreenY(cam, wy)];
+}
+
+// Allocation-free scalar projections for the per-entity draw loop, which runs this once
+// per plant/corpse/creature every animation frame — the tuple form's short-lived array
+// would otherwise be the only GC pressure in the render hot path. UI hit-testing keeps
+// the convenient tuple `worldToScreen`.
+/** World x → screen x (no allocation). */
+export function worldToScreenX(cam: Camera, wx: number): number {
+  return (wx - cam.cx) * cam.zoom + cam.viewW / 2;
+}
+/** World y → screen y (no allocation). */
+export function worldToScreenY(cam: Camera, wy: number): number {
+  return (wy - cam.cy) * cam.zoom + cam.viewH / 2;
 }
 
 /** Screen pixel → world point (inverse of `worldToScreen`). */

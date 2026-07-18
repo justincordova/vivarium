@@ -14,7 +14,7 @@
  */
 
 import type { RenderFrame } from "@worker/protocol";
-import { type Camera, worldToScreen } from "./camera";
+import { type Camera, worldToScreen, worldToScreenX, worldToScreenY } from "./camera";
 import { type Appearance, appearance } from "./palette";
 
 /** How aggressively trails fade. Higher = shorter trails (more opaque wipe). */
@@ -125,7 +125,8 @@ export function draw(frame: RenderFrame, ctx: CanvasRenderingContext2D, cam: Cam
   const p = frame.plants;
   ctx.fillStyle = PLANT_COLOR;
   for (let i = 0; i < p.count; i++) {
-    const [sx, sy] = worldToScreen(cam, p.x[i] as number, p.y[i] as number);
+    const sx = worldToScreenX(cam, p.x[i] as number);
+    const sy = worldToScreenY(cam, p.y[i] as number);
     if (sx < -8 || sy < -8 || sx > cam.viewW + 8 || sy > cam.viewH + 8) continue;
     const r = 1 + 1.5 * (p.energyFrac[i] as number);
     ctx.globalAlpha = 0.35 + 0.35 * (p.energyFrac[i] as number);
@@ -137,7 +138,8 @@ export function draw(frame: RenderFrame, ctx: CanvasRenderingContext2D, cam: Cam
   const co = frame.corpses;
   ctx.fillStyle = CORPSE_COLOR;
   for (let i = 0; i < co.count; i++) {
-    const [sx, sy] = worldToScreen(cam, co.x[i] as number, co.y[i] as number);
+    const sx = worldToScreenX(cam, co.x[i] as number);
+    const sy = worldToScreenY(cam, co.y[i] as number);
     if (sx < -8 || sy < -8 || sx > cam.viewW + 8 || sy > cam.viewH + 8) continue;
     const r = 2 + 2 * (co.energyFrac[i] as number);
     ctx.save();
@@ -150,7 +152,8 @@ export function draw(frame: RenderFrame, ctx: CanvasRenderingContext2D, cam: Cam
   // Creatures — the only vivid color on screen.
   const c = frame.creatures;
   for (let i = 0; i < c.count; i++) {
-    const [sx, sy] = worldToScreen(cam, c.x[i] as number, c.y[i] as number);
+    const sx = worldToScreenX(cam, c.x[i] as number);
+    const sy = worldToScreenY(cam, c.y[i] as number);
     const a = appearance(c, i);
     const rPx = a.radius * cam.zoom;
     const margin = rPx + 6;
