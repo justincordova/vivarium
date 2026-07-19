@@ -13,7 +13,7 @@
 import { recordHistory } from "@sim/history";
 import { deserialize, type SaveBlob, serialize } from "@sim/serialize";
 import { tick } from "@sim/tick";
-import type { Config, World } from "@sim/types";
+import type { Config, LineageEvent, World } from "@sim/types";
 import { createWorld } from "@sim/world";
 import { runCatchup, ticksOwed } from "./catchup";
 import { applyDelete, applyEditGenome, applyPaint, applySetParam, applySpawn } from "./commands";
@@ -81,8 +81,13 @@ function step(): void {
   emitFrame();
   if (world.tick % STATS_INTERVAL < ticksPerFrame) emitStats();
 
+  // Floor the delay at 1ms so a pathological `MS_PER_TICK` (≤0, NaN — reachable via a
+  // hand-crafted `t.MS_PER_TICK=` share URL flowing into the serialized config) cannot
+  // turn the pacing setTimeout into a busy-spin that pins a core. A sane config yields
+  // the intended cadence; only a poisoned one is clamped.
   const msPerTick = world.config.tunables.MS_PER_TICK;
-  const delay = Math.max(0, msPerTick * ticksPerFrame);
+  const raw = msPerTick * ticksPerFrame;
+  const delay = Number.isFinite(raw) && raw > 1 ? raw : 1;
   loopHandle = setTimeout(step, delay);
 }
 
@@ -196,13 +201,22 @@ async function boot(seed: number, config: Config, coldOpen?: SaveBlob): Promise<
   autosaver = new Autosaver(idbStore, loadedMeta);
 
   // Offline catch-up: replay ticks owed since the save, capped, with progress. Capture
-  // the tick BEFORE catch-up so the report can slice the events that fired while away.
+  // the tick BEFORE catch-up so the report can frame the window, and sink the events
+  // fired during the replay into an unbounded array — `world.lineageEvents` is a bounded
+  // ring that a dramatic catch-up can front-prune, so it can't back the report itself.
   const bootTick = world.tick;
+  const awayEvents: LineageEvent[] = [];
   if (catchupEnabled && loadedRealTime !== null) {
     const owed = ticksOwed(world, loadedRealTime, Date.now());
     if (owed > 0) {
       post({ t: "catchupProgress", done: 0, total: owed });
-      runCatchup(world, owed, (done, total) => post({ t: "catchupProgress", done, total }));
+      runCatchup(
+        world,
+        owed,
+        (done, total) => post({ t: "catchupProgress", done, total }),
+        undefined,
+        awayEvents,
+      );
     } else {
       post({ t: "catchupProgress", done: 0, total: 0 });
     }
@@ -216,8 +230,8 @@ async function boot(seed: number, config: Config, coldOpen?: SaveBlob): Promise<
   post({ t: "ready" });
 
   // "While you were away" report (Phase 5A.3): the lineage events fired during the
-  // replayed catch-up ticks. No events (or no catch-up) ⇒ no report.
-  const awayEvents = world.lineageEvents.filter((e) => e.tick > bootTick);
+  // replayed catch-up ticks, collected as they fired (immune to ring eviction). No
+  // events (or no catch-up) ⇒ no report.
   if (awayEvents.length > 0) {
     post({ t: "report", sinceTick: bootTick, nowTick: world.tick, events: awayEvents });
   }
@@ -295,8 +309,15 @@ self.onmessage = (ev: MessageEvent<Command>): void => {
   switch (cmd.t) {
     case "boot":
       catchupEnabled = cmd.catchupEnabled;
-      // Fire-and-forget: `boot` owns its own errors and posts progress/ready itself.
-      void boot(cmd.seed, cmd.config, cmd.coldOpen);
+      // Fire-and-forget: `boot` handles storage failures internally (degrading to a
+      // cold start). This terminal `.catch` is the last resort for an UNEXPECTED throw
+      // in the post-load path (createWorld/deserialize/frame build) — without it the
+      // promise would reject unhandled and the UI boot overlay would hang forever with
+      // no `ready`. Surface it and still release the overlay.
+      void boot(cmd.seed, cmd.config, cmd.coldOpen).catch((e) => {
+        post({ t: "persistError", reason: e instanceof Error ? e.message : String(e) });
+        post({ t: "ready" });
+      });
       break;
     case "setCatchup":
       catchupEnabled = cmd.enabled;
