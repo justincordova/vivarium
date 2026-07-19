@@ -469,7 +469,11 @@ export function startWorker(): Worker {
   void (async () => {
     const coldOpen = shared === null ? await fetchColdOpen() : null;
     send({ t: "boot", seed, config, catchupEnabled, coldOpen: coldOpen ?? undefined });
-  })();
+  })().catch(() => {
+    // The cold-open fetch never throws (it returns null on failure), so this is only a
+    // last resort for an unexpected `send`/postMessage throw. Swallow it rather than
+    // leave an unhandled rejection — the worker cold-starts from founders on its own.
+  });
 
   // `visibilitychange` is a document (main-thread) event the worker cannot observe;
   // forward it as a `save` so the worker autosaves when the tab is hidden. Registered

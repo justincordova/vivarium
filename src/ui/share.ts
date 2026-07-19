@@ -86,8 +86,13 @@ export async function exportWorld(blob: SaveBlob): Promise<void> {
   a.download = `vivarium-${blob.tick ?? 0}.viv.gz`;
   document.body.appendChild(a);
   a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+  // Defer cleanup past the current tick: a synthetic anchor click starts the download
+  // asynchronously, and revoking the object URL synchronously in the same tick can
+  // abort it in some browsers before the download commits.
+  setTimeout(() => {
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, 0);
 }
 
 /** Read + gunzip + parse a `.viv.gz` file into a `SaveBlob`. Throws on malformed input. */

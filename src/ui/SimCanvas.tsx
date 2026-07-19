@@ -42,6 +42,9 @@ export function SimCanvas(): React.ReactElement {
   const [deathNote, setDeathNote] = useState<DeathNote | null>(null);
   // Last-seen age of the followed creature, for the death caption.
   const followAge = useRef<number>(0);
+  // The followId a death note was already emitted for, so the rAF loop emits it exactly
+  // once regardless of when the `setFollow(null)` store write propagates.
+  const deathEmittedFor = useRef<number | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -90,8 +93,16 @@ export function SimCanvas(): React.ReactElement {
             followAge.current = c.age[found] as number;
             cam = centerOn(cam, c.x[found] as number, c.y[found] as number);
             camRef.current = cam;
-          } else {
-            // The followed creature is gone → death caption, then release the lock.
+            // This follow is live → re-arm the death note. Without this, re-following an
+            // id whose death note already fired (e.g. an id that recurs after a world
+            // swap, since this component stays mounted) would suppress the note AND never
+            // release the lock, leaving the camera stuck.
+            deathEmittedFor.current = null;
+          } else if (deathEmittedFor.current !== followId) {
+            // The followed creature is gone → death caption once, then release the lock.
+            // The ref guard makes this fire exactly once even if `setFollow(null)` hasn't
+            // propagated to `getState().followId` by the next frame.
+            deathEmittedFor.current = followId;
             setDeathNote({ id: followId, age: Math.round(followAge.current) });
             useSimStore.getState().setFollow(null);
           }
