@@ -88,4 +88,9 @@ async function main(): Promise<void> {
   );
 }
 
-void main();
+main().catch((e) => {
+  // A shipped-asset generator: surface any failure (extinction guard, write error) with
+  // a clear stack and a non-zero exit so CI/build tooling never treats it as success.
+  process.stderr.write(`${e instanceof Error ? e.stack : String(e)}\n`);
+  process.exit(1);
+});

@@ -68,6 +68,10 @@ function parseArgs(argv: string[]): Args {
   if (!Number.isInteger(args.sampleEvery) || args.sampleEvery < 1) {
     throw new Error("--sample-every must be a positive integer");
   }
+  if (!Number.isInteger(args.printEvery) || args.printEvery < 1) {
+    // A non-positive printEvery makes `tick % printEvery` NaN, suppressing all rows.
+    throw new Error("--print-every must be a positive integer");
+  }
   return args;
 }
 

@@ -7,9 +7,10 @@
  *
  * Parallelized across `worker_threads` — `sim/` is pure, so running many configs
  * concurrently is safe. The same file is both driver (`isMainThread`) and worker.
- * Deterministic: each sampled config is derived from `--master-seed`, and each run
- * uses a fixed per-index run seed, so re-running with the same master seed produces
- * an identical ranking.
+ * Deterministic: each sampled config is derived from `--master-seed`, and every run
+ * uses a single fixed `--run-seed` shared across all configs, so re-running with the
+ * same master seed produces an identical ranking. (Ranking therefore rests on one
+ * world realization per config; vary `--run-seed` to spot-check robustness.)
  *
  * Usage:
  *   tsx scripts/sweep.ts --n 200 --ticks 100000 --out /tmp/sweep.csv --master-seed 1
@@ -61,6 +62,20 @@ function parseArgs(argv: string[]): Args {
     else if (a === "--workers") args.workers = Number(next());
     else if (a === "--shard") args.shard = next().split(",").map(Number);
     else throw new Error(`unknown argument: ${a}`);
+  }
+  // Validate driver args (the internal `--shard` branch is trusted). Bad numeric input
+  // otherwise silently voids a long sweep: `--n 200x` → NaN → zero configs sharded →
+  // header-only CSV, exit 0; `--workers 0` → `i % 0` → NaN index → crash mid-run.
+  if (args.shard === null) {
+    if (!Number.isInteger(args.n) || args.n < 1) throw new Error("--n must be a positive integer");
+    if (!Number.isInteger(args.ticks) || args.ticks < 1) {
+      throw new Error("--ticks must be a positive integer");
+    }
+    if (!Number.isFinite(args.masterSeed)) throw new Error("--master-seed must be a number");
+    if (!Number.isFinite(args.runSeed)) throw new Error("--run-seed must be a number");
+    if (!Number.isInteger(args.workers) || args.workers < 1) {
+      throw new Error("--workers must be a positive integer");
+    }
   }
   return args;
 }
@@ -165,7 +180,11 @@ function spawnShard(shard: number[], args: Args): Promise<SweepResult[]> {
       const jsonStart = marker + "__SWEEP_RESULT__".length;
       const newline = buf.indexOf("\n", jsonStart);
       const json = buf.slice(jsonStart, newline === -1 ? undefined : newline);
-      resolve(JSON.parse(json) as SweepResult[]);
+      try {
+        resolve(JSON.parse(json) as SweepResult[]);
+      } catch {
+        reject(new Error(`shard produced unparseable payload: ${json.slice(0, 200)}`));
+      }
     });
   });
 }
@@ -187,6 +206,11 @@ async function main(args: Args): Promise<void> {
 
   const results: SweepResult[] = [];
   for (const b of batches) for (const r of b) results.push(r);
+
+  if (results.length === 0) {
+    process.stderr.write("# sweep produced no results (check --n / --workers)\n");
+    process.exit(1);
+  }
 
   // Deterministic ranking: sort by score desc, ties broken by ascending index.
   results.sort((a, b) => b.score - a.score || a.index - b.index);
