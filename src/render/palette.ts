@@ -50,7 +50,9 @@ const MAX_RADIUS = 9;
 function remap(v: number, inLo: number, inHi: number, outLo: number, outHi: number): number {
   if (inHi === inLo) return outLo;
   const t = (v - inLo) / (inHi - inLo);
-  const c = t < 0 ? 0 : t > 1 ? 1 : t;
+  // Clamp so `NaN` maps to `outLo` (via `t > 0` being false for NaN) rather than
+  // propagating `NaN` into radii / hsl() strings if an upstream frame slot is NaN.
+  const c = t > 0 ? (t > 1 ? 1 : t) : 0;
   return outLo + c * (outHi - outLo);
 }
 

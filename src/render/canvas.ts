@@ -156,7 +156,11 @@ export function draw(frame: RenderFrame, ctx: CanvasRenderingContext2D, cam: Cam
     const sy = worldToScreenY(cam, c.y[i] as number);
     const a = appearance(c, i);
     const rPx = a.radius * cam.zoom;
-    const margin = rPx + 6;
+    // Cull against the FULL drawn extent, not just the body radius: `drawCreature`
+    // extends spikes to `r·(1 + spikeLength)`. Using bare `rPx` here makes a large,
+    // armored creature pop in/out at the viewport edge (its spikes are still visible
+    // while its center is culled). `+6` covers the age ring / min-radius floor.
+    const margin = rPx * (1 + a.spikeLength) + 6;
     if (sx < -margin || sy < -margin || sx > cam.viewW + margin || sy > cam.viewH + margin) {
       continue;
     }
