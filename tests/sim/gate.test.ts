@@ -26,7 +26,12 @@ import { describe, expect, it } from "vitest";
  */
 describe("Phase 1 exit gate — default world oscillates and diversifies", () => {
   it("seed 1 survives, oscillates, and diversifies over a representative horizon", () => {
-    const world = createWorld(1, makeConfig({}));
+    // Pinned to the 200×200 world this gate's balance was validated against; the Living
+    // World redesign's 1000×1000 default is rebalanced separately (see viability.test.ts).
+    const world = createWorld(
+      1,
+      makeConfig({ worldWidth: 200, worldHeight: 200, gridCols: 64, gridRows: 64 }),
+    );
     const TICKS = 10_000;
     const WARMUP = 3_000; // let founders reach the sustained regime before measuring
 

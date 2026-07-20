@@ -37,9 +37,9 @@ describe("config — defaultConfig completeness", () => {
     expect(Object.isFrozen(makeConfig({}).tunables)).toBe(false);
   });
 
-  it("serializes the full 7-stream RNG layout", () => {
+  it("serializes the full 8-stream RNG layout", () => {
     expect(defaultConfig.rngStreams).toEqual([...RNG_STREAM_NAMES]);
-    expect(defaultConfig.rngStreams).toHaveLength(7);
+    expect(defaultConfig.rngStreams).toHaveLength(8);
   });
 
   it("Phase 0 defaults: rule brain, founder count in the SPEC 40–100 band", () => {
@@ -91,7 +91,7 @@ describe("config — makeConfig", () => {
     a.rngStreams = [];
     expect(defaultConfig.tunables.MUT_GLOBAL).not.toBe(999);
     expect(defaultConfig.tunables.TRAIT_MUT_SIGMA.size).not.toBe(999);
-    expect(defaultConfig.rngStreams).toHaveLength(7);
+    expect(defaultConfig.rngStreams).toHaveLength(8);
     expect(makeConfig({}).tunables.MUT_GLOBAL).not.toBe(999);
   });
 

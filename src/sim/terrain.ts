@@ -11,9 +11,11 @@
 
 import { Biome, type Config, type RNG, type Terrain } from "./types";
 
-/** Elevation below this is water; above `ROCK_LEVEL` is rock. Tuned for variety. */
-const WATER_LEVEL = 0.34;
-const ROCK_LEVEL = 0.78;
+/** Elevation below this is water; above `ROCK_LEVEL` is rock. Tuned so most of the map
+ * is growable land (water + rock are the minority) — otherwise plants over-concentrate
+ * into few cells and predator–prey encounters collapse. */
+const WATER_LEVEL = 0.26;
+const ROCK_LEVEL = 0.85;
 
 /**
  * Value-noise sampled on a coarse lattice and bilinearly interpolated, summed over a
@@ -96,11 +98,11 @@ export function generateTerrain(config: Config, rng: RNG): Terrain {
 export function growthMultiplier(biome: number): number {
   switch (biome) {
     case Biome.Grassland:
-      return 1.4;
+      return 1.25; // food-rich
     case Biome.Forest:
-      return 1.0;
+      return 0.9;
     case Biome.Barren:
-      return 0.2;
+      return 0.45;
     default: // Water, Rock
       return 0;
   }
