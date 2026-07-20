@@ -24,6 +24,14 @@ export function Landing(): React.ReactElement | null {
       <div className="absolute inset-0 bg-[var(--bg)]/72 backdrop-blur-[2px]" />
 
       <div className="panel relative mx-4 w-full max-w-md p-8 text-center">
+        <img
+          src="/vivarium-mark.svg"
+          alt=""
+          aria-hidden="true"
+          width={72}
+          height={72}
+          className="mx-auto mb-3 h-16 w-16 drop-shadow-[0_0_16px_rgba(34,211,238,0.25)]"
+        />
         <div className="mb-2 text-[11px] uppercase tracking-[0.3em] text-[var(--fg-mute)]">
           Vivarium
         </div>
