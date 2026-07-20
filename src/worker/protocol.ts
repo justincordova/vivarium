@@ -174,7 +174,23 @@ export type Command =
   // `coldOpen` (Phase 5B.2): a pre-evolved snapshot loaded ONLY when there is no saved
   // world — so a first-time visitor lands in a living, hunting world, not a cold founder
   // start. A returning visitor's autosave always wins over it.
-  | { t: "boot"; seed: number; config: Config; catchupEnabled: boolean; coldOpen?: SaveBlob }
+  //
+  // `source` (UI overhaul) lets the landing screen CHOOSE the world instead of the
+  // worker's default precedence:
+  //   - undefined | "auto" → historical precedence: saved > coldOpen > founders.
+  //   - "continue"         → same as "auto" (load the saved world; the button only
+  //                          shows when a save exists).
+  //   - "cold-open"        → IGNORE any save; load the supplied coldOpen snapshot.
+  //   - "fresh"            → IGNORE any save; create founders from seed+config.
+  // "cold-open"/"fresh" chosen while a save exists overwrite it on the next autosave.
+  | {
+      t: "boot";
+      seed: number;
+      config: Config;
+      catchupEnabled: boolean;
+      coldOpen?: SaveBlob;
+      source?: "auto" | "continue" | "cold-open" | "fresh";
+    }
   | { t: "setCatchup"; enabled: boolean }
   // `save` = "autosave now". The worker owns the save logic + ~30s timer, but
   // `visibilitychange` is a `document` (main-thread) event, so the main thread

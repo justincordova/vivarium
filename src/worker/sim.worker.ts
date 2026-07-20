@@ -147,10 +147,18 @@ function loadSave(blob: SaveBlob): void {
  * frame and start autosave. Async (IndexedDB); the message handler fires it and it owns
  * all its own errors — a storage failure degrades to a cold start, never a crash.
  */
-async function boot(seed: number, config: Config, coldOpen?: SaveBlob): Promise<void> {
+async function boot(
+  seed: number,
+  config: Config,
+  coldOpen?: SaveBlob,
+  source: "auto" | "continue" | "cold-open" | "fresh" = "auto",
+): Promise<void> {
   const gen = ++bootGen;
   stop();
   stopAutosave();
+  // "fresh"/"cold-open" explicitly bypass the saved world (the landing screen chose a
+  // specific source); "auto"/"continue" keep the historical load-newest precedence.
+  const bypassSave = source === "fresh" || source === "cold-open";
   // Null the live world + autosaver synchronously BEFORE the IndexedDB await below (the
   // old autosaver was already retired by `stopAutosave()` above). Otherwise a `save`
   // forwarded from the main thread (e.g. `visibilitychange` while the tab hides) during
@@ -164,25 +172,28 @@ async function boot(seed: number, config: Config, coldOpen?: SaveBlob): Promise<
 
   let loadedRealTime: number | null = null;
   let loadedMeta: Meta | null = null;
-  try {
-    const loaded = await loadNewest(idbStore);
-    // A newer world-swap command arrived during the await → this boot is superseded.
-    if (gen !== bootGen) return;
-    if (loaded !== null) {
-      world = loaded.world;
-      loadedRealTime = loaded.lastSavedRealTime;
-      loadedMeta = loaded.meta;
+  if (!bypassSave) {
+    try {
+      const loaded = await loadNewest(idbStore);
+      // A newer world-swap command arrived during the await → this boot is superseded.
+      if (gen !== bootGen) return;
+      if (loaded !== null) {
+        world = loaded.world;
+        loadedRealTime = loaded.lastSavedRealTime;
+        loadedMeta = loaded.meta;
+      }
+    } catch {
+      if (gen !== bootGen) return;
+      // Storage read failed — fall through to a cold start.
+      world = null;
     }
-  } catch {
-    if (gen !== bootGen) return;
-    // Storage read failed — fall through to a cold start.
-    world = null;
   }
   if (world === null) {
-    // No saved world. First-time visitor: land in the pre-evolved cold-open snapshot if
-    // one was supplied (Phase 5B.2); otherwise a fresh founder start. Catch-up does NOT
-    // apply to a cold open (no lastSavedRealTime), so it appears immediately.
-    if (coldOpen !== undefined) {
+    // No saved world (or it was bypassed). Land in the pre-evolved cold-open snapshot if
+    // one was supplied (Phase 5B.2); otherwise a fresh founder start. `source: "fresh"`
+    // forces founders even when a coldOpen blob is present. Catch-up does NOT apply to a
+    // cold open (no lastSavedRealTime), so it appears immediately.
+    if (coldOpen !== undefined && source !== "fresh") {
       try {
         world = deserialize(coldOpen);
       } catch {
@@ -314,7 +325,7 @@ self.onmessage = (ev: MessageEvent<Command>): void => {
       // in the post-load path (createWorld/deserialize/frame build) — without it the
       // promise would reject unhandled and the UI boot overlay would hang forever with
       // no `ready`. Surface it and still release the overlay.
-      void boot(cmd.seed, cmd.config, cmd.coldOpen).catch((e) => {
+      void boot(cmd.seed, cmd.config, cmd.coldOpen, cmd.source).catch((e) => {
         post({ t: "persistError", reason: e instanceof Error ? e.message : String(e) });
         post({ t: "ready" });
       });

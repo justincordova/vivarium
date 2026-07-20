@@ -98,6 +98,19 @@ export async function loadNewest(store: KeyValStore = idbStore): Promise<Loaded 
 }
 
 /**
+ * Cheap existence check for a saved world — reads only the `meta` pointer, never a
+ * (potentially large) world slot. Used by the landing screen to decide whether to offer
+ * "Continue" (UI overhaul). A truthy meta implies at least one completed autosave.
+ */
+export async function hasSavedWorld(store: KeyValStore = idbStore): Promise<boolean> {
+  try {
+    return (await store.get<Meta>(META_KEY)) !== undefined;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Autosave `world` crash-safely: write the OLDER slot, then flip `meta`. Stamps
  * `world.lastSavedRealTime` with `now` (the worker's wall-clock) — this is the one
  * place that value is written, and it never enters `tick()`. Returns the new `Meta`

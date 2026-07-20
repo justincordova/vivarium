@@ -15,6 +15,7 @@ import { describe, expect, it } from "vitest";
 import {
   Autosaver,
   autosave,
+  hasSavedWorld,
   type KeyValStore,
   loadNewest,
   META_KEY,
@@ -230,5 +231,24 @@ describe("Autosaver — in-flight guard + non-throwing", () => {
     saver.stop();
     expect(await saver.save(w, 2000)).toBe("skipped"); // retired → no write
     expect(store.map.size).toBe(writesBefore);
+  });
+});
+
+describe("hasSavedWorld (landing 'Continue' gate)", () => {
+  it("is false on an empty store and true once a world is saved", async () => {
+    const store = memStore();
+    expect(await hasSavedWorld(store)).toBe(false);
+    await autosave(store, createWorld(9, makeConfig({})), null, 1000);
+    expect(await hasSavedWorld(store)).toBe(true);
+  });
+
+  it("returns false (never throws) when the store read fails", async () => {
+    const throwingStore: KeyValStore = {
+      get: async () => {
+        throw new Error("idb unavailable");
+      },
+      set: async () => {},
+    };
+    expect(await hasSavedWorld(throwingStore)).toBe(false);
   });
 });

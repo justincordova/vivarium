@@ -14,6 +14,7 @@
 import { makeConfig } from "@sim/config";
 import type { SaveBlob } from "@sim/serialize";
 import type { Creature, LineageEvent } from "@sim/types";
+import { hasSavedWorld } from "@worker/persistence";
 import type {
   Command,
   Event,
@@ -131,6 +132,14 @@ interface SimState {
   persistError: string | null;
   /** The "while you were away" report, shown after a catch-up with drama; null to dismiss. */
   report: Report | null;
+  /**
+   * UI lifecycle for the landing flow (UI overhaul): "landing" shows the front door,
+   * "entering" is the boot/catch-up window, "live" is the running world. A shared-URL
+   * deep link skips straight to "entering".
+   */
+  phase: "landing" | "entering" | "live";
+  /** Whether a saved world exists (async-checked on mount) → gates the "Continue" button. */
+  hasSave: boolean;
 
   play(): void;
   pause(): void;
@@ -141,6 +150,11 @@ interface SimState {
   clearInspected(): void;
   setSeed(seed: number): void;
   reinit(): void;
+  /**
+   * Boot the world from a chosen source (landing screen). Sends the `boot` command with
+   * the source selector and moves to the "entering" phase; `ready` flips to "live".
+   */
+  bootWorld(source: "continue" | "cold-open" | "fresh"): void;
   setParam(key: string, value: number): void;
   editGenome(id: number, patch: GenomePatch): void;
   spawn(spec: SpawnSpec): void;
@@ -209,6 +223,8 @@ export const useSimStore = create<SimState>((set, get) => ({
   catchupEnabled: readCatchupPref(),
   persistError: null,
   report: null,
+  phase: "landing",
+  hasSave: false,
 
   play() {
     send({ t: "play" });
@@ -261,6 +277,23 @@ export const useSimStore = create<SimState>((set, get) => ({
       lineageHistory: [],
       topLineages: [],
       running: false,
+    });
+  },
+  bootWorld(source) {
+    // Move to the boot window immediately (the landing fades; the catch-up overlay may
+    // show during "continue"). `ready` from the worker flips us to "live".
+    set({ phase: "entering" });
+    const seed = get().seed;
+    const config = makeConfig({});
+    const catchupEnabled = get().catchupEnabled;
+    // "cold-open" needs the pre-evolved snapshot; "fresh"/"continue" don't. The fetch is
+    // best-effort — on failure the worker cold-starts from founders (still a valid world).
+    void (async () => {
+      const coldOpen = source === "cold-open" ? ((await fetchColdOpen()) ?? undefined) : undefined;
+      send({ t: "boot", seed, config, catchupEnabled, coldOpen, source });
+    })().catch(() => {
+      // Last resort for an unexpected postMessage throw — release to founders.
+      send({ t: "boot", seed, config, catchupEnabled, source: "fresh" });
     });
   },
   setParam(key, value) {
@@ -432,9 +465,9 @@ export function startWorker(): Worker {
         });
         break;
       case "ready":
-        // Boot (load + any catch-up) complete: dismiss the overlay and auto-play so a
-        // visitor sees a living world immediately.
-        useSimStore.setState({ catchup: null, ready: true });
+        // Boot (load + any catch-up) complete: dismiss the overlay, enter the live phase,
+        // and auto-play so a visitor sees a living world immediately.
+        useSimStore.setState({ catchup: null, ready: true, phase: "live" });
         useSimStore.getState().play();
         break;
       case "persistError":
@@ -462,18 +495,25 @@ export function startWorker(): Worker {
   const config = makeConfig(shared?.tunables ? { tunables: shared.tunables } : {});
   const { catchupEnabled } = useSimStore.getState();
 
-  // A shared link (`#seed=..`) means the visitor wants THAT fresh world → skip the
-  // cold open. Otherwise fetch the pre-evolved cold-open snapshot (Phase 5B.2) and hand
-  // it to the worker, which uses it only if there is no saved world. The fetch is
-  // best-effort and never blocks: on failure the worker cold-starts from founders.
-  void (async () => {
-    const coldOpen = shared === null ? await fetchColdOpen() : null;
-    send({ t: "boot", seed, config, catchupEnabled, coldOpen: coldOpen ?? undefined });
-  })().catch(() => {
-    // The cold-open fetch never throws (it returns null on failure), so this is only a
-    // last resort for an unexpected `send`/postMessage throw. Swallow it rather than
-    // leave an unhandled rejection — the worker cold-starts from founders on its own.
-  });
+  // Entry policy (UI overhaul):
+  //   - A shared link (`#seed=..`) is an explicit intent to enter THAT world → skip the
+  //     landing, boot straight into it (fresh from the shared seed, no cold open).
+  //   - Otherwise show the landing screen and let the visitor choose the source; the
+  //     buttons call `bootWorld(...)`. We only probe whether a save exists so the landing
+  //     can offer "Continue".
+  if (shared !== null) {
+    useSimStore.setState({ phase: "entering" });
+    void (async () => {
+      send({ t: "boot", seed, config, catchupEnabled, source: "fresh" });
+    })().catch(() => {
+      // Last resort for an unexpected `send`/postMessage throw — leave no unhandled
+      // rejection; the worker cold-starts from founders on its own.
+    });
+  } else {
+    void hasSavedWorld()
+      .then((has) => useSimStore.setState({ hasSave: has }))
+      .catch(() => useSimStore.setState({ hasSave: false }));
+  }
 
   // `visibilitychange` is a document (main-thread) event the worker cannot observe;
   // forward it as a `save` so the worker autosaves when the tab is hidden. Registered
