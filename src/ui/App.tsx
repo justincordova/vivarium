@@ -260,7 +260,7 @@ export function App(): React.ReactElement {
           <Timeline />
           <DetachedBadge />
           <PersistErrorBadge />
-          <div className="tabular pointer-events-none absolute bottom-4 right-4 text-[10px] uppercase tracking-widest text-[var(--fg-mute)]">
+          <div className="tabular pointer-events-none absolute bottom-11 right-4 text-[10px] uppercase tracking-widest text-[var(--fg-mute)]">
             vivarium · seed {seed}
           </div>
           <OnboardingCaptions />

@@ -25,8 +25,12 @@ import { draw } from "@render/canvas";
 import { latestFrame, useSimStore } from "@store/useSimStore";
 import { useEffect, useRef, useState } from "react";
 
-/** Pixels the pointer must move before a press counts as a drag (not a click). */
-const DRAG_THRESHOLD = 4;
+/** Pixels the pointer must move before a press counts as a drag (not a click). A little
+ * generous so a quick tap with minor jitter still spawns/inspects on the first try. */
+const DRAG_THRESHOLD = 8;
+/** A press shorter than this (ms) always counts as a click, even if it wandered a bit —
+ * so a quick tap is never swallowed as a pan. */
+const TAP_MS = 250;
 /** Water quanta moved per drought/flood click. */
 const WATER_BRUSH_DELTA = 400;
 const WATER_BRUSH_RADIUS = 2;
@@ -120,7 +124,7 @@ export function SimCanvas(): React.ReactElement {
   }, []);
 
   // ── Pointer interaction ────────────────────────────────────────────────────────
-  const drag = useRef<{ x: number; y: number; moved: number } | null>(null);
+  const drag = useRef<{ x: number; y: number; moved: number; t: number } | null>(null);
 
   const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>): void => {
     try {
@@ -128,7 +132,7 @@ export function SimCanvas(): React.ReactElement {
     } catch {
       // setPointerCapture can throw for synthetic events; harmless.
     }
-    drag.current = { x: e.clientX, y: e.clientY, moved: 0 };
+    drag.current = { x: e.clientX, y: e.clientY, moved: 0, t: performance.now() };
   };
 
   const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>): void => {
@@ -170,7 +174,10 @@ export function SimCanvas(): React.ReactElement {
     const cam = camRef.current;
     const frame = latestFrame.current;
     if (d === null || cam === null || frame === null) return;
-    if (d.moved >= DRAG_THRESHOLD) return; // a pan, not a click
+    // A quick tap is always a click (even with minor jitter); otherwise fall back to the
+    // distance threshold. This keeps spawn/inspect reliable on the first tap.
+    const quickTap = performance.now() - d.t < TAP_MS;
+    if (!quickTap && d.moved >= DRAG_THRESHOLD) return; // a deliberate pan, not a click
 
     const rect = e.currentTarget.getBoundingClientRect();
     const [wx, wy] = screenToWorld(cam, e.clientX - rect.left, e.clientY - rect.top);
@@ -189,14 +196,16 @@ export function SimCanvas(): React.ReactElement {
         break;
       }
       case "spawn": {
-        // Spawn a mid-diet creature at the click, endowed from the reservoir/water.
+        // Spawn a mid-diet creature at the click, well-endowed from the reservoir/water so
+        // it survives long enough to inspect (the worker auto-inspects it). Lower metabolism
+        // than default also buys the newcomer time to look before it burns down.
         store.spawn({
           x: wx,
           y: wy,
-          traits: { size: 3, speed: 4, diet: 0.3, metabolism: 1, senseRadius: 25 },
+          traits: { size: 3, speed: 4, diet: 0.3, metabolism: 0.7, senseRadius: 25 },
           hue: Math.floor((wx / frame.worldWidth) * 360),
-          energy: 250,
-          hydration: 120,
+          energy: 600,
+          hydration: 300,
         });
         break;
       }
@@ -225,6 +234,26 @@ export function SimCanvas(): React.ReactElement {
     camRef.current = zoomAt(cam, factor, e.clientX - rect.left, e.clientY - rect.top);
   };
 
+  // On-screen zoom controls (the wheel is not discoverable, esp. on trackpads). These
+  // zoom about the canvas center and refit to the world, mutating the same camera ref
+  // the rAF loop reads — so no React re-render is needed.
+  const zoomByCenter = (factor: number): void => {
+    const cam = camRef.current;
+    if (cam === null) return;
+    camRef.current = zoomAt(cam, factor, cam.viewW / 2, cam.viewH / 2);
+  };
+  const fitToWorld = (): void => {
+    const cam = camRef.current;
+    const frame = latestFrame.current;
+    if (cam === null) return;
+    camRef.current = fitCamera(
+      frame?.worldWidth ?? 200,
+      frame?.worldHeight ?? 200,
+      cam.viewW,
+      cam.viewH,
+    );
+  };
+
   return (
     <>
       <canvas
@@ -235,15 +264,47 @@ export function SimCanvas(): React.ReactElement {
         onPointerUp={onPointerUp}
         onWheel={onWheel}
       />
+
+      {/* Zoom controls — makes zoom discoverable (the wheel alone is not). */}
+      <div className="panel absolute bottom-4 left-1/2 flex -translate-x-1/2 translate-y-0 items-center gap-0.5 p-0.5 sm:left-auto sm:right-4 sm:translate-x-0">
+        <button
+          type="button"
+          onClick={() => zoomByCenter(1 / 1.25)}
+          className="btn-ghost tabular h-7 w-7 text-base leading-none"
+          title="Zoom out"
+          aria-label="zoom out"
+        >
+          −
+        </button>
+        <button
+          type="button"
+          onClick={fitToWorld}
+          className="btn-ghost px-2 py-1 text-[10px] uppercase tracking-widest"
+          title="Fit the whole world in view"
+          aria-label="fit world"
+        >
+          fit
+        </button>
+        <button
+          type="button"
+          onClick={() => zoomByCenter(1.25)}
+          className="btn-ghost tabular h-7 w-7 text-base leading-none"
+          title="Zoom in"
+          aria-label="zoom in"
+        >
+          +
+        </button>
+      </div>
+
       {deathNote !== null && (
-        <div className="tabular pointer-events-auto absolute bottom-16 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-md border border-neutral-800 bg-neutral-950/90 px-3 py-1.5 text-xs text-neutral-300 backdrop-blur-sm">
+        <div className="panel tabular pointer-events-auto absolute bottom-16 left-1/2 flex -translate-x-1/2 items-center gap-3 px-3 py-1.5 text-xs text-[var(--fg-dim)]">
           <span>
             creature #{deathNote.id} gone · age {deathNote.age.toLocaleString("en-US")}
           </span>
           <button
             type="button"
             onClick={() => setDeathNote(null)}
-            className="text-neutral-500 hover:text-neutral-200"
+            className="text-[var(--fg-mute)] hover:text-[var(--fg)]"
             aria-label="dismiss"
           >
             ✕

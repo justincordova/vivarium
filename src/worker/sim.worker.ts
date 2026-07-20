@@ -368,7 +368,11 @@ self.onmessage = (ev: MessageEvent<Command>): void => {
       break;
     case "spawn":
       if (world !== null) {
-        applySpawn(world, cmd.spec);
+        const id = applySpawn(world, cmd.spec);
+        // Reply with the new creature so the UI can auto-inspect it — otherwise a fresh
+        // spawn can die before the visitor manages to click it (UI overhaul spawn fix).
+        const c = world.creatures.find((cr) => cr.id === id);
+        if (c !== undefined) post({ t: "creature", data: c });
         repaintIfPaused();
       }
       break;
