@@ -131,11 +131,18 @@ export function buildRenderFrame(world: World): RenderFrame {
     corpses.energyFrac[i] = clamp01(x.energy / maxCorpseE);
   }
 
-  // Water field, normalized 0..1 per cell, for the renderer's water underlay (so
-  // drought/flood is visible). Read-only; floats are fine outside tick().
+  // Water field, normalized 0..1 per cell against the field's OWN current max, for the
+  // renderer's water underlay. Normalizing against the live max (not a fixed constant)
+  // means uniform water reads as a flat mid-tone and drought/flood dips/spikes stand out,
+  // instead of every cell clipping to solid blue (the resting fill exceeds any fixed
+  // per-cell constant). Read-only; floats are fine outside tick().
   const cells = world.fields.water.length;
   const water = new Float32Array(cells);
-  const waterMax = Math.max(1, t.WATER_CELL_MAX);
+  let waterMax = 1;
+  for (let i = 0; i < cells; i++) {
+    const w = world.fields.water[i] as number;
+    if (w > waterMax) waterMax = w;
+  }
   for (let i = 0; i < cells; i++) {
     water[i] = clamp01((world.fields.water[i] as number) / waterMax);
   }

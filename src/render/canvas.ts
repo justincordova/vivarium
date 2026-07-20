@@ -55,14 +55,20 @@ function drawWater(ctx: CanvasRenderingContext2D, frame: RenderFrame, cam: Camer
   for (let row = 0; row < gridRows; row++) {
     for (let col = 0; col < gridCols; col++) {
       const w = water[row * gridCols + col] as number;
-      if (w <= 0.02) continue;
+      // Only tint cells with meaningfully high water. A world of uniformly-wet cells
+      // (the current sim's resting state) stays nearly clear; drought/flood — which push
+      // cells below/above the field's own max — read as gaps/brightening in the wash.
+      if (w <= 0.55) continue;
       const x0 = worldToScreenX(cam, col * cw);
       const y0 = worldToScreenY(cam, row * ch);
       const x1 = worldToScreenX(cam, (col + 1) * cw);
       const y1 = worldToScreenY(cam, (row + 1) * ch);
       if (x1 < 0 || y1 < 0 || x0 > cam.viewW || y0 > cam.viewH) continue;
-      // Deep cyan-blue; alpha grows with saturation but caps so creatures stay readable.
-      ctx.fillStyle = `rgba(38, 110, 170, ${(0.08 + 0.42 * w).toFixed(3)})`;
+      // Deep cyan-blue; alpha grows with the ABOVE-threshold saturation so the tint is
+      // faint at baseline and only deepens where water genuinely pools. Caps low so
+      // creatures stay readable.
+      const t = (w - 0.55) / 0.45; // 0..1 across the visible band
+      ctx.fillStyle = `rgba(38, 110, 170, ${(0.05 + 0.3 * t).toFixed(3)})`;
       ctx.fillRect(x0, y0, x1 - x0 + 1, y1 - y0 + 1);
     }
   }
