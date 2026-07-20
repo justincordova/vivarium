@@ -209,7 +209,7 @@ function PersistErrorBadge(): React.ReactElement | null {
   const persistError = useSimStore((s) => s.persistError);
   if (persistError === null) return null;
   return (
-    <div className="panel pointer-events-none absolute bottom-4 left-4 px-2 py-1 text-[10px] uppercase tracking-widest text-[var(--warn)]">
+    <div className="panel pointer-events-none absolute bottom-11 left-4 px-2 py-1 text-[10px] uppercase tracking-widest text-[var(--warn)]">
       autosave failed
     </div>
   );
@@ -262,7 +262,7 @@ export function App(): React.ReactElement {
           <Timeline />
           <DetachedBadge />
           <PersistErrorBadge />
-          <div className="tabular pointer-events-none absolute bottom-11 right-4 text-[10px] uppercase tracking-widest text-[var(--fg-mute)]">
+          <div className="tabular pointer-events-none absolute bottom-4 left-4 text-[10px] uppercase tracking-widest text-[var(--fg-mute)]">
             vivarium · seed {seed}
           </div>
           <OnboardingCaptions />

@@ -305,7 +305,7 @@ export function SimCanvas(): React.ReactElement {
       </div>
 
       {deathNote !== null && (
-        <div className="panel tabular pointer-events-auto absolute bottom-16 left-1/2 flex -translate-x-1/2 items-center gap-3 px-3 py-1.5 text-xs text-[var(--fg-dim)]">
+        <div className="panel tabular pointer-events-auto absolute bottom-28 left-1/2 z-20 flex -translate-x-1/2 items-center gap-3 px-3 py-1.5 text-xs text-[var(--fg-dim)]">
           <span>
             creature #{deathNote.id} gone · age {deathNote.age.toLocaleString("en-US")}
           </span>
