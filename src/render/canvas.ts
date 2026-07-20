@@ -41,6 +41,34 @@ export function fadeTrails(ctx: CanvasRenderingContext2D, width: number, height:
   ctx.restore();
 }
 
+/**
+ * Water underlay: fill each grid cell with a blue tint proportional to its saturation,
+ * so water bodies are visible and drought/flood (the paint tools) actually show. Cheap:
+ * one rect per cell, only where there's meaningful water, culled to the viewport.
+ */
+function drawWater(ctx: CanvasRenderingContext2D, frame: RenderFrame, cam: Camera): void {
+  const { gridCols, gridRows, water } = frame;
+  if (gridCols <= 0 || gridRows <= 0) return;
+  const cw = frame.worldWidth / gridCols;
+  const ch = frame.worldHeight / gridRows;
+  ctx.save();
+  for (let row = 0; row < gridRows; row++) {
+    for (let col = 0; col < gridCols; col++) {
+      const w = water[row * gridCols + col] as number;
+      if (w <= 0.02) continue;
+      const x0 = worldToScreenX(cam, col * cw);
+      const y0 = worldToScreenY(cam, row * ch);
+      const x1 = worldToScreenX(cam, (col + 1) * cw);
+      const y1 = worldToScreenY(cam, (row + 1) * ch);
+      if (x1 < 0 || y1 < 0 || x0 > cam.viewW || y0 > cam.viewH) continue;
+      // Deep cyan-blue; alpha grows with saturation but caps so creatures stay readable.
+      ctx.fillStyle = `rgba(38, 110, 170, ${(0.08 + 0.42 * w).toFixed(3)})`;
+      ctx.fillRect(x0, y0, x1 - x0 + 1, y1 - y0 + 1);
+    }
+  }
+  ctx.restore();
+}
+
 /** Draw the world-bounds rectangle so the walled arena edge is legible. */
 function drawBounds(ctx: CanvasRenderingContext2D, frame: RenderFrame, cam: Camera): void {
   const [x0, y0] = worldToScreen(cam, 0, 0);
@@ -197,6 +225,7 @@ function drawCreature(
  */
 export function draw(frame: RenderFrame, ctx: CanvasRenderingContext2D, cam: Camera): void {
   fadeTrails(ctx, cam.viewW, cam.viewH);
+  drawWater(ctx, frame, cam);
   drawBounds(ctx, frame, cam);
 
   // Plants — faint muted marks (SPEC.md: fields/plants recede; creatures dominate).

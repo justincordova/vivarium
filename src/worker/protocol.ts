@@ -81,6 +81,11 @@ export interface RenderFrame {
   gridCols: number;
   gridRows: number;
   light: number;
+  /**
+   * Per-cell water saturation in 0..1 (row-major, `gridCols*gridRows` long), so the
+   * renderer can draw a water underlay — and drought/flood actually shows on screen.
+   */
+  water: Float32Array;
   creatures: CreatureFrame;
   plants: PlantFrame;
   corpses: CorpseFrame;

@@ -108,6 +108,11 @@ export function HelpLegend(): React.ReactElement {
               label="Outline ring"
               meaning="Age — older creatures ring brighter."
             />
+            <LegendRow
+              marker={<span className="h-3.5 w-3.5 rounded-sm bg-[rgb(38_110_170/0.7)]" />}
+              label="Blue tint"
+              meaning="Water — creatures drink to survive; drought/flood change it."
+            />
           </div>
 
           <div className="mt-3 border-t border-[rgb(var(--panel-border)/0.12)] pt-2">

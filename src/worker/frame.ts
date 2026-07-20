@@ -131,6 +131,15 @@ export function buildRenderFrame(world: World): RenderFrame {
     corpses.energyFrac[i] = clamp01(x.energy / maxCorpseE);
   }
 
+  // Water field, normalized 0..1 per cell, for the renderer's water underlay (so
+  // drought/flood is visible). Read-only; floats are fine outside tick().
+  const cells = world.fields.water.length;
+  const water = new Float32Array(cells);
+  const waterMax = Math.max(1, t.WATER_CELL_MAX);
+  for (let i = 0; i < cells; i++) {
+    water[i] = clamp01((world.fields.water[i] as number) / waterMax);
+  }
+
   return {
     tick: world.tick,
     worldWidth: world.config.worldWidth,
@@ -138,6 +147,7 @@ export function buildRenderFrame(world: World): RenderFrame {
     gridCols: world.config.gridCols,
     gridRows: world.config.gridRows,
     light: dayLight(world.tick, t.TICKS_PER_DAY),
+    water,
     creatures,
     plants,
     corpses,
@@ -171,6 +181,7 @@ export function frameTransferables(frame: RenderFrame): ArrayBuffer[] {
     x.x.buffer,
     x.y.buffer,
     x.energyFrac.buffer,
+    frame.water.buffer,
   ] as ArrayBuffer[];
 }
 

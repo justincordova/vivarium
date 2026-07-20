@@ -88,6 +88,20 @@ describe("frame↔palette contract", () => {
     expect(frame.light).toBeGreaterThanOrEqual(0);
     expect(frame.light).toBeLessThanOrEqual(1);
   });
+
+  it("carries a per-cell water field normalized to 0..1 (drives the water underlay)", () => {
+    const world = createWorld(1, makeConfig({}));
+    const frame = buildRenderFrame(world);
+    expect(frame.water).toBeInstanceOf(Float32Array);
+    expect(frame.water.length).toBe(world.config.gridCols * world.config.gridRows);
+    for (let i = 0; i < frame.water.length; i++) {
+      const w = frame.water[i] as number;
+      expect(w).toBeGreaterThanOrEqual(0);
+      expect(w).toBeLessThanOrEqual(1);
+    }
+    // A world seeded with water should show at least one wet cell.
+    expect(Array.from(frame.water).some((w) => w > 0)).toBe(true);
+  });
 });
 
 describe("dayLight", () => {
