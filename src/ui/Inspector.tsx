@@ -51,9 +51,14 @@ function GeneRow({
   };
 
   return (
-    <div className="grid grid-cols-[4.5rem_1fr_2.6rem] items-center gap-2 py-0.5">
-      <span className="text-[10px] uppercase tracking-wide text-neutral-500">{gene}</span>
-      <div className="flex gap-1">
+    <div className="py-1">
+      <div className="mb-1 flex items-baseline justify-between">
+        <span className="text-[10px] uppercase tracking-wide text-[var(--fg-mute)]">{gene}</span>
+        <span className="tabular text-[11px] text-[var(--fg-dim)]">{num(expressed)}</span>
+      </div>
+      {/* Alleles stacked full-width — two sliders side-by-side in a 288px panel squished
+          them illegibly. Each homolog now gets the whole row. */}
+      <div className="flex flex-col gap-1">
         {[0, 1].map((i) => (
           <input
             key={i}
@@ -63,12 +68,11 @@ function GeneRow({
             step={step}
             value={allele[i as 0 | 1]}
             onChange={(e) => edit(i as 0 | 1, Number(e.target.value))}
-            className="h-1 w-full cursor-pointer appearance-none rounded bg-neutral-700 accent-neutral-300"
+            className="h-1 w-full cursor-pointer appearance-none rounded bg-[rgb(var(--panel-border)/0.25)] accent-[var(--accent)]"
             aria-label={`${gene} allele ${i}`}
           />
         ))}
       </div>
-      <span className="tabular text-right text-[11px] text-neutral-300">{num(expressed)}</span>
     </div>
   );
 }
@@ -86,13 +90,13 @@ export function Inspector(): React.ReactElement | null {
   return (
     <div className="panel w-72 shrink-0 p-3">
       <div className="mb-2 flex items-center justify-between">
-        <span className="tabular text-[11px] font-medium uppercase tracking-widest text-neutral-300">
+        <span className="tabular text-[11px] font-medium uppercase tracking-widest text-[var(--fg-dim)]">
           creature #{inspected.id}
         </span>
         <button
           type="button"
           onClick={clear}
-          className="text-neutral-500 hover:text-neutral-200"
+          className="text-[var(--fg-mute)] hover:text-[var(--fg)]"
           aria-label="close inspector"
         >
           ✕
@@ -116,10 +120,10 @@ export function Inspector(): React.ReactElement | null {
         <button
           type="button"
           onClick={() => setFollow(following ? null : inspected.id)}
-          className={`flex-1 rounded px-2 py-1 text-[11px] ${
+          className={`flex-1 rounded px-2 py-1 text-[11px] transition-colors ${
             following
-              ? "bg-neutral-200 text-neutral-950"
-              : "bg-neutral-800 text-neutral-300 hover:bg-neutral-700"
+              ? "bg-[var(--accent)] font-medium text-[var(--accent-ink)]"
+              : "bg-[rgb(var(--panel-border)/0.12)] text-[var(--fg-dim)] hover:bg-[rgb(var(--panel-border)/0.2)]"
           }`}
         >
           {following ? "following" : "follow"}
@@ -130,16 +134,16 @@ export function Inspector(): React.ReactElement | null {
             remove(inspected.id);
             clear();
           }}
-          className="flex-1 rounded bg-neutral-800 px-2 py-1 text-[11px] text-neutral-300 hover:bg-red-900/60 hover:text-red-200"
+          className="flex-1 rounded bg-[rgb(var(--panel-border)/0.12)] px-2 py-1 text-[11px] text-[var(--fg-dim)] transition-colors hover:bg-[color-mix(in_srgb,var(--danger)_35%,transparent)] hover:text-[var(--danger)]"
         >
           delete
         </button>
       </div>
 
       {/* genome — both alleles per gene, live-editable */}
-      <div className="mt-2 border-t border-neutral-800 pt-2">
-        <div className="mb-1 text-[10px] uppercase tracking-widest text-neutral-500">
-          genome · allele a / b → expressed
+      <div className="mt-2 border-t border-[rgb(var(--panel-border)/0.12)] pt-2">
+        <div className="mb-1 text-[10px] uppercase tracking-widest text-[var(--fg-mute)]">
+          genome · two alleles per gene → expressed value
         </div>
         {(TRAIT_GENES as readonly TraitGene[]).map((g) => (
           <GeneRow key={g} creature={inspected} gene={g} />
@@ -153,8 +157,8 @@ export function Inspector(): React.ReactElement | null {
 function Vital({ label, value }: { label: string; value: string }): React.ReactElement {
   return (
     <div className="flex items-baseline justify-between gap-2">
-      <span className="text-[10px] uppercase tracking-wide text-neutral-500">{label}</span>
-      <span className="tabular text-xs text-neutral-200">{value}</span>
+      <span className="text-[10px] uppercase tracking-wide text-[var(--fg-mute)]">{label}</span>
+      <span className="tabular text-xs text-[var(--fg)]">{value}</span>
     </div>
   );
 }
