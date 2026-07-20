@@ -94,3 +94,8 @@ export function resize(cam: Camera, viewW: number, viewH: number): Camera {
 export function centerOn(cam: Camera, wx: number, wy: number): Camera {
   return { ...cam, cx: wx, cy: wy };
 }
+
+/** Set the zoom level directly (clamped), preserving center and viewport. */
+export function setZoom(cam: Camera, zoom: number): Camera {
+  return { ...cam, zoom: clampZoom(zoom) };
+}

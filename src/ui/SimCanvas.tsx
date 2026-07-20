@@ -19,6 +19,7 @@ import {
   pan,
   resize,
   screenToWorld,
+  setZoom,
   zoomAt,
 } from "@render/camera";
 import { draw } from "@render/canvas";
@@ -31,6 +32,9 @@ const DRAG_THRESHOLD = 8;
 /** A press shorter than this (ms) always counts as a click, even if it wandered a bit —
  * so a quick tap is never swallowed as a pan. */
 const TAP_MS = 250;
+/** Zoom (screen px per world unit) the camera snaps to when spawning, so a freshly
+ * placed creature fills enough of the view to actually see. */
+const SPAWN_FOCUS_ZOOM = 4;
 /** Water quanta moved per drought/flood click. */
 const WATER_BRUSH_DELTA = 400;
 const WATER_BRUSH_RADIUS = 2;
@@ -196,17 +200,21 @@ export function SimCanvas(): React.ReactElement {
         break;
       }
       case "spawn": {
-        // Spawn a mid-diet creature at the click, well-endowed from the reservoir/water so
-        // it survives long enough to inspect (the worker auto-inspects it). Lower metabolism
-        // than default also buys the newcomer time to look before it burns down.
+        // Spawn a LARGE, well-endowed, low-metabolism creature at the click so it is easy
+        // to see and survives long enough to inspect (the worker auto-inspects it).
         store.spawn({
           x: wx,
           y: wy,
-          traits: { size: 3, speed: 4, diet: 0.3, metabolism: 0.7, senseRadius: 25 },
+          traits: { size: 8, speed: 4, diet: 0.3, metabolism: 0.7, senseRadius: 25 },
           hue: Math.floor((wx / frame.worldWidth) * 360),
-          energy: 600,
-          hydration: 300,
+          energy: 900,
+          hydration: 400,
         });
+        // Bring the camera to it: center on the spawn point and ensure a close-up zoom so
+        // the new creature isn't a lost speck. Mutates the same ref the rAF loop reads.
+        const centered = centerOn(cam, wx, wy);
+        camRef.current =
+          cam.zoom < SPAWN_FOCUS_ZOOM ? setZoom(centered, SPAWN_FOCUS_ZOOM) : centered;
         break;
       }
       case "paintWaterDown":
