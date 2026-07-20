@@ -120,11 +120,14 @@ function defaultTunables(): Tunables {
  */
 export function makeDefaultConfig(): Config {
   return {
-    worldWidth: 200,
-    worldHeight: 200,
-    gridCols: 64,
-    gridRows: 64,
-    initialSolarReservoir: 2_000_000,
+    // Living World: a larger world so terrain forms real regions and creatures migrate
+    // between biomes. Grid scales with it; the solar reservoir scales with cell count so
+    // the per-cell energy budget (and starvation dynamics) stays comparable to the beta.
+    worldWidth: 1000,
+    worldHeight: 1000,
+    gridCols: 128,
+    gridRows: 128,
+    initialSolarReservoir: 8_000_000,
     founderCount: 60, // within SPEC.md §Initial Conditions 40–100
     hidden: C.HIDDEN,
     brainKind: "rule",

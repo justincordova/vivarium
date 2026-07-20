@@ -180,9 +180,17 @@ describe("graduated density-dependent reproduction brake", () => {
     // With REPRO_SOFT_FRAC low, the stochastic brake bites earlier, so the population
     // peak is no higher than a run where the brake engages only near the cap.
     const peak = (softFrac: number): number => {
+      // Pin a small world so population density actually reaches the cap — the density
+      // brake is what's under test, not the (now much larger) default world size.
       const w = createWorld(
         1,
-        makeConfig({ tunables: { CREATURE_CAP: 200, REPRO_SOFT_FRAC: softFrac } }),
+        makeConfig({
+          worldWidth: 200,
+          worldHeight: 200,
+          gridCols: 64,
+          gridRows: 64,
+          tunables: { CREATURE_CAP: 200, REPRO_SOFT_FRAC: softFrac },
+        }),
       );
       let mx = 0;
       for (let i = 0; i < 1200; i++) {
@@ -219,11 +227,14 @@ describe("Allee low-density starvation rescue", () => {
 
   it("does NOT rescue when the population is at/above the threshold", () => {
     // At a healthy population the rescue is inactive, so a starving creature dies
-    // normally (density-dependent: relief only at low density).
-    const w = createWorld(1, makeConfig({}));
+    // normally (density-dependent: relief only at low density). Pin a small world so the
+    // population reliably climbs above the Allee threshold (the default world is now far
+    // larger, keeping founders too sparse to reach it).
+    const smallCfg = makeConfig({ worldWidth: 200, worldHeight: 200, gridCols: 64, gridRows: 64 });
+    const w = createWorld(1, smallCfg);
     // Run to a healthy population well above the Allee threshold.
     for (let i = 0; i < 800; i++) tick(w);
-    expect(w.creatures.length).toBeGreaterThan(makeConfig({}).tunables.ALLEE_POP_THRESHOLD);
+    expect(w.creatures.length).toBeGreaterThan(smallCfg.tunables.ALLEE_POP_THRESHOLD);
     // Starve one creature to zero energy; at high pop it should be removed next tick.
     const victim = w.creatures[0] as Creature;
     const victimId = victim.id;
