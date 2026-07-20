@@ -1,3 +1,4 @@
+import { makeConfig } from "@sim/config";
 import {
   type Compartment,
   cellCompartment,
@@ -7,7 +8,9 @@ import {
   transferUpTo,
 } from "@sim/energy";
 import { totalEnergy, totalWater } from "@sim/stats";
+import { tick } from "@sim/tick";
 import type { Corpse, Creature, Plant, World } from "@sim/types";
+import { createWorld } from "@sim/world";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
@@ -218,6 +221,26 @@ describe("energy — transfer guards conservation", () => {
     expect(obj.energy).toBe(13);
     expect((arr[0] as number) + obj.energy).toBe(before);
   });
+});
+
+describe("conservation — terrained live world", () => {
+  it("totalEnergy and totalWater are exactly conserved across ticks with terrain", () => {
+    // A real terrained world (biomes modulate growth/movement) must still close both
+    // ledgers exactly every tick — rate modulation must not mint or destroy quanta.
+    fc.assert(
+      fc.property(fc.integer({ min: 1, max: 5000 }), fc.integer({ min: 1, max: 40 }), (seed, n) => {
+        const w = createWorld(seed, makeConfig({}));
+        const e0 = totalEnergy(w);
+        const wa0 = totalWater(w);
+        for (let i = 0; i < n; i++) {
+          tick(w);
+          expect(totalEnergy(w)).toBe(e0);
+          expect(totalWater(w)).toBe(wa0);
+        }
+      }),
+      { numRuns: 8 },
+    );
+  }, 120000);
 });
 
 describe("energy — toQuantum", () => {

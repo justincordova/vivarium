@@ -31,6 +31,7 @@ import {
 import { crossover, distance, expressTrait, mutate, plantSeed } from "./genetics";
 import { registerLineage } from "./history";
 import { localDensity, SpatialHash, type SpatialPoint } from "./spatial";
+import { growthMultiplier, moveCostMultiplier } from "./terrain";
 import {
   Action,
   type Config,
@@ -530,8 +531,13 @@ function applyCreature(
     c.vx = (c.vx / v) * speed;
     c.vy = (c.vy / v) * speed;
   }
-  c.x = clamp(c.x + c.vx, 0, world.config.worldWidth);
-  c.y = clamp(c.y + c.vy, 0, world.config.worldHeight);
+  // Terrain impedes movement by biome (rock slow, water near-impassable): scale the
+  // step by the creature's current cell. This affects POSITION only — no ledger touched.
+  const moveMul = moveCostMultiplier(
+    world.terrain.biome[cellIndexOf(world.config, c.x, c.y)] as number,
+  );
+  c.x = clamp(c.x + c.vx * moveMul, 0, world.config.worldWidth);
+  c.y = clamp(c.y + c.vy * moveMul, 0, world.config.worldHeight);
   if (appliedAccel !== 0) {
     transferUpTo(cEnergy, reservoir, toQuantum(speed * speed * t.MOVEMENT_COST_COEF + 1));
   }
@@ -870,8 +876,11 @@ function resolvePlants(world: World, _reservoir: Compartment): void {
       const headroom = Math.max(0, toQuantum(maxSize) - p.energy);
       // `PLANT_GROWTH_MAX` is a real-valued rate cap (a swept tunable), so quantize it
       // before it reaches the integer ledger — `transferUpTo` requires integer quanta.
-      // `headroom` is already integer, so `grow` is the min of two integers.
-      const grow = Math.min(toQuantum(t.PLANT_GROWTH_MAX), headroom);
+      // Terrain modulates the growth RATE by biome (grassland lush, barren sparse,
+      // rock/water barren): scale then re-quantize so the ledger stays integer. `headroom`
+      // is already integer, so `grow` is the min of two integers — nothing is minted.
+      const biomeGrowth = growthMultiplier(world.terrain.biome[cell] as number);
+      const grow = Math.min(toQuantum(t.PLANT_GROWTH_MAX * biomeGrowth), headroom);
       if (grow > 0) {
         // Draw from light then fertility (headroom-limited); gain exactly equals draw.
         const fromLight = transferUpTo(
