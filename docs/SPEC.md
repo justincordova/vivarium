@@ -1,9 +1,14 @@
 # Vivarium — Evolutionary Ecosystem Simulator
 
 > **Status:** Phases 0–5C shipped; the **beta definition-of-done is met** (persist +
-> offline catch-up + "while you were away" report). This spec is the source of truth
-> for the rules; where the shipped code refined a decision, the relevant section notes
-> it. Post-beta modes (Terrarium/Laboratory, LLM naturalist) remain deferred (§Non-Goals).
+> offline catch-up + "while you were away" report), followed by a **welcoming
+> observatory UI overhaul** (landing screen, themed chrome, organism rendering — see
+> §Visual Design / §Player Experience). A larger **Living World redesign** is now
+> approved and in progress (see §Living World redesign below and
+> `docs/designs/living-world.md`); until its phases land, the rules in this spec
+> describe the current running system. This spec is the source of truth for the
+> rules; where the shipped code refined a decision, the relevant section notes it.
+> Post-beta modes (Terrarium/Laboratory, LLM naturalist) remain deferred (§Non-Goals).
 > **Purpose:** Fully pin the simulation rules — sensors, actions, parameters and
 > their costs, removal conditions, plant lifecycle, energy return, contest
 > resolution, initial conditions, tick semantics and units — before any code
@@ -26,6 +31,58 @@ emerges from it*. Ambush predation, flocking, nocturnal niches, and speciation
 should appear without being programmed.
 
 The project succeeds if it produces things the author did not anticipate.
+
+---
+
+## Living World redesign (approved, in progress)
+
+The beta proves the emergence thesis but reads, to a normal player, as "green dots
+in an empty petri dish": the world has no *places* worth caring about, and the
+chrome is instrument-grade. An approved redesign — **`docs/designs/living-world.md`**
+— evolves the existing deterministic engine into a **living world** a newcomer
+instantly gets and enjoys, without abandoning the crown jewel (the pure,
+deterministic, closed-ledger evolutionary sim). North star: *a newcomer instantly
+"gets it" and enjoys it.*
+
+Direction (chosen): **authored terrain, evolved creatures, emergent society.**
+
+- **Authored terrain (immutable during ticks).** A seed-generated per-cell terrain
+  layer (biome + elevation + move-cost) added alongside the existing field grid,
+  generated once at `createWorld` via a new named `terrain` RNG sub-stream and
+  read-only in `tick()`. It **modulates rates only** (growth, movement, cover, drink
+  sites) — the closed integer energy/water ledgers are untouched; water bodies are
+  authored-wet cells drawn from the reservoir (conserved). The world grows ~4–6×.
+- **Biomes as selection pressure.** Water (rivers/lakes), grassland, forest,
+  barren/rock — each a real place that changes food, movement, cover, and drinking,
+  so lineages diverge by where they live.
+- **Procedural creatures from genes.** A real body plan (body, head, eyes,
+  appendages, tail) grown from the genome in the pure `render/` layer — evolved,
+  unique, reading as animals, not dots. Appearance stays *derived, never designed*.
+- **Humanized default UI; science behind a toggle.** Default shows population, a
+  legible biome map, a plain-language event feed and creature card; all instrument
+  analytics (trait variance, novelty, speciation, lineage IDs, allele editors) move
+  behind a **science mode** toggle. Nothing is deleted.
+- **Emergent homes & packs.** Added sim primitives (a `nest` action, kin-recognition
+  sense, a `sociality` gene) let packs/territories **emerge** from evolution +
+  terrain; shipped pre-formed in a re-evolved cold open.
+
+**Cost owned up front:** new terrain/kin **sensory inputs raise `SENSORS`, which
+reshapes the pinned patchbay brain geometry** (arrow count = `SENSORS·HIDDEN +
+HIDDEN² + HIDDEN·ACTIONS`). This is a *world-creation geometry* change like the
+documented HIDDEN bump: **existing evolved brains (user saves + the shipped
+cold-open) are not weight-for-weight migratable** — old saves load with fresh brain
+wiring (genome traits kept) or are treated as incompatible, and the cold-open is
+re-evolved. Batch all new sensors into a single geometry bump to avoid two breaking
+migrations. `SAVE_VERSION` bumps (3 → 4) with a `migrateV3toV4` in the existing
+scaffold (old blobs default to all-grassland, water-uniform terrain).
+
+**Delivery:** three playable phases on the current engine — (1) terrain foundation
+(bigger world, biomes, water bodies, movement cost, terrain sensing, save
+migration, regenerated cold-open), (2) procedural creatures + humanized UI split,
+(3) social primitives + emergent packs/homes + new cold-open. Determinism, closed
+ledgers, `sim/` purity, and the layering direction hold throughout. This section is
+the index; the design doc holds the full reasoning and rejected alternatives, and
+will be folded into the body sections by sync-docs as phases land.
 
 ---
 
