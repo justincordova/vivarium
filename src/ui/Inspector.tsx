@@ -84,7 +84,7 @@ export function Inspector(): React.ReactElement | null {
   const following = followId === inspected.id;
 
   return (
-    <div className="absolute right-4 top-4 max-h-[62vh] w-72 overflow-y-auto rounded-md border border-neutral-800 bg-neutral-950/90 p-3 backdrop-blur-sm">
+    <div className="panel w-72 shrink-0 p-3">
       <div className="mb-2 flex items-center justify-between">
         <span className="tabular text-[11px] font-medium uppercase tracking-widest text-neutral-300">
           creature #{inspected.id}

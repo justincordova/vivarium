@@ -63,10 +63,12 @@ export function Timeline(): React.ReactElement | null {
   };
 
   return (
-    <div className="absolute bottom-4 left-1/2 w-[38rem] max-w-[70vw] -translate-x-1/2 rounded-md border border-neutral-800 bg-neutral-950/85 px-3 py-2 backdrop-blur-sm">
+    <div className="panel absolute bottom-4 left-1/2 z-10 w-[38rem] max-w-[70vw] -translate-x-1/2 px-3 py-2">
       <div className="mb-1 flex items-baseline justify-between">
-        <span className="text-[10px] uppercase tracking-widest text-neutral-500">timeline</span>
-        <span className="tabular text-[10px] text-neutral-400">
+        <span className="text-[10px] uppercase tracking-widest text-[var(--fg-mute)]">
+          timeline
+        </span>
+        <span className="tabular text-[10px] text-[var(--fg-dim)]">
           {hover !== null
             ? `gen ${fmt(hover.tick)} · pop ${fmt(hover.population)}`
             : `gen ${fmt(timeline.now)}`}

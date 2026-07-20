@@ -137,7 +137,7 @@ function TraitChart(): React.ReactElement {
 
 export function Charts(): React.ReactElement {
   return (
-    <div className="absolute right-4 top-4 w-72 space-y-3 rounded-md border border-neutral-800 bg-neutral-950/85 p-3 backdrop-blur-sm">
+    <div className="panel w-72 shrink-0 space-y-3 p-3">
       <PopulationChart />
       <LineageChart />
       <TraitChart />

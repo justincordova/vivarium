@@ -30,18 +30,18 @@ export function Toolbar(): React.ReactElement {
   const active = TOOLS.find((t) => t.id === tool);
 
   return (
-    <div className="absolute left-1/2 top-4 flex -translate-x-1/2 flex-col items-center gap-1">
-      <div className="flex items-center gap-1 rounded-md border border-neutral-800 bg-neutral-950/85 p-1 backdrop-blur-sm">
+    <div className="absolute left-1/2 top-4 z-10 flex -translate-x-1/2 flex-col items-center gap-1">
+      <div className="panel flex items-center gap-1 p-1">
         {TOOLS.map((t) => (
           <button
             type="button"
             key={t.id}
             onClick={() => setTool(t.id)}
             title={t.hint}
-            className={`rounded px-2.5 py-1 text-xs ${
+            className={`rounded px-2.5 py-1 text-xs transition-colors ${
               tool === t.id
-                ? "bg-neutral-200 text-neutral-950"
-                : "text-neutral-400 hover:bg-neutral-800"
+                ? "bg-[var(--accent)] font-medium text-[var(--accent-ink)]"
+                : "text-[var(--fg-dim)] hover:bg-[rgb(var(--panel-border)/0.12)] hover:text-[var(--fg)]"
             }`}
           >
             {t.label}
@@ -49,7 +49,7 @@ export function Toolbar(): React.ReactElement {
         ))}
       </div>
       {active && (
-        <span className="tabular pointer-events-none text-[10px] uppercase tracking-widest text-neutral-600">
+        <span className="tabular pointer-events-none text-[10px] uppercase tracking-widest text-[var(--fg-mute)]">
           {active.hint}
         </span>
       )}

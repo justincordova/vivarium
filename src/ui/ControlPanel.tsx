@@ -139,9 +139,9 @@ export function ControlPanel(): React.ReactElement {
   };
 
   return (
-    <div className="absolute left-4 top-40 w-52 rounded-md border border-neutral-800 bg-neutral-950/85 p-3 backdrop-blur-sm">
+    <div className="panel w-52 shrink-0 p-3">
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-[10px] font-medium uppercase tracking-widest text-neutral-400">
+        <span className="text-[10px] font-medium uppercase tracking-widest text-[var(--fg-dim)]">
           controls
         </span>
         <button
