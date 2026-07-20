@@ -20,16 +20,18 @@ import { cellCompartment, fieldCompartment, transfer } from "./energy";
 import { TRAIT_GENES, TRAIT_RANGE, type TraitGene } from "./genetics";
 import { registerLineage } from "./history";
 import { createRngBundle, gaussian } from "./rng";
-import type {
-  Allele,
-  Config,
-  Creature,
-  Fields,
-  Genome,
-  Plant,
-  PlantGenome,
-  RNG,
-  World,
+import { generateTerrain } from "./terrain";
+import {
+  type Allele,
+  Biome,
+  type Config,
+  type Creature,
+  type Fields,
+  type Genome,
+  type Plant,
+  type PlantGenome,
+  type RNG,
+  type World,
 } from "./types";
 
 // ── Seed genome templates (viable starting points, SPEC.md §Initial Conditions) ─
@@ -259,8 +261,44 @@ export function createWorld(seed: number, config: Config): World {
   const rng = createRngBundle(seed);
   const spawn = rng.spawn;
 
-  // Place all water in the field up front (the declared water total).
-  for (let i = 0; i < cells; i++) fields.water[i] = INITIAL_WATER_PER_CELL;
+  // Authored terrain (read-only during ticks). Generated from its own sub-stream so it
+  // never perturbs the other streams' sequences.
+  const terrain = generateTerrain(config, rng.terrain);
+
+  // Seed water CONCENTRATED into water-biome cells, but conserve the exact declared
+  // total (`cells * INITIAL_WATER_PER_CELL`). Water cells get a high share, land cells a
+  // low baseline; any integer rounding remainder is deposited into water cells (or cell
+  // 0) so the sum is bit-exact — nothing is minted or lost (closed ledger).
+  const totalWater = cells * INITIAL_WATER_PER_CELL;
+  let waterCellCount = 0;
+  for (let i = 0; i < cells; i++) if (terrain.biome[i] === Biome.Water) waterCellCount++;
+  const LAND_BASE = Math.floor(INITIAL_WATER_PER_CELL * 0.25);
+  let placed = 0;
+  if (waterCellCount === 0) {
+    // No water biome (degenerate map) → fall back to the uniform fill.
+    for (let i = 0; i < cells; i++) {
+      fields.water[i] = INITIAL_WATER_PER_CELL;
+      placed += INITIAL_WATER_PER_CELL;
+    }
+  } else {
+    const landTotal = LAND_BASE * (cells - waterCellCount);
+    const perWater = Math.floor((totalWater - landTotal) / waterCellCount);
+    for (let i = 0; i < cells; i++) {
+      const w = terrain.biome[i] === Biome.Water ? perWater : LAND_BASE;
+      fields.water[i] = w;
+      placed += w;
+    }
+  }
+  // Deposit any remainder to keep totalWater exact (conservation guard).
+  let remainder = totalWater - placed;
+  for (let i = 0; i < cells && remainder > 0; i++) {
+    if (waterCellCount === 0 || terrain.biome[i] === Biome.Water) {
+      fields.water[i] = (fields.water[i] as number) + 1;
+      remainder--;
+    }
+  }
+  // Any still-remaining (e.g. all-water rounding) goes to cell 0.
+  if (remainder > 0) fields.water[0] = (fields.water[0] as number) + remainder;
 
   const world: World = {
     config,
@@ -272,6 +310,7 @@ export function createWorld(seed: number, config: Config): World {
     creatureIds: [],
     nextId: 0,
     fields,
+    terrain,
     rng,
     eventLog: [],
     history: [],

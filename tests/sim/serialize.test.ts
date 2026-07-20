@@ -44,7 +44,7 @@ describe("serialize — roundtrip identity", () => {
     const w = createWorld(1, makeConfig({}));
     const blob = serialize(w);
     expect(blob.version).toBe(SAVE_VERSION);
-    expect(blob.version).toBe(3); // v1→v2 brainKind (Phase 4), v2→v3 lineage events (5A.3)
+    expect(blob.version).toBe(4); // v2 brainKind, v3 lineage events, v4 terrain (Living World)
     // Derived cache is absent from the blob; deserialized creatures have no `derived`.
     const round = deserialize(blob);
     for (const c of round.creatures) expect(c.derived).toBeUndefined();
@@ -164,5 +164,26 @@ describe("serialize — forward-compatible defaulting", () => {
     blob.version = undefined;
     const round = deserialize(blob);
     expect(round.creatures.length).toBe(w.creatures.length);
+  });
+
+  it("round-trips terrain exactly (biome + elevation)", () => {
+    const w = createWorld(11, makeConfig({}));
+    const round = deserialize(serialize(w));
+    expect(Array.from(round.terrain.biome)).toEqual(Array.from(w.terrain.biome));
+    expect(Array.from(round.terrain.elevation)).toEqual(Array.from(w.terrain.elevation));
+  });
+
+  it("a v3 blob (no terrain) migrates to v4 with flat grassland terrain", () => {
+    const w = createWorld(5, makeConfig({}));
+    // biome-ignore lint/suspicious/noExplicitAny: simulate a pre-terrain v3 blob
+    const blob = { ...serialize(w) } as any;
+    blob.version = 3;
+    blob.terrain = undefined;
+    const round = deserialize(blob);
+    const cells = w.config.gridCols * w.config.gridRows;
+    expect(round.terrain.biome.length).toBe(cells);
+    // All grassland (Biome.Grassland === 1), flat elevation.
+    expect(Array.from(round.terrain.biome).every((b) => b === 1)).toBe(true);
+    expect(Array.from(round.terrain.elevation).every((e) => e === 0)).toBe(true);
   });
 });

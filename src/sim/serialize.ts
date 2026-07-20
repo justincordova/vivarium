@@ -15,16 +15,18 @@
 
 import { ACTIONS } from "./constants";
 import { deserializeRng, serializeRng } from "./rng";
-import type {
-  Config,
-  Corpse,
-  Creature,
-  Fields,
-  Genome,
-  Plant,
-  PlantGenome,
-  RngBundle,
-  World,
+import {
+  Biome,
+  type Config,
+  type Corpse,
+  type Creature,
+  type Fields,
+  type Genome,
+  type Plant,
+  type PlantGenome,
+  type RngBundle,
+  type Terrain,
+  type World,
 } from "./types";
 
 /**
@@ -43,7 +45,7 @@ import type {
  * reload. No historical events are fabricated (we cannot invent a past we did not
  * record); the report only narrates events fired from here forward.
  */
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 /** The serialized snapshot shape (all JSON-able; typed arrays become number[]). */
 export interface SaveBlob {
@@ -64,6 +66,8 @@ export interface SaveBlob {
   lineageEvents?: World["lineageEvents"];
   dominant?: World["dominant"];
   rootPopSnapshots?: World["rootPopSnapshots"];
+  /** Living World (v4): authored terrain (biome + elevation per cell). */
+  terrain?: { biome: number[]; elevation: number[] };
   lastSavedRealTime: number;
 }
 
@@ -212,6 +216,10 @@ export function serialize(world: World): SaveBlob {
       tick: s.tick,
       counts: { ...s.counts },
     })),
+    terrain: {
+      biome: Array.from(world.terrain.biome),
+      elevation: Array.from(world.terrain.elevation),
+    },
     lastSavedRealTime: world.lastSavedRealTime,
   };
 }
@@ -256,6 +264,32 @@ function deFields(s: SerFields): Fields {
   };
 }
 
+/**
+ * Rebuild the terrain arrays from a blob. A v3-or-older blob (no `terrain`) defaults to
+ * a flat, all-Grassland terrain sized to the config grid — matching today's uniform
+ * behavior, so an old world loads visually stable (NOT re-generated from seed).
+ */
+function deTerrain(blob: SaveBlob): Terrain {
+  const cells = (blob.config?.gridCols ?? 0) * (blob.config?.gridRows ?? 0);
+  if (blob.terrain !== undefined) {
+    return {
+      biome: Uint8Array.from(blob.terrain.biome ?? []),
+      elevation: Float32Array.from(blob.terrain.elevation ?? []),
+    };
+  }
+  const biome = new Uint8Array(cells).fill(Biome.Grassland);
+  const elevation = new Float32Array(cells); // flat
+  return { biome, elevation };
+}
+
+/** v3 → v4: terrain became world state; an older blob defaults to flat grassland. */
+function migrateV3toV4(b: SaveBlob): SaveBlob {
+  // `deTerrain` handles the absent-terrain default at load; here we only bump the
+  // version and (for round-trip stability) leave `terrain` undefined so the loader
+  // fills the default.
+  return { ...b, version: 4 };
+}
+
 /** v1 → v2: default `config.brainKind` to `'rule'` if the blob predates the field. */
 function migrateV1toV2(b: SaveBlob): SaveBlob {
   const config = { ...b.config, brainKind: b.config?.brainKind ?? "rule" };
@@ -281,6 +315,7 @@ function migrate(blob: SaveBlob): SaveBlob {
   if (b.version === undefined) b = { ...b, version: 1 };
   if (b.version < 2) b = migrateV1toV2(b);
   if (b.version < 3) b = migrateV2toV3(b);
+  if (b.version < 4) b = migrateV3toV4(b);
   return b;
 }
 
@@ -349,6 +384,7 @@ export function deserialize(data: SaveBlob): World {
     creatureIds: creatures.map((c) => c.id),
     nextId: blob.nextId ?? 0,
     fields: deFields(blob.fields),
+    terrain: deTerrain(blob),
     rng,
     eventLog: (blob.eventLog ?? []).map((e) => ({ ...e })),
     history: (blob.history ?? []).map((h) => ({ ...h })),

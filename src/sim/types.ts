@@ -179,7 +179,8 @@ export interface Corpse {
 // RNG  (SPEC.md §"RNG Discipline" — 7 named sub-streams)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The 7 named sub-streams. The layout is part of the self-describing save. */
+/** The named sub-streams. The layout is part of the self-describing save. New streams
+ * are APPENDED (never reordered) so existing streams' derivation is unperturbed. */
 export type RngStreamName =
   | "motion"
   | "mutation"
@@ -187,7 +188,8 @@ export type RngStreamName =
   | "resolve-shuffle"
   | "resolve"
   | "field-noise"
-  | "spawn";
+  | "spawn"
+  | "terrain";
 
 /** The fixed ordered list of sub-stream names (serialized in the snapshot). */
 export const RNG_STREAM_NAMES: readonly RngStreamName[] = [
@@ -198,6 +200,7 @@ export const RNG_STREAM_NAMES: readonly RngStreamName[] = [
   "resolve",
   "field-noise",
   "spawn",
+  "terrain",
 ] as const;
 
 /**
@@ -228,6 +231,32 @@ export interface Fields {
   water: Int32Array; // ledger-bearing
   temperature: Float32Array; // modulator, non-conserved
   scent: Float32Array; // modulator, non-conserved
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Terrain  (Living World redesign — authored, seed-generated, immutable in tick)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Authored biome per grid cell. NOT ledger-bearing — terrain modulates rates
+ * (growth, movement, cover), it mints/destroys nothing. Serialized world state.
+ */
+export enum Biome {
+  Water = 0,
+  Grassland = 1,
+  Forest = 2,
+  Barren = 3,
+  Rock = 4,
+}
+
+/**
+ * The per-cell terrain layer (row-major, `gridCols*gridRows`, like `Fields`).
+ * Generated once from the seed at world creation and **read-only during `tick()`**.
+ * `elevation` in 0..1 drives water pooling and visual relief.
+ */
+export interface Terrain {
+  biome: Uint8Array;
+  elevation: Float32Array;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -429,6 +458,8 @@ export interface World {
   /** Monotonic id source for new entities. */
   nextId: number;
   fields: Fields;
+  /** Authored biome/elevation per cell (Living World). Read-only during `tick()`. */
+  terrain: Terrain;
   rng: RngBundle;
   /** Deterministic sim event log — `{tick, event}` only, no wall-clock. */
   eventLog: SimEvent[];

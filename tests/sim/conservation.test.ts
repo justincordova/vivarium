@@ -74,6 +74,10 @@ function makeWorld(opts: {
     creatureIds: opts.creatures.map((c) => c.id),
     nextId: 1000,
     fields: makeFields(opts.cells, opts.light, opts.fertility, opts.water),
+    terrain: {
+      biome: new Uint8Array(opts.cells).fill(1 /* Grassland */),
+      elevation: new Float32Array(opts.cells),
+    },
     // biome-ignore lint/suspicious/noExplicitAny: rng irrelevant to ledger sums
     rng: {} as any,
     eventLog: [],

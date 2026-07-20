@@ -49,6 +49,7 @@ const STREAM_SALT: Record<RngStreamName, number> = {
   resolve: 0x165667b1,
   "field-noise": 0xd3a2646c,
   spawn: 0xfd7046c5,
+  terrain: 0x1b56c4e9,
 };
 
 /**
