@@ -92,4 +92,23 @@ describe("appearance", () => {
     const b = appearance(frameOf({ hue: -10 }), 0);
     expect(b.fill).toContain("hsl(350");
   });
+
+  it("emits well-formed, NaN-free highlight and glow colors (rich render)", () => {
+    const a = appearance(frameOf({ hue: 200, energyFrac: 1 }), 0);
+    expect(a.highlight).toMatch(/^hsl\(200 \d+% \d+%\)$/);
+    expect(a.glow).toMatch(/^hsla\(200 \d+% \d+% \/ [\d.]+\)$/);
+    expect(a.highlight).not.toContain("NaN");
+    expect(a.glow).not.toContain("NaN");
+  });
+
+  it("glow strengthens with energy (fed glows more than starving)", () => {
+    const alphaOf = (g: string): number => {
+      const m = g.match(/\/\s*([\d.]+)\)/);
+      if (m === null) throw new Error(`no alpha in ${g}`);
+      return Number(m[1]);
+    };
+    const fed = appearance(frameOf({ energyFrac: 1 }), 0);
+    const starving = appearance(frameOf({ energyFrac: 0 }), 0);
+    expect(alphaOf(fed.glow)).toBeGreaterThan(alphaOf(starving.glow));
+  });
 });

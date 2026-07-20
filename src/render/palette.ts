@@ -22,6 +22,10 @@ export interface Appearance {
   fill: string;
   /** HSL stroke for the body outline. */
   stroke: string;
+  /** Brighter tint for the lit highlight of the gradient body (rich render). */
+  highlight: string;
+  /** Translucent glow color for the bioluminescent halo (rich render). */
+  glow: string;
   /**
    * Body silhouette: number of polygon vertices. Herbivores read round (many
    * vertices ≈ circle); carnivores read angular (few, sharp vertices). `diet` in
@@ -88,6 +92,11 @@ export function appearance(f: CreatureFrame, i: number): Appearance {
   const light = Math.round(remap(energyFrac, 0, 1, 42, 58));
   const fill = `hsl(${hue.toFixed(0)} ${sat}% ${light}%)`;
   const stroke = `hsl(${hue.toFixed(0)} ${sat}% ${Math.max(0, light - 22)}%)`;
+  // A brighter, more saturated tint for the body's lit highlight, and a translucent
+  // same-hue glow whose strength tracks energy (a starving creature barely glows).
+  const highlight = `hsl(${hue.toFixed(0)} ${Math.min(100, sat + 12)}% ${Math.min(80, light + 22)}%)`;
+  const glowAlpha = (0.1 + 0.28 * energyFrac).toFixed(3);
+  const glow = `hsla(${hue.toFixed(0)} ${sat}% ${Math.min(70, light + 12)}% / ${glowAlpha})`;
 
   const [dietLo, dietHi] = TRAIT_RANGE.diet;
   const vertices = Math.round(remap(diet, dietLo, dietHi, HERBIVORE_VERTICES, CARNIVORE_VERTICES));
@@ -110,6 +119,8 @@ export function appearance(f: CreatureFrame, i: number): Appearance {
     radius: Math.max(1, radius),
     fill,
     stroke,
+    highlight,
+    glow,
     vertices: Math.max(3, vertices),
     spikes,
     spikeLength,

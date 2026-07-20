@@ -23,6 +23,10 @@ const TRAIL_FADE_ALPHA = 0.28;
 const PLANT_COLOR = "hsl(130 30% 42%)";
 /** Corpse mark color (desaturated warm gray — distinct from plants and creatures). */
 const CORPSE_COLOR = "hsl(28 18% 46%)";
+/** Above this live-creature count, drop the rich per-creature glow/gradient path so a
+ * dense world stays at frame rate (the flat silhouette still conveys all the genome
+ * channels). Tuned to comfortably exceed the default creature cap. */
+const RICH_RENDER_MAX = 220;
 
 /**
  * Paint the fading-trail wipe. Call once at the top of each frame instead of
@@ -48,7 +52,12 @@ function drawBounds(ctx: CanvasRenderingContext2D, frame: RenderFrame, cam: Came
   ctx.restore();
 }
 
-/** Draw a single creature body (polygon silhouette + spikes + rings). */
+/** Draw a single creature body (polygon silhouette + spikes + rings).
+ *
+ * `rich` enables the prettier path — a soft radial-gradient body with a faint
+ * bioluminescent glow and tapered (triangular) spikes. It is disabled under density so
+ * a packed world holds frame rate; the plain path is the old flat silhouette. Either
+ * way the shape/color/spikes are still fully derived from `Appearance` (the genome). */
 function drawCreature(
   ctx: CanvasRenderingContext2D,
   sx: number,
@@ -56,21 +65,52 @@ function drawCreature(
   heading: number,
   r: number,
   a: Appearance,
+  rich: boolean,
 ): void {
-  // Spikes first (behind the body).
+  // Soft glow halo (rich only): a cheap-ish radial gradient behind the body, tinted by
+  // the creature's own color — reads as bioluminescence without a per-pixel shader.
+  if (rich && r > 2) {
+    const g = ctx.createRadialGradient(sx, sy, r * 0.2, sx, sy, r * 2.1);
+    g.addColorStop(0, a.glow);
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(sx, sy, r * 2.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Spikes (behind the body). Tapered filled triangles when rich; thin lines otherwise.
   if (a.spikes > 0) {
     ctx.save();
-    ctx.strokeStyle = a.stroke;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
+    if (rich) ctx.fillStyle = a.stroke;
+    else {
+      ctx.strokeStyle = a.stroke;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+    }
     for (let s = 0; s < a.spikes; s++) {
       const ang = heading + (s / a.spikes) * Math.PI * 2;
       const inner = r * 0.9;
       const outer = r * (1 + a.spikeLength);
-      ctx.moveTo(sx + Math.cos(ang) * inner, sy + Math.sin(ang) * inner);
-      ctx.lineTo(sx + Math.cos(ang) * outer, sy + Math.sin(ang) * outer);
+      if (rich) {
+        const w = r * 0.28;
+        const nx = -Math.sin(ang) * w;
+        const ny = Math.cos(ang) * w;
+        ctx.beginPath();
+        ctx.moveTo(sx + Math.cos(ang) * inner + nx, sy + Math.sin(ang) * inner + ny);
+        ctx.lineTo(sx + Math.cos(ang) * inner - nx, sy + Math.sin(ang) * inner - ny);
+        ctx.lineTo(sx + Math.cos(ang) * outer, sy + Math.sin(ang) * outer);
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        ctx.moveTo(sx + Math.cos(ang) * inner, sy + Math.sin(ang) * inner);
+        ctx.lineTo(sx + Math.cos(ang) * outer, sy + Math.sin(ang) * outer);
+      }
     }
-    ctx.stroke();
+    if (!rich) ctx.stroke();
     ctx.restore();
   }
 
@@ -84,7 +124,18 @@ function drawCreature(
     else ctx.lineTo(px, py);
   }
   ctx.closePath();
-  ctx.fillStyle = a.fill;
+  if (rich && r > 2) {
+    // Radial gradient body: a bright off-center highlight → base fill, for a soft,
+    // rounded, lit look instead of a flat fill.
+    const hx = sx - Math.cos(heading) * r * 0.3;
+    const hy = sy - Math.sin(heading) * r * 0.3;
+    const bg = ctx.createRadialGradient(hx, hy, r * 0.1, sx, sy, r);
+    bg.addColorStop(0, a.highlight);
+    bg.addColorStop(1, a.fill);
+    ctx.fillStyle = bg;
+  } else {
+    ctx.fillStyle = a.fill;
+  }
   ctx.fill();
   ctx.strokeStyle = a.stroke;
   ctx.lineWidth = 1;
@@ -149,8 +200,11 @@ export function draw(frame: RenderFrame, ctx: CanvasRenderingContext2D, cam: Cam
     ctx.restore();
   }
 
-  // Creatures — the only vivid color on screen.
+  // Creatures — the vivid, glowing focus of the scene. The prettier "rich" path
+  // (gradient body + glow + tapered spikes) is disabled under density so a packed world
+  // holds frame rate; above the threshold we fall back to the flat silhouette.
   const c = frame.creatures;
+  const rich = c.count <= RICH_RENDER_MAX;
   for (let i = 0; i < c.count; i++) {
     const sx = worldToScreenX(cam, c.x[i] as number);
     const sy = worldToScreenY(cam, c.y[i] as number);
@@ -164,7 +218,8 @@ export function draw(frame: RenderFrame, ctx: CanvasRenderingContext2D, cam: Cam
     if (sx < -margin || sy < -margin || sx > cam.viewW + margin || sy > cam.viewH + margin) {
       continue;
     }
-    drawCreature(ctx, sx, sy, c.heading[i] as number, Math.max(1.5, rPx), a);
+    // Rich detail only pays off when the creature is big enough on screen to see it.
+    drawCreature(ctx, sx, sy, c.heading[i] as number, Math.max(1.5, rPx), a, rich && rPx > 2.5);
   }
 
   drawDayNight(ctx, cam, frame.light);
