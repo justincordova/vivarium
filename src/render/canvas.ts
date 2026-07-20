@@ -114,12 +114,22 @@ function drawCreature(
     ctx.restore();
   }
 
-  // Body polygon, oriented by heading (first vertex points forward).
+  // Body polygon, oriented by heading (first vertex points forward). When rich, the body
+  // is elongated ALONG the heading (a swimming-organism teardrop) instead of a symmetric
+  // disc — this, plus the eye-spot below, is what makes it read as a creature with a
+  // front, not a dot. `diet` still drives roundness via `a.vertices`.
+  const cosH = Math.cos(heading);
+  const sinH = Math.sin(heading);
+  const stretch = rich ? 1.35 : 1; // forward/back elongation factor
+  const squash = rich ? 0.82 : 1; // lateral narrowing
   ctx.beginPath();
   for (let v = 0; v < a.vertices; v++) {
-    const ang = heading + (v / a.vertices) * Math.PI * 2;
-    const px = sx + Math.cos(ang) * r;
-    const py = sy + Math.sin(ang) * r;
+    const ang = (v / a.vertices) * Math.PI * 2; // body-local angle (0 = forward)
+    // Local body coords: x forward (elongated), y lateral (narrowed), then rotate by heading.
+    const lx = Math.cos(ang) * r * stretch;
+    const ly = Math.sin(ang) * r * squash;
+    const px = sx + lx * cosH - ly * sinH;
+    const py = sy + lx * sinH + ly * cosH;
     if (v === 0) ctx.moveTo(px, py);
     else ctx.lineTo(px, py);
   }
@@ -127,9 +137,9 @@ function drawCreature(
   if (rich && r > 2) {
     // Radial gradient body: a bright off-center highlight → base fill, for a soft,
     // rounded, lit look instead of a flat fill.
-    const hx = sx - Math.cos(heading) * r * 0.3;
-    const hy = sy - Math.sin(heading) * r * 0.3;
-    const bg = ctx.createRadialGradient(hx, hy, r * 0.1, sx, sy, r);
+    const hx = sx - cosH * r * 0.3;
+    const hy = sy - sinH * r * 0.3;
+    const bg = ctx.createRadialGradient(hx, hy, r * 0.1, sx, sy, r * stretch);
     bg.addColorStop(0, a.highlight);
     bg.addColorStop(1, a.fill);
     ctx.fillStyle = bg;
@@ -140,6 +150,23 @@ function drawCreature(
   ctx.strokeStyle = a.stroke;
   ctx.lineWidth = 1;
   ctx.stroke();
+
+  // Eye-spot near the front (rich only, and only when big enough to see) — the single
+  // cue that most makes a blob read as a facing creature.
+  if (rich && r > 3) {
+    const ex = sx + cosH * r * 0.72;
+    const ey = sy + sinH * r * 0.72;
+    const er = Math.max(1, r * 0.16);
+    ctx.beginPath();
+    ctx.arc(ex, ey, er, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(10, 12, 18, 0.9)";
+    ctx.fill();
+    // A tiny catch-light so the eye reads as wet/alive.
+    ctx.beginPath();
+    ctx.arc(ex - er * 0.3, ey - er * 0.3, Math.max(0.5, er * 0.4), 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(235, 240, 255, 0.85)";
+    ctx.fill();
+  }
 
   // Toxicity ornament: a dashed inner ring.
   if (a.toxic) {

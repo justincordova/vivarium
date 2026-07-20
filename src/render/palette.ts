@@ -46,9 +46,10 @@ export interface Appearance {
 const HERBIVORE_VERTICES = 16; // reads as a smooth disc
 const CARNIVORE_VERTICES = 3; // a sharp triangle
 
-// Body radius mapping from expressed `size` over its legal range.
-const MIN_RADIUS = 2.2;
-const MAX_RADIUS = 9;
+// Body radius mapping from expressed `size` over its legal range. Bumped up so
+// creatures read as organisms, not specks (Tier 1 visual overhaul).
+const MIN_RADIUS = 3.4;
+const MAX_RADIUS = 14;
 
 /** Linear map of `v` from [inLo,inHi] into [outLo,outHi], clamped to the output. */
 function remap(v: number, inLo: number, inHi: number, outLo: number, outHi: number): number {
