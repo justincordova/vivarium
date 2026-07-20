@@ -83,9 +83,14 @@ export interface RenderFrame {
   light: number;
   /**
    * Per-cell water saturation in 0..1 (row-major, `gridCols*gridRows` long), so the
-   * renderer can draw a water underlay — and drought/flood actually shows on screen.
+   * renderer can shade drought/flood on top of the authored water biome.
    */
   water: Float32Array;
+  /**
+   * Per-cell authored biome (`Biome` enum value, row-major), so the renderer draws the
+   * terrain map (water / grassland / forest / barren / rock).
+   */
+  biome: Uint8Array;
   creatures: CreatureFrame;
   plants: PlantFrame;
   corpses: CorpseFrame;

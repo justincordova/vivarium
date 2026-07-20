@@ -132,10 +132,8 @@ export function buildRenderFrame(world: World): RenderFrame {
   }
 
   // Water field, normalized 0..1 per cell against the field's OWN current max, for the
-  // renderer's water underlay. Normalizing against the live max (not a fixed constant)
-  // means uniform water reads as a flat mid-tone and drought/flood dips/spikes stand out,
-  // instead of every cell clipping to solid blue (the resting fill exceeds any fixed
-  // per-cell constant). Read-only; floats are fine outside tick().
+  // renderer's water shading (so drought/flood dips/spikes read as gaps/brightening on
+  // top of the authored water biome). Read-only; floats are fine outside tick().
   const cells = world.fields.water.length;
   const water = new Float32Array(cells);
   let waterMax = 1;
@@ -147,6 +145,9 @@ export function buildRenderFrame(world: World): RenderFrame {
     water[i] = clamp01((world.fields.water[i] as number) / waterMax);
   }
 
+  // Authored biome per cell (copied so the frame owns its buffer for transfer).
+  const biome = new Uint8Array(world.terrain.biome);
+
   return {
     tick: world.tick,
     worldWidth: world.config.worldWidth,
@@ -155,6 +156,7 @@ export function buildRenderFrame(world: World): RenderFrame {
     gridRows: world.config.gridRows,
     light: dayLight(world.tick, t.TICKS_PER_DAY),
     water,
+    biome,
     creatures,
     plants,
     corpses,
@@ -189,6 +191,7 @@ export function frameTransferables(frame: RenderFrame): ArrayBuffer[] {
     x.y.buffer,
     x.energyFrac.buffer,
     frame.water.buffer,
+    frame.biome.buffer,
   ] as ArrayBuffer[];
 }
 

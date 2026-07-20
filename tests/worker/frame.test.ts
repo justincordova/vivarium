@@ -89,7 +89,7 @@ describe("frame↔palette contract", () => {
     expect(frame.light).toBeLessThanOrEqual(1);
   });
 
-  it("carries a per-cell water field normalized to 0..1 (drives the water underlay)", () => {
+  it("carries a per-cell water field normalized to 0..1 (drives the water shading)", () => {
     const world = createWorld(1, makeConfig({}));
     const frame = buildRenderFrame(world);
     expect(frame.water).toBeInstanceOf(Float32Array);
@@ -101,6 +101,18 @@ describe("frame↔palette contract", () => {
     }
     // A world seeded with water should show at least one wet cell.
     expect(Array.from(frame.water).some((w) => w > 0)).toBe(true);
+  });
+
+  it("carries the per-cell authored biome map (drives the terrain render)", () => {
+    const world = createWorld(1, makeConfig({}));
+    const frame = buildRenderFrame(world);
+    expect(frame.biome).toBeInstanceOf(Uint8Array);
+    expect(frame.biome.length).toBe(world.config.gridCols * world.config.gridRows);
+    expect(Array.from(frame.biome)).toEqual(Array.from(world.terrain.biome));
+    for (let i = 0; i < frame.biome.length; i++) {
+      expect(frame.biome[i]).toBeGreaterThanOrEqual(0);
+      expect(frame.biome[i]).toBeLessThanOrEqual(4);
+    }
   });
 });
 

@@ -41,35 +41,46 @@ export function fadeTrails(ctx: CanvasRenderingContext2D, width: number, height:
   ctx.restore();
 }
 
+/** Muted per-biome fill colors (chrome-adjacent; creatures remain the vivid focus).
+ * Index by `Biome` enum value: 0 Water, 1 Grassland, 2 Forest, 3 Barren, 4 Rock. */
+const BIOME_FILL = [
+  "rgb(26, 58, 92)", // water — deep blue
+  "rgb(38, 58, 40)", // grassland — muted green
+  "rgb(26, 44, 32)", // forest — darker green
+  "rgb(70, 62, 44)", // barren — dry tan-brown
+  "rgb(52, 54, 60)", // rock — cool gray
+] as const;
+
 /**
- * Water underlay: fill each grid cell with a blue tint proportional to its saturation,
- * so water bodies are visible and drought/flood (the paint tools) actually show. Cheap:
- * one rect per cell, only where there's meaningful water, culled to the viewport.
+ * Terrain underlay: fill each grid cell by its authored biome, with a light water
+ * shading on top so pooling/drought/flood read as brighter/darker patches. One rect per
+ * cell, culled to the viewport. Drawn under plants/creatures.
  */
-function drawWater(ctx: CanvasRenderingContext2D, frame: RenderFrame, cam: Camera): void {
-  const { gridCols, gridRows, water } = frame;
+function drawTerrain(ctx: CanvasRenderingContext2D, frame: RenderFrame, cam: Camera): void {
+  const { gridCols, gridRows, biome, water } = frame;
   if (gridCols <= 0 || gridRows <= 0) return;
   const cw = frame.worldWidth / gridCols;
   const ch = frame.worldHeight / gridRows;
   ctx.save();
   for (let row = 0; row < gridRows; row++) {
     for (let col = 0; col < gridCols; col++) {
-      const w = water[row * gridCols + col] as number;
-      // Only tint cells with meaningfully high water. A world of uniformly-wet cells
-      // (the current sim's resting state) stays nearly clear; drought/flood — which push
-      // cells below/above the field's own max — read as gaps/brightening in the wash.
-      if (w <= 0.55) continue;
+      const idx = row * gridCols + col;
       const x0 = worldToScreenX(cam, col * cw);
       const y0 = worldToScreenY(cam, row * ch);
       const x1 = worldToScreenX(cam, (col + 1) * cw);
       const y1 = worldToScreenY(cam, (row + 1) * ch);
       if (x1 < 0 || y1 < 0 || x0 > cam.viewW || y0 > cam.viewH) continue;
-      // Deep cyan-blue; alpha grows with the ABOVE-threshold saturation so the tint is
-      // faint at baseline and only deepens where water genuinely pools. Caps low so
-      // creatures stay readable.
-      const t = (w - 0.55) / 0.45; // 0..1 across the visible band
-      ctx.fillStyle = `rgba(38, 110, 170, ${(0.05 + 0.3 * t).toFixed(3)})`;
+      const b = biome[idx] as number;
+      ctx.fillStyle = BIOME_FILL[b] ?? BIOME_FILL[1];
       ctx.fillRect(x0, y0, x1 - x0 + 1, y1 - y0 + 1);
+      // Water shading on top: brighten where water genuinely pools (drought/flood read
+      // as changes here). Only meaningful cells, so land stays clean.
+      const w = water[idx] as number;
+      if (w > 0.55) {
+        const t = (w - 0.55) / 0.45;
+        ctx.fillStyle = `rgba(58, 130, 190, ${(0.05 + 0.3 * t).toFixed(3)})`;
+        ctx.fillRect(x0, y0, x1 - x0 + 1, y1 - y0 + 1);
+      }
     }
   }
   ctx.restore();
@@ -231,7 +242,7 @@ function drawCreature(
  */
 export function draw(frame: RenderFrame, ctx: CanvasRenderingContext2D, cam: Camera): void {
   fadeTrails(ctx, cam.viewW, cam.viewH);
-  drawWater(ctx, frame, cam);
+  drawTerrain(ctx, frame, cam);
   drawBounds(ctx, frame, cam);
 
   // Plants — faint muted marks (SPEC.md: fields/plants recede; creatures dominate).

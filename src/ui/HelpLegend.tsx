@@ -109,9 +109,15 @@ export function HelpLegend(): React.ReactElement {
               meaning="Age — older creatures ring brighter."
             />
             <LegendRow
-              marker={<span className="h-3.5 w-3.5 rounded-sm bg-[rgb(38_110_170/0.7)]" />}
-              label="Blue tint"
-              meaning="Water — creatures drink to survive; drought/flood change it."
+              marker={
+                <span className="flex h-3.5 w-3.5 overflow-hidden rounded-sm">
+                  <span className="h-full w-1/3 bg-[rgb(26_58_92)]" />
+                  <span className="h-full w-1/3 bg-[rgb(38_58_40)]" />
+                  <span className="h-full w-1/3 bg-[rgb(70_62_44)]" />
+                </span>
+              }
+              label="The land"
+              meaning="Blue water, green grass/forest, tan barren, gray rock — each grows food and slows movement differently."
             />
           </div>
 
