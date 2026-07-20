@@ -9,6 +9,7 @@ import { startWorker, useSimStore } from "@store/useSimStore";
 import { useEffect, useState } from "react";
 import { Charts } from "./Charts";
 import { ControlPanel } from "./ControlPanel";
+import { HelpLegend } from "./HelpLegend";
 import { Inspector } from "./Inspector";
 import { Landing } from "./Landing";
 import { SimCanvas } from "./SimCanvas";
@@ -251,11 +252,12 @@ export function App(): React.ReactElement {
             <ControlPanel />
           </div>
 
-          {/* Right dock: inspector + charts. */}
-          <div className="pointer-events-none absolute right-4 top-4 bottom-20 flex w-72 flex-col items-end gap-3 overflow-y-auto overflow-x-hidden pl-0.5 [&>*]:pointer-events-auto">
+          {/* Right dock: inspector + charts. Starts below the help button (top-14). */}
+          <div className="pointer-events-none absolute right-4 top-14 bottom-20 flex w-72 flex-col items-end gap-3 overflow-y-auto overflow-x-hidden pl-0.5 [&>*]:pointer-events-auto">
             <Inspector />
             <Charts />
           </div>
+          <HelpLegend />
 
           <Timeline />
           <DetachedBadge />
