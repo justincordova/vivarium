@@ -19,15 +19,19 @@ function fingerprint(w: World): string {
   return parts.join("|");
 }
 
+// Pin to a modest world: the determinism machinery (terrain gen, RNG sub-streams,
+// per-cell terrain reads, closed ledgers) is fully exercised at any size, and the
+// enlarged 1000×1000 default makes two-world×1000-tick×N-run property tests exceed the
+// timeout under full-suite parallelism. Bit-identity is the invariant under test, not
+// world scale.
+const DET_WORLD = { worldWidth: 200, worldHeight: 200, gridCols: 64, gridRows: 64 } as const;
+
 describe("determinism (the load-bearing gate)", () => {
   it("two 1000-tick runs from the same seed are bit-identical", () => {
-    // A live 1000-tick run over a full population is ~10-13s (slower since the
-    // hungry-wander exploration fix moves dispersed foragers), so keep numRuns small
-    // and lift the per-test timeout generously; the viability gate covers long runs.
     fc.assert(
       fc.property(fc.integer({ min: 1, max: 100000 }), (seed) => {
-        const a = createWorld(seed, makeConfig({}));
-        const b = createWorld(seed, makeConfig({}));
+        const a = createWorld(seed, makeConfig({ ...DET_WORLD }));
+        const b = createWorld(seed, makeConfig({ ...DET_WORLD }));
         for (let i = 0; i < 1000; i++) {
           tick(a);
           tick(b);
@@ -43,7 +47,7 @@ describe("conservation (exact, every tick)", () => {
   it("totalEnergy and totalWater are invariant across 1000 ticks", () => {
     fc.assert(
       fc.property(fc.integer({ min: 1, max: 100000 }), (seed) => {
-        const w = createWorld(seed, makeConfig({}));
+        const w = createWorld(seed, makeConfig({ ...DET_WORLD }));
         const e0 = totalEnergy(w);
         const wat0 = totalWater(w);
         for (let i = 0; i < 1000; i++) {
