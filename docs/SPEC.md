@@ -1341,8 +1341,24 @@ efficiently.
   show emergence, not potential); **follow-cam** (click to lock the camera to one
   creature; announce its death, age, and offspring count); and **persistence + the
   "while you were away" report**.
-- **Onboarding is a cold open, not a tutorial** — load into the pre-evolved world
-  with a few unobtrusive corner captions, then get out of the way.
+- **A real front door.** The app opens on a welcoming landing screen (a live,
+  dimmed sim rendering behind it) whose primary action — "Enter the living world" —
+  drops the visitor into the **pre-evolved cold open** (emergence, not an empty
+  founder world). Secondary "Start a fresh world" (evolution from scratch, honestly
+  labeled) and "Continue" (shown only when a save exists) are offered. A shared-URL
+  deep link skips the landing and enters that world directly. The world source is
+  chosen by the caller via an additive `boot` source selector (`continue` /
+  `cold-open` / `fresh`); an absent selector preserves the historical precedence
+  (saved > cold-open > founders). *(This supersedes the earlier boot-straight-in
+  behavior.)*
+- **Onboarding welcomes, then gets out of the way** — not a forced tutorial, but a
+  newcomer must be able to understand the world. A **persistent, reopenable legend**
+  decodes the visual language (hue = lineage, angular = carnivore, spikes =
+  armor/toxicity, washed-out = starving, ring = age); a reopenable **help/controls**
+  affordance and **on-screen zoom controls** make interaction discoverable; and a
+  short, dismissible, **re-openable** first-run coachmark points at both. *(This
+  supersedes the one-shot fade-out cold-open captions: comprehension is now
+  recoverable, honoring "never hide information; information is the reward.")*
 - **Terrarium** (stewardship budget, leaderboard) and **Laboratory** (forking:
   snapshot, branch, change one parameter, run both, compare) are **deferred to
   post-beta** but the save format must not preclude forking.
@@ -1351,21 +1367,41 @@ efficiently.
 
 ## Visual Design
 
-A scientific instrument that happens to be beautiful; the design goal is
-**legibility under density**.
+A **beautiful, welcoming observatory** — a living world someone is glad to look at
+and can actually understand. The design goals are **legibility under density** and
+**a newcomer instantly "getting it" and enjoying it**. Beauty and warmth are
+first-class here, not incidental. *(This supersedes the earlier "scientific
+instrument, grayscale-only chrome, no game UI" direction.)*
 
-- **The world is the only saturated thing on screen; all chrome is grayscale.**
-- Dark UI chrome, but the world has a full day/night tint (a single color
+- **The world is the richest thing on screen, but the chrome is themed, not
+  austere.** A single token source (CSS custom properties + Tailwind theme) defines
+  a deep-space base, translucent blurred panel surfaces, one bioluminescent
+  teal→cyan **accent** (deliberately *not* the purple-on-white cliché), and sparse
+  semantic colors. Theme via tokens; never hardcode.
+- Dark UI chrome, and the world has a full day/night tint (a single color
   multiply / translucent overlay).
-- No skeuomorphism, no game UI, no gratuitous particles, no easing/bouncing — **the
-  only thing that moves is the simulation.**
-- **Monospace for all numbers.** Charts first-class and always visible.
+- Deliberate, non-generic design (executed under the frontend-design skill):
+  purposeful typography, spacing, depth, and **sparing** motion — landing preview,
+  panel transitions, coachmarks. Motion serves the design and respects
+  `prefers-reduced-motion`; the simulation is still the star, never buried under
+  animated chrome.
+- **Monospace for all numbers**; a display face with character (not
+  Inter/Roboto/system-default) for headings. Charts first-class and always visible.
+- **Layout is a responsive app shell** (grid: top bar / canvas / bottom timeline;
+  collapsible, scrollable left+right docks) — panels never clip or overlap, and the
+  canvas is never squeezed off-screen. *(This supersedes the floating
+  absolute-positioned panels.)*
 - **Trails:** don't fully clear the canvas each frame — fill with a low-alpha
   black rect for near-free motion blur.
 - Fields drawn as a low-opacity underlay to an offscreen canvas every N ticks.
 - Timeline scrubber with tick marks at extinction events.
 
-**Creature appearance is derived, never designed** — procedurally from the genome:
+**Creature appearance is derived, never designed** — procedurally from the genome.
+The pivot makes rendering *prettier* (soft radial gradient + glow tinted by hue,
+clean tapered spikes, a subtle heading cue), but appearance stays a function of the
+genes below — no designed sprites — so the visuals remain meaningful and the legend
+can decode them. Gradient/glow work degrades past a creature-count threshold to hold
+frame rate under density:
 
 | Visual | Source |
 |---|---|
