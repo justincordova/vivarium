@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { Charts } from "./Charts";
 import { ControlPanel } from "./ControlPanel";
 import { Inspector } from "./Inspector";
+import { Landing } from "./Landing";
 import { SimCanvas } from "./SimCanvas";
 import { Timeline } from "./Timeline";
 import { Toolbar } from "./Toolbar";
@@ -219,27 +220,48 @@ function PersistErrorBadge(): React.ReactElement | null {
 
 export function App(): React.ReactElement {
   const seed = useSimStore((s) => s.seed);
-  // Boot the worker once. Auto-play is driven by the worker's `ready` event (after any
-  // offline catch-up), NOT here — so the catch-up overlay shows first when ticks are owed.
+  const phase = useSimStore((s) => s.phase);
+  // Boot the worker once. What happens next depends on entry policy: a shared-URL link
+  // boots straight in; otherwise the Landing shows and the visitor picks a source.
+  // Auto-play is driven by the worker's `ready` event (after any offline catch-up).
   useEffect(() => {
     startWorker();
   }, []);
 
+  const live = phase === "live";
+
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-[#08080a] text-neutral-200">
-      <SimCanvas />
-      <Hud />
-      <Toolbar />
-      <ControlPanel />
-      <Charts />
-      <Timeline />
-      <Inspector />
-      <DetachedBadge />
-      <PersistErrorBadge />
-      <div className="tabular pointer-events-none absolute bottom-4 right-4 text-[10px] uppercase tracking-widest text-neutral-600">
-        vivarium · seed {seed}
+    <div className="relative h-screen w-screen overflow-hidden bg-[var(--bg)] text-[var(--fg)]">
+      {/* The world renders in every phase — dimmed behind the landing so the front door
+          is itself alive. */}
+      <div
+        className={`absolute inset-0 transition-opacity duration-700 ${
+          phase === "landing" ? "opacity-40" : "opacity-100"
+        }`}
+      >
+        <SimCanvas />
       </div>
-      <OnboardingCaptions />
+
+      {/* Live-world chrome mounts only once the world is live, so nothing floats over the
+          landing or the catch-up overlay. */}
+      {live && (
+        <>
+          <Hud />
+          <Toolbar />
+          <ControlPanel />
+          <Charts />
+          <Timeline />
+          <Inspector />
+          <DetachedBadge />
+          <PersistErrorBadge />
+          <div className="tabular pointer-events-none absolute bottom-4 right-4 text-[10px] uppercase tracking-widest text-[var(--fg-mute)]">
+            vivarium · seed {seed}
+          </div>
+          <OnboardingCaptions />
+        </>
+      )}
+
+      <Landing />
       <CatchupOverlay />
       <WhileYouWereAwayReport />
     </div>

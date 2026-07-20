@@ -1,12 +1,48 @@
 @import "tailwindcss";
 
 /*
- * Chrome is grayscale; the world (the canvas) is the only saturated thing on
- * screen (SPEC.md §Visual Design). Numbers are monospace. Nothing here eases,
- * bounces, or animates — the only thing that moves is the simulation.
+ * Theme tokens for the "beautiful welcoming observatory" (SPEC.md §Visual Design).
+ * The world (the canvas) is still the richest thing on screen, but the chrome is
+ * themed, not austere: a deep-space base, translucent blurred panel surfaces, and a
+ * single bioluminescent teal→cyan accent (deliberately NOT the purple-on-white
+ * cliché). All colors flow from these tokens — never hardcode in components.
+ * Numbers remain monospace.
  */
 :root {
   color-scheme: dark;
+
+  /* Base / surfaces */
+  --bg: #0a0b12; /* deep space */
+  --bg-2: #0d0f1a;
+  --panel: 20 24 38; /* rgb triplet for translucent panels via rgb(var(--panel)/α) */
+  --panel-border: 148 163 208; /* cool slate, used at low α */
+  --panel-glow: 34 211 238; /* accent, used at very low α for inner highlight */
+
+  /* Text */
+  --fg: #e6e9f2;
+  --fg-dim: #aab2c8;
+  --fg-mute: #6b748f;
+
+  /* Accent — bioluminescent teal → cyan */
+  --accent: #22d3ee;
+  --accent-2: #2dd4bf;
+  --accent-ink: #06212a; /* readable text on an accent fill */
+
+  /* Semantic (sparse) */
+  --positive: #4ade80;
+  --warn: #fbbf24;
+  --danger: #f87171;
+
+  /* Typography */
+  --font-display:
+    "Space Grotesk", "Avenir Next", "Segoe UI Variable Display", "SF Pro Display", system-ui,
+    sans-serif;
+  --font-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", monospace;
+
+  /* Depth */
+  --shadow-panel: 0 8px 30px -12px rgb(0 0 0 / 0.7);
+  --radius: 0.625rem;
 }
 
 html,
@@ -17,14 +53,68 @@ body,
 
 body {
   margin: 0;
-  background: #0a0a0a;
-  color: #d4d4d4;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
 }
 
 /* All numeric readouts render monospace (SPEC.md §Visual Design). */
 .tabular {
-  font-family: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", monospace;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+}
+
+/* Display face for headings/branding — a face with character, not the default sans. */
+.display {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+/* Themed panel surface: translucent, blurred, soft border + faint inner accent glow. */
+.panel {
+  background: rgb(var(--panel) / 0.78);
+  border: 1px solid rgb(var(--panel-border) / 0.14);
+  border-radius: var(--radius);
+  box-shadow:
+    var(--shadow-panel),
+    inset 0 1px 0 0 rgb(var(--panel-glow) / 0.06);
+  backdrop-filter: blur(10px);
+}
+
+/* Primary accent button. */
+.btn-accent {
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+  color: var(--accent-ink);
+  border-radius: 0.5rem;
+  font-weight: 600;
+  transition:
+    filter 0.15s ease,
+    transform 0.15s ease;
+}
+.btn-accent:hover {
+  filter: brightness(1.08);
+}
+.btn-accent:active {
+  transform: translateY(1px);
+}
+
+/* Quiet (ghost) button on panel surfaces. */
+.btn-ghost {
+  color: var(--fg-dim);
+  border-radius: 0.5rem;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+.btn-ghost:hover {
+  background: rgb(var(--panel-border) / 0.1);
+  color: var(--fg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-accent,
+  .btn-ghost {
+    transition: none;
+  }
 }
