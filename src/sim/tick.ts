@@ -38,6 +38,7 @@ import {
   type Config,
   type Corpse,
   type Creature,
+  type Nest,
   type Plant,
   Sensor,
   type World,
@@ -289,6 +290,39 @@ function senseContext(
   senses[Sensor.WaterDirX] = wdx;
   senses[Sensor.WaterDirY] = wdy;
 
+  // Kin senses (Society, Phase 7A). A same-lineage-root neighbor scan over the spatial
+  // hash — deterministic (index order from `queryWithin`), read-only over
+  // `world.lineageRoots` (looked up by id, never key-iterated). Mirrors the `nearest`
+  // closure above and the `LocalDensity` normalizer.
+  const selfRoot = world.lineageRoots[self.id] ?? self.id;
+  let kinCount = 0;
+  let nearestKin: Creature | null = null;
+  let nearestKinD = Number.POSITIVE_INFINITY;
+  const kinNeighbors = snap.hash.queryWithin(self.x, self.y, senseRadius);
+  for (let i = 0; i < kinNeighbors.length; i++) {
+    const o = snap.byId.get(kinNeighbors[i] as number);
+    if (o === undefined || o.id === self.id) continue;
+    if ((world.lineageRoots[o.id] ?? o.id) !== selfRoot) continue;
+    const d = dist(self.x, self.y, o.x, o.y);
+    if (d > senseRadius) continue;
+    kinCount++;
+    if (d < nearestKinD || (d === nearestKinD && nearestKin !== null && o.id < nearestKin.id)) {
+      nearestKin = o;
+      nearestKinD = d;
+    }
+  }
+  if (nearestKin !== null) {
+    const kdx = nearestKin.x - self.x;
+    const kdy = nearestKin.y - self.y;
+    const klen = Math.hypot(kdx, kdy);
+    senses[Sensor.KinDirX] = klen > 0 ? kdx / klen : 0;
+    senses[Sensor.KinDirY] = klen > 0 ? kdy / klen : 0;
+  } else {
+    senses[Sensor.KinDirX] = 0;
+    senses[Sensor.KinDirY] = 0;
+  }
+  senses[Sensor.KinDensity] = Math.min(1, kinCount / (2 * t.REPRO_CROWD_LIMIT));
+
   return { ctx, food, mate, threat, mateInReachFull, senses };
 }
 
@@ -381,6 +415,7 @@ function decodeActions(actions: Float32Array, t: Config["tunables"]): Intents {
     attack: (actions[Action.Attack] as number) > t.ATTACK_THRESHOLD,
     mate: (actions[Action.Mate] as number) > t.MATE_THRESHOLD,
     emit: (actions[Action.EmitScent] as number) > t.EMIT_THRESHOLD,
+    nest: (actions[Action.Nest] as number) > t.NEST_THRESHOLD,
   };
 }
 
@@ -484,7 +519,26 @@ export function tick(world: World): void {
   // 4.4 Field updates, fixed order.
   resolveFields(world, reservoir);
 
+  // 4.5 Nest decay (Society, Phase 7A) — nests fade unless reinforced.
+  resolveNests(world, t);
+
   world.tick++;
+}
+
+/**
+ * Decay all nests by NEST_DECAY and drop any that reach zero strength. Mirrors the
+ * codebase's filter-reassign removal convention (`world.creatures = survivors`), NOT a
+ * swap/pop. A pure counter — no ledger touched. Index order is deterministic.
+ */
+function resolveNests(world: World, t: Config["tunables"]): void {
+  if (world.nests.length === 0) return;
+  const survivors: Nest[] = [];
+  for (let i = 0; i < world.nests.length; i++) {
+    const n = world.nests[i] as Nest;
+    n.strength -= t.NEST_DECAY;
+    if (n.strength > 0) survivors.push(n);
+  }
+  world.nests = survivors;
 }
 
 // ── 4.1b behaviorNovelty accumulator ─────────────────────────────────────────
@@ -531,7 +585,12 @@ function applyCreature(
   // Baseline metabolic cost → reservoir (heat). Scaled by size & metabolism.
   // Coefficient keeps the drain small relative to energy stores so creatures have a
   // runway to find food (Phase-0 provisional; Phase 1 sweeps it).
-  const baseline = toQuantum(1 + size * metabolism * t.METABOLIC_COST_COEF);
+  // Society (Phase 7A): sheltering on a same-lineage nest scales the OUTBOUND drain by
+  // NEST_SHELTER_METAB_MULT (<1) — a pure rate modulator that mints nothing (the creature
+  // simply keeps more of its own energy), so the closed ledger is untouched.
+  const sheltered = onSameLineageNest(world, c, t);
+  const shelterMult = sheltered ? t.NEST_SHELTER_METAB_MULT : 1;
+  const baseline = toQuantum((1 + size * metabolism * t.METABOLIC_COST_COEF) * shelterMult);
   transferUpTo(cEnergy, reservoir, baseline);
 
   // Cold-temperature metabolic surcharge (Phase 5C.1) → reservoir (heat). Below
@@ -638,6 +697,62 @@ function applyCreature(
   if (plan.intents.emit) {
     const cellIdx = cellIndexOf(world.config, c.x, c.y);
     world.fields.scent[cellIdx] = (world.fields.scent[cellIdx] as number) + t.EMIT_INTENSITY;
+  }
+
+  // Nest: build/claim/reinforce a home for the creature's lineage (Society, Phase 7A).
+  if (plan.intents.nest) {
+    tryNest(world, c, reservoir, t);
+  }
+}
+
+/**
+ * Whether `c` is within `NEST_CLAIM_RADIUS` of a nest owned by its own lineage root.
+ * Index-based scan over `world.nests` (no Set/key iteration); reads `world.lineageRoots`
+ * by id. Used both for the shelter rate-modifier and to reinforce-vs-create in `tryNest`.
+ */
+function onSameLineageNest(world: World, c: Creature, t: Config["tunables"]): boolean {
+  const root = world.lineageRoots[c.id] ?? c.id;
+  const r = t.NEST_CLAIM_RADIUS;
+  for (let i = 0; i < world.nests.length; i++) {
+    const n = world.nests[i] as Nest;
+    if (n.lineage !== root) continue;
+    if (dist(c.x, c.y, n.x, n.y) <= r) return true;
+  }
+  return false;
+}
+
+/**
+ * Build, claim, or reinforce a nest. If a same-lineage nest is within NEST_CLAIM_RADIUS,
+ * reinforce it (strength up to NEST_MAX_STRENGTH); else create a new one (up to NEST_CAP).
+ * A small energy cost is paid creature→reservoir so building is not free. Deterministic:
+ * index-based scan, ties resolve to the first in-range nest.
+ */
+function tryNest(world: World, c: Creature, reservoir: Compartment, t: Config["tunables"]): void {
+  const root = world.lineageRoots[c.id] ?? c.id;
+  const r = t.NEST_CLAIM_RADIUS;
+  let target: Nest | null = null;
+  for (let i = 0; i < world.nests.length; i++) {
+    const n = world.nests[i] as Nest;
+    if (n.lineage !== root) continue;
+    if (dist(c.x, c.y, n.x, n.y) <= r) {
+      target = n;
+      break;
+    }
+  }
+  if (target === null && world.nests.length >= t.NEST_CAP) return; // at the memory ceiling
+  // Pay the build cost (creature energy → reservoir). Mirrors the attack-cost transfer.
+  transferUpTo(fieldCompartment(c, "energy"), reservoir, toQuantum(t.NEST_COST));
+  if (target !== null) {
+    target.strength = Math.min(t.NEST_MAX_STRENGTH, target.strength + t.NEST_REINFORCE);
+  } else {
+    world.nests.push({
+      id: world.nextId++,
+      x: c.x,
+      y: c.y,
+      lineage: root,
+      strength: t.NEST_REINFORCE,
+    });
+    pushEvent(world, `nest:${root}`);
   }
 }
 

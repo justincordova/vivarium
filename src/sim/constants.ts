@@ -84,19 +84,20 @@ export const K_ARMOR = 0.5;
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Sensor input count. Widening it is a breaking world-geometry change (Living World
- * Phase 6B added 3 terrain senses: 18 → 21; reshapes ARROWS and old brains). */
-export const SENSORS = 21;
+ * Phase 6B added 3 terrain senses: 18 → 21; Phase 7A added 3 kin senses: 21 → 24;
+ * each reshapes ARROWS and old brains). */
+export const SENSORS = 24;
 /** Hidden-neuron count. Free parameter with a memory cost; subject of the enlargement experiment. */
 export const HIDDEN = 10;
-/** Action output count (SPEC.md §Actions). */
-export const ACTIONS = 7;
+/** Action output count (SPEC.md §Actions). Phase 7A added the `nest` action: 7 → 8. */
+export const ACTIONS = 8;
 /**
  * Total arrows per homolog. A plain literal (SPEC.md: "keep each value a plain
  * literal; do not compute"); the structural relation
- * `ARROWS === SENSORS*HIDDEN + HIDDEN*HIDDEN + HIDDEN*ACTIONS` (380 === 210+100+70)
+ * `ARROWS === SENSORS*HIDDEN + HIDDEN*HIDDEN + HIDDEN*ACTIONS` (420 === 240+100+80)
  * is asserted by constants.test.ts, which guards this literal.
  */
-export const ARROWS = 380;
+export const ARROWS = 420;
 /** Fraction of arrows enabled in a newborn — sparse start (SPEC.md §"Newborns are sparse"). (tunable) */
 export const NEWBORN_ENABLE_FRAC = 0.15;
 /**
@@ -179,6 +180,7 @@ export const TRAIT_MUT_SIGMA = {
   matingThreshold: 0.1,
   maxLifespan: 0.1,
   digestionEfficiency: 0.05,
+  sociality: 0.05,
 } as const;
 /**
  * Per-gene std-dev of a *plant* trait mutation, in each gene's own units. (tunable,
@@ -309,6 +311,28 @@ export const DRINK_THRESHOLD = 0.5; // (tunable)
 export const ATTACK_THRESHOLD = 0.5; // (tunable)
 export const MATE_THRESHOLD = 0.7; // (tunable) — must be quite full to seek a mate
 export const EMIT_THRESHOLD = 0.5; // (tunable)
+export const NEST_THRESHOLD = 0.6; // (tunable) — nest output must be fairly strong to build
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Nests  (Society, Phase 7A — build/claim a home; emergent packs/territories)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Max nest strength; reinforcement saturates here. (tunable) */
+export const NEST_MAX_STRENGTH = 300;
+/** Strength lost per tick (a nest fades unless reinforced). (tunable) */
+export const NEST_DECAY = 1;
+/** Strength gained per successful nest action. (tunable) */
+export const NEST_REINFORCE = 30;
+/** Energy cost of a nest action, paid creature→reservoir (building isn't free). (tunable) */
+export const NEST_COST = 3;
+/** Distance under which an existing same-lineage nest is reinforced (and within which its
+ * shelter benefit applies) rather than a new nest created. (tunable) */
+export const NEST_CLAIM_RADIUS = 20;
+/** Metabolic-drain multiplier (<1) when sheltering on a same-lineage nest — a rate
+ * modulator that mints nothing (only reduces an outbound transfer). (tunable) */
+export const NEST_SHELTER_METAB_MULT = 0.6;
+/** Hard ceiling on nest count (memory bound, like CREATURE_CAP). (tunable) */
+export const NEST_CAP = 2000;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Rule-policy fractions  (consumed by RuleBasedBrain.think, Task 0.6.1)

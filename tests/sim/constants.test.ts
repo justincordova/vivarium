@@ -4,15 +4,15 @@ import { describe, expect, it } from "vitest";
 describe("constants — structural relations", () => {
   it("ARROWS equals the sum of the three connection groups", () => {
     // Guards the ARROWS literal against the skeleton dimensions
-    // (Living World Phase 6B: 210 + 100 + 70 === 380, up from 350 with 3 terrain senses).
+    // (Society Phase 7A: 240 + 100 + 80 === 420, up from 380 with 3 kin senses + nest action).
     expect(C.ARROWS).toBe(C.SENSORS * C.HIDDEN + C.HIDDEN * C.HIDDEN + C.HIDDEN * C.ACTIONS);
-    expect(C.ARROWS).toBe(380);
+    expect(C.ARROWS).toBe(420);
   });
 
   it("skeleton dimensions match the pinned umwelt/action counts", () => {
-    expect(C.SENSORS).toBe(21); // 18 base + 3 terrain senses (Living World Phase 6B)
+    expect(C.SENSORS).toBe(24); // 18 base + 3 terrain (Phase 6B) + 3 kin (Phase 7A)
     expect(C.HIDDEN).toBe(10);
-    expect(C.ACTIONS).toBe(7);
+    expect(C.ACTIONS).toBe(8); // 7 base + nest (Phase 7A)
   });
 
   it("newborn enable fraction is a probability", () => {
@@ -42,6 +42,7 @@ describe("constants — structural relations", () => {
       "matingThreshold",
       "maxLifespan",
       "digestionEfficiency",
+      "sociality",
     ] as const;
     for (const g of geneNames) {
       expect(C.TRAIT_MUT_SIGMA[g]).toBeGreaterThan(0);

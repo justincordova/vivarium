@@ -193,6 +193,7 @@ function makeFounderGenome(spawn: RNG, template: BrainTemplate, carnivore: boole
   seedGene("offspringInvestment", 90); // costly but lets survivors rebuild after a trough
   seedGene("maxLifespan", 2000);
   seedGene("digestionEfficiency", 0.8);
+  seedGene("sociality", 0.5); // neutral midpoint — evolution explores solitary↔gregarious
   g.hue = [spawn.next() * 360, spawn.next() * 360];
   return g;
 }
@@ -320,6 +321,7 @@ export function createWorld(seed: number, config: Config): World {
     creatures: [],
     plants: [],
     corpses: [],
+    nests: [],
     creatureIds: [],
     nextId: 0,
     fields,

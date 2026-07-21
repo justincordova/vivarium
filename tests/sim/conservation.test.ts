@@ -74,6 +74,7 @@ function makeWorld(opts: {
     creatures: opts.creatures,
     plants: opts.plants,
     corpses: opts.corpses,
+    nests: [],
     creatureIds: opts.creatures.map((c) => c.id),
     nextId: 1000,
     fields: makeFields(opts.cells, opts.light, opts.fertility, opts.water),

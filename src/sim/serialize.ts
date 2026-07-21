@@ -13,7 +13,7 @@
  * Pure — no DOM/IndexedDB (those are worker/Phase 5 concerns). Part of `sim/`.
  */
 
-import { ACTIONS } from "./constants";
+import { ACTIONS, ARROWS } from "./constants";
 import { deserializeRng, serializeRng } from "./rng";
 import {
   Biome,
@@ -22,6 +22,7 @@ import {
   type Creature,
   type Fields,
   type Genome,
+  type Nest,
   type Plant,
   type PlantGenome,
   type RngBundle,
@@ -45,7 +46,7 @@ import {
  * reload. No historical events are fabricated (we cannot invent a past we did not
  * record); the report only narrates events fired from here forward.
  */
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 /** The serialized snapshot shape (all JSON-able; typed arrays become number[]). */
 export interface SaveBlob {
@@ -68,6 +69,8 @@ export interface SaveBlob {
   rootPopSnapshots?: World["rootPopSnapshots"];
   /** Living World (v4): authored terrain (biome + elevation per cell). */
   terrain?: { biome: number[]; elevation: number[] };
+  /** Society (v5): nests (emergent homes). Absent in a pre-v5 blob. */
+  nests?: Nest[];
   lastSavedRealTime: number;
 }
 
@@ -132,6 +135,7 @@ const TRAIT_KEYS = [
   "matingThreshold",
   "maxLifespan",
   "digestionEfficiency",
+  "sociality",
 ] as const;
 
 const PLANT_TRAIT_KEYS = [
@@ -200,6 +204,7 @@ export function serialize(world: World): SaveBlob {
       genome: serPlantGenome(p.genome),
     })),
     corpses: world.corpses.map((co) => ({ ...co })),
+    nests: world.nests.map((n) => ({ ...n })),
     fields: {
       light: Array.from(world.fields.light),
       fertility: Array.from(world.fields.fertility),
@@ -227,15 +232,28 @@ export function serialize(world: World): SaveBlob {
 // ── deserialize (with defaulting so a partial/older blob still loads) ─────────
 
 function deGenome(s: SerGenome): Genome {
+  // Society (v5) brain-geometry re-seed: a pre-v5 genome's brain arrays are the wrong
+  // length (SENSORS/ACTIONS changed → ARROWS 380 → 420). We CANNOT migrate the weights
+  // arrow-for-arrow (the documented breaking geometry change). Rebuild an inert brain of
+  // the correct length — zero weights, all arrows disabled — RNG-free so the load path
+  // stays deterministic and serialize.ts avoids importing world.ts (no import cycle).
+  // Trait alleles are preserved; only brain wiring is reset. A creature loaded inert
+  // re-evolves from a blank slate. The shipped cold-open is regenerated fresh, so only
+  // hand-carried pre-v5 personal saves ever load inert (accepted major-version cost).
+  const geometryMatches = (s.weightsA ?? []).length === ARROWS;
   const g = {
-    weightsA: Float32Array.from(s.weightsA ?? []),
-    weightsB: Float32Array.from(s.weightsB ?? []),
-    enabledA: Uint8Array.from(s.enabledA ?? []),
-    enabledB: Uint8Array.from(s.enabledB ?? []),
+    weightsA: geometryMatches ? Float32Array.from(s.weightsA ?? []) : new Float32Array(ARROWS),
+    weightsB: geometryMatches ? Float32Array.from(s.weightsB ?? []) : new Float32Array(ARROWS),
+    enabledA: geometryMatches ? Uint8Array.from(s.enabledA ?? []) : new Uint8Array(ARROWS),
+    enabledB: geometryMatches ? Uint8Array.from(s.enabledB ?? []) : new Uint8Array(ARROWS),
   } as Genome;
   const traits = s.traits ?? {};
   for (const k of TRAIT_KEYS) {
-    const pair = traits[k] ?? [0, 0];
+    // `sociality` (v5) is absent from a pre-v5 blob → default to the neutral midpoint
+    // (0.5,0.5) rather than (0,0), so migrated creatures load solitary-neutral, not
+    // maximally solitary. All pre-v5 traits are present and round-trip unchanged.
+    const fallback: [number, number] = k === "sociality" ? [0.5, 0.5] : [0, 0];
+    const pair = traits[k] ?? fallback;
     g[k] = [pair[0], pair[1]];
   }
   const hue = s.hue ?? [0, 0];
@@ -290,6 +308,17 @@ function migrateV3toV4(b: SaveBlob): SaveBlob {
   return { ...b, version: 4 };
 }
 
+/**
+ * v4 → v5 (Society): nests + the `sociality` gene became world/genome state, and the
+ * brain geometry changed (SENSORS 21→24, ACTIONS 7→8, ARROWS 380→420). `deserialize`
+ * handles the loads: absent `nests` → `[]`, absent `sociality` → neutral (0.5,0.5)
+ * default (`deGenome`), and a 380-length brain re-seeds inert at 420 (`deGenome`). Here
+ * we only bump the version; the loaders fill the defaults.
+ */
+function migrateV4toV5(b: SaveBlob): SaveBlob {
+  return { ...b, version: 5 };
+}
+
 /** v1 → v2: default `config.brainKind` to `'rule'` if the blob predates the field. */
 function migrateV1toV2(b: SaveBlob): SaveBlob {
   const config = { ...b.config, brainKind: b.config?.brainKind ?? "rule" };
@@ -316,6 +345,7 @@ function migrate(blob: SaveBlob): SaveBlob {
   if (b.version < 2) b = migrateV1toV2(b);
   if (b.version < 3) b = migrateV2toV3(b);
   if (b.version < 4) b = migrateV3toV4(b);
+  if (b.version < 5) b = migrateV4toV5(b);
   return b;
 }
 
@@ -372,6 +402,8 @@ export function deserialize(data: SaveBlob): World {
   }));
 
   const corpses: Corpse[] = (blob.corpses ?? []).map((co) => ({ ...co }));
+  // Nests (Society, Phase 7A). Absent in a pre-v5 blob → empty (migrateV4toV5 default).
+  const nests: Nest[] = (blob.nests ?? []).map((n) => ({ ...n }));
   const rng: RngBundle = deserializeRng(blob.rng ?? {});
 
   return {
@@ -381,6 +413,7 @@ export function deserialize(data: SaveBlob): World {
     creatures,
     plants,
     corpses,
+    nests,
     creatureIds: creatures.map((c) => c.id),
     nextId: blob.nextId ?? 0,
     fields: deFields(blob.fields),

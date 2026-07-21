@@ -18,7 +18,7 @@ import type { Allele, Genome, PlantGenome, RNG, Tunables } from "./types";
 
 // ── Trait-gene registry (fixed order — load-bearing for the golden-vector test) ──
 
-/** The 14 diploid trait genes plus `hue`, in fixed iteration order. */
+/** The 15 diploid trait genes plus `hue`, in fixed iteration order. */
 export const TRAIT_GENES = [
   "size",
   "speed",
@@ -34,6 +34,7 @@ export const TRAIT_GENES = [
   "matingThreshold",
   "maxLifespan",
   "digestionEfficiency",
+  "sociality",
 ] as const;
 export type TraitGene = (typeof TRAIT_GENES)[number];
 
@@ -53,6 +54,7 @@ export const TRAIT_RANGE: Record<TraitGene, [number, number]> = {
   matingThreshold: [0, 500],
   maxLifespan: [10, 100000],
   digestionEfficiency: [0.05, 1],
+  sociality: [0, 1],
 };
 
 // ── Expression (mean of alleles) ─────────────────────────────────────────────

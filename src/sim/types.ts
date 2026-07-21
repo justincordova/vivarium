@@ -47,6 +47,7 @@ export interface Genome {
   matingThreshold: Allele;
   maxLifespan: Allele;
   digestionEfficiency: Allele;
+  sociality: Allele; // 0 = solitary, 1 = gregarious (Society, Phase 7A)
 
   // Appearance — neutral, drifts freely, carries lineage. Diploid so hybrids are
   // visibly hybrid. Zero effect on survival.
@@ -173,6 +174,20 @@ export interface Corpse {
   x: number;
   y: number;
   energy: number; // integer quanta
+}
+
+/**
+ * A nest (Society, Phase 7A) — a home built/claimed by a lineage at a location.
+ * NOT ledger-bearing: it carries no energy/water field. `strength` is a non-conserved
+ * modulator counter (decays each tick, reinforced by the nest action), NOT a quantum
+ * ledger — it mints/destroys nothing. Serialized world state.
+ */
+export interface Nest {
+  id: number;
+  x: number;
+  y: number;
+  lineage: number; // founder-lineage-root that owns it (a world.lineageRoots value)
+  strength: number; // integer 0..NEST_MAX_STRENGTH
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -372,6 +387,15 @@ export interface Tunables {
   ATTACK_THRESHOLD: number;
   MATE_THRESHOLD: number;
   EMIT_THRESHOLD: number;
+  NEST_THRESHOLD: number;
+  // nests (Society, Phase 7A)
+  NEST_MAX_STRENGTH: number;
+  NEST_DECAY: number;
+  NEST_REINFORCE: number;
+  NEST_COST: number;
+  NEST_CLAIM_RADIUS: number;
+  NEST_SHELTER_METAB_MULT: number;
+  NEST_CAP: number;
   // rule-policy fractions
   HUNGRY_FRAC: number;
   THIRSTY_FRAC: number;
@@ -453,6 +477,8 @@ export interface World {
   creatures: Creature[];
   plants: Plant[];
   corpses: Corpse[];
+  /** Nests (Society, Phase 7A) — emergent homes; mutated only in `tick()`. Serialized. */
+  nests: Nest[];
   /** Stable, insertion-ordered creature IDs — iteration is index-based over this. */
   creatureIds: number[];
   /** Monotonic id source for new entities. */
@@ -502,7 +528,7 @@ export interface World {
 // Sensor / Action enums  (SPEC.md §Sensors, §Actions — exact indices)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The 21 sensor input indices (SPEC.md §Sensors). */
+/** The 24 sensor input indices (SPEC.md §Sensors). */
 export enum Sensor {
   Bias = 0,
   OwnEnergy = 1,
@@ -527,9 +553,14 @@ export enum Sensor {
   LocalBiome = 18, // normalized biome id (0..1)
   WaterDirX = 19, // unit vector toward nearest water cell, x
   WaterDirY = 20, // unit vector toward nearest water cell, y
+  // Kin senses (Society, Phase 7A) — appended so existing sensor indices are unchanged
+  // (though the total arrow COUNT/geometry changes, breaking old brains).
+  KinDirX = 21, // unit vector toward nearest same-lineage neighbor, x
+  KinDirY = 22, // unit vector toward nearest same-lineage neighbor, y
+  KinDensity = 23, // normalized count of same-lineage neighbors within senseRadius
 }
 
-/** The 7 action output indices (SPEC.md §Actions). */
+/** The 8 action output indices (SPEC.md §Actions). */
 export enum Action {
   Turn = 0,
   Accelerate = 1,
@@ -538,4 +569,6 @@ export enum Action {
   Attack = 4,
   Mate = 5,
   EmitScent = 6,
+  // Nest (Society, Phase 7A) — build/claim/reinforce a home at the current location.
+  Nest = 7,
 }

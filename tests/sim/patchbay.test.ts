@@ -87,14 +87,14 @@ describe("patchbay brain — conservation (exact, every tick)", () => {
 });
 
 describe("patchbay brain — enlargement geometry (HIDDEN=20 fresh world)", () => {
-  it("a HIDDEN=20 fresh world sizes brain arrays to 960 arrows and a 20-vector", () => {
+  it("a HIDDEN=20 fresh world sizes brain arrays to 1040 arrows and a 20-vector", () => {
     const w = createWorld(1, makeConfig({ brainKind: "patchbay", hidden: 20 }));
     const c = w.creatures[0];
     expect(c).toBeDefined();
     if (c) {
-      // arrowCount(20) = 21*20 + 20*20 + 20*7 = 960 (SENSORS=21, Living World Phase 6B).
-      expect(c.genome.weightsA).toHaveLength(960);
-      expect(c.genome.enabledA).toHaveLength(960);
+      // arrowCount(20) = 24*20 + 20*20 + 20*8 = 1040 (SENSORS=24, ACTIONS=8, Society Phase 7A).
+      expect(c.genome.weightsA).toHaveLength(1040);
+      expect(c.genome.enabledA).toHaveLength(1040);
       expect(c.hidden).toHaveLength(20);
     }
   });

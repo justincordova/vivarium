@@ -285,6 +285,7 @@ export interface Intents {
   attack: boolean;
   mate: boolean;
   emit: boolean;
+  nest: boolean; // Society, Phase 7A — build/claim a home (patchbay-era; rule brain never nests)
 }
 
 /** Add π (i.e. +1 in the `angle/π` encoding) and re-wrap to `[−1,1]` — "steer away". */
@@ -315,6 +316,7 @@ export function ruleThink(ctx: RuleContext): Intents {
     attack: false,
     mate: false,
     emit: false,
+    nest: false,
   };
 
   // Hysteresis: tick down the commitment counter.

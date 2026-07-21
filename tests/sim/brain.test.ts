@@ -310,13 +310,14 @@ describe("PatchbayBrain.think — forward pass", () => {
   });
 
   it("pins the forward pass against a hard-coded golden output vector", () => {
-    // Golden vector for the 21-sensor geometry (Living World Phase 6B re-baseline). The
-    // independent `referenceForward` test above summing in the pinned index order is the
-    // real cross-check; this pins the exact low-FP-bit output so any later accidental
-    // reorder still fails. Regenerated when SENSORS went 18 → 21 (ARROWS 350 → 380).
+    // Golden vector for the 24-sensor / 8-action geometry (Society Phase 7A re-baseline).
+    // The independent `referenceForward` test above summing in the pinned index order is
+    // the real cross-check; this pins the exact low-FP-bit output so any later accidental
+    // reorder still fails. Regenerated when SENSORS went 21 → 24 and ACTIONS 7 → 8
+    // (ARROWS 380 → 420).
     const golden = [
-      -0.17741656303405762, -0.22186525166034698, -0.32099679112434387, -0.34097760915756226,
-      -0.003967548254877329, -0.6500503420829773, -0.7263026237487793,
+      -0.35728558897972107, 0.7584481835365295, 0.44430235028266907, -0.24873168766498566,
+      0.16815973818302155, -0.13561278581619263, 0.7406783699989319, 0.6478701233863831,
     ];
     const { weights, enabled } = fixedExpressedBrain(123456789);
     const brain = genomeFromExpressed(weights, enabled);
@@ -414,6 +415,7 @@ describe("PatchbayBrain — BrainOps interface", () => {
         "matingThreshold",
         "maxLifespan",
         "digestionEfficiency",
+        "sociality",
       ] as const) {
         g[key] = [1, 1];
       }
