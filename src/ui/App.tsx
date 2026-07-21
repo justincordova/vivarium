@@ -348,14 +348,17 @@ export function App(): React.ReactElement {
         <>
           <Toolbar />
 
-          {/* Left dock: world stats + controls. Scrolls if the viewport is short. */}
-          <div className="pointer-events-none absolute left-4 top-4 bottom-20 flex w-52 flex-col gap-3 overflow-y-auto overflow-x-hidden pr-0.5 [&>*]:pointer-events-auto">
+          {/* Left dock: world stats + controls. Scrolls if the viewport is short. The
+              padding (px/pb) gives the panels' soft shadows and rounded corners room so
+              the scroll container doesn't shave them; the negative margin keeps the dock
+              flush to the screen edge despite that padding. */}
+          <div className="pointer-events-none absolute left-0 top-3 bottom-16 flex w-64 flex-col gap-3 overflow-y-auto px-4 pb-4 [&>*]:pointer-events-auto">
             <Hud />
             <ControlPanel />
           </div>
 
           {/* Right dock: inspector + charts. Starts below the help button (top-14). */}
-          <div className="pointer-events-none absolute right-4 top-14 bottom-20 flex w-72 flex-col items-end gap-3 overflow-y-auto overflow-x-hidden pl-0.5 [&>*]:pointer-events-auto">
+          <div className="pointer-events-none absolute right-0 top-14 bottom-16 flex w-[21rem] flex-col items-end gap-3 overflow-y-auto px-4 pb-4 [&>*]:pointer-events-auto">
             <Inspector />
             <Charts />
           </div>

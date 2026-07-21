@@ -41,7 +41,7 @@ function PopulationChart(): React.ReactElement {
         population / species
       </div>
       <ResponsiveContainer width="100%" height={92}>
-        <LineChart data={popHistory} margin={{ top: 2, right: 4, bottom: 0, left: -18 }}>
+        <LineChart data={popHistory} margin={{ top: 2, right: 4, bottom: 0, left: -6 }}>
           <CartesianGrid stroke={GRID} strokeDasharray="2 3" />
           <XAxis dataKey="tick" tick={AXIS} stroke={GRID} minTickGap={40} />
           <YAxis tick={AXIS} stroke={GRID} width={34} />
@@ -84,7 +84,7 @@ function LineageChart(): React.ReactElement {
         lineages
       </div>
       <ResponsiveContainer width="100%" height={82}>
-        <AreaChart data={lineageHistory} margin={{ top: 2, right: 4, bottom: 0, left: -18 }}>
+        <AreaChart data={lineageHistory} margin={{ top: 2, right: 4, bottom: 0, left: -6 }}>
           <CartesianGrid stroke={GRID} strokeDasharray="2 3" />
           <XAxis dataKey="tick" tick={AXIS} stroke={GRID} minTickGap={40} />
           <YAxis tick={AXIS} stroke={GRID} width={34} />
@@ -132,7 +132,7 @@ function TraitChart(): React.ReactElement {
         </select>
       </div>
       <ResponsiveContainer width="100%" height={80}>
-        <BarChart data={data} margin={{ top: 2, right: 4, bottom: 0, left: -18 }}>
+        <BarChart data={data} margin={{ top: 2, right: 4, bottom: 0, left: -6 }}>
           <XAxis dataKey="bin" tick={AXIS} stroke={GRID} minTickGap={20} />
           <YAxis tick={AXIS} stroke={GRID} width={34} />
           <Bar dataKey="count" fill={ACCENT} fillOpacity={0.8} isAnimationActive={false} />
