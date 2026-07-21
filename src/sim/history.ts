@@ -224,17 +224,16 @@ export function detectLineageEvents(world: World): void {
   if (leadRoot !== -1) {
     if (world.dominant === null || world.dominant.lineage !== leadRoot) {
       // A new leader took the top spot — start its hold clock (no event yet).
-      world.dominant = { lineage: leadRoot, sinceTick: world.tick };
-    } else {
-      const sinceTick = world.dominant.sinceTick;
-      const alreadyFired = world.lineageEvents.some(
-        (e) => e.kind === "newDominant" && e.lineage === leadRoot && e.tick >= sinceTick,
-      );
-      if (sinceTick <= world.tick - C.DOMINANCE_WINDOW && !alreadyFired) {
-        // Held the lead for DOMINANCE_WINDOW ticks → fire once (guarded against
-        // re-firing for the same uninterrupted reign).
-        pushLineageEvent(world, { kind: "newDominant", tick: world.tick, lineage: leadRoot });
-      }
+      world.dominant = { lineage: leadRoot, sinceTick: world.tick, fired: false };
+    } else if (
+      !world.dominant.fired &&
+      world.dominant.sinceTick <= world.tick - C.DOMINANCE_WINDOW
+    ) {
+      // Held the lead for DOMINANCE_WINDOW ticks → fire once per uninterrupted reign.
+      // The `fired` flag lives on the (serialized) tracker, so the guard survives the
+      // `lineageEvents` ring evicting this marker during a very long reign.
+      world.dominant.fired = true;
+      pushLineageEvent(world, { kind: "newDominant", tick: world.tick, lineage: leadRoot });
     }
   }
 

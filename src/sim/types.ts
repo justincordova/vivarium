@@ -480,10 +480,13 @@ export interface World {
    */
   lineageEvents: LineageEvent[];
   /**
-   * Dominance tracker for `newDominant` detection: the currently-dominant lineage root
-   * and the tick it took the lead. `null` until a first dominant is seen. Serialized.
+   * Dominance tracker for `newDominant` detection: the currently-dominant lineage root,
+   * the tick it took the lead, and whether the `newDominant` event has already fired for
+   * this uninterrupted reign. `fired` makes the fire-once guard independent of the
+   * bounded `lineageEvents` ring (searching the ring would re-fire if the marker was
+   * evicted during a long reign). `null` until a first dominant is seen. Serialized.
    */
-  dominant: { lineage: number; sinceTick: number } | null;
+  dominant: { lineage: number; sinceTick: number; fired?: boolean } | null;
   /**
    * Bounded ring of recent per-root population snapshots (Phase 5A.3), one per history
    * sample, covering ≥`BOOM_WINDOW` ticks — the basis for boom/extinction detection
