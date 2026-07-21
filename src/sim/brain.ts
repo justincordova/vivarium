@@ -77,7 +77,7 @@ export function derive(genome: Genome): { weights: Float32Array; enabled: Uint8A
 /**
  * Arrow count for a given hidden-neuron count (SENSORS/ACTIONS are permanently fixed
  * per SPEC.md §Sensors/§Actions; only HIDDEN varies — the enlargement experiment,
- * Task 4.4). For the default `HIDDEN=10` this is `ARROWS=350`.
+ * Task 4.4). For the default `HIDDEN=10`, `SENSORS=21` this is `ARROWS=380`.
  */
 export function arrowCount(hidden: number): number {
   return C.SENSORS * hidden + hidden * hidden + hidden * C.ACTIONS;

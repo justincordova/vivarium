@@ -26,7 +26,7 @@ export type Allele = [number, number];
  * makes the Phase 4 swap touch only `think`).
  */
 export interface Genome {
-  // Brain (see Brain Design) — diploid. Length ARROWS (350) each.
+  // Brain (see Brain Design) — diploid. Length ARROWS (380) each.
   weightsA: Float32Array; // one homolog
   weightsB: Float32Array; // the other homolog
   enabledA: Uint8Array; // 0/1 mask homolog A
@@ -499,7 +499,7 @@ export interface World {
 // Sensor / Action enums  (SPEC.md §Sensors, §Actions — exact indices)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The 18 sensor input indices (SPEC.md §Sensors). */
+/** The 21 sensor input indices (SPEC.md §Sensors). */
 export enum Sensor {
   Bias = 0,
   OwnEnergy = 1,

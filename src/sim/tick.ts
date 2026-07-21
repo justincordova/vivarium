@@ -154,7 +154,7 @@ function senseContext(
   mate: Percept | null;
   threat: Percept | null;
   mateInReachFull: boolean;
-  /** The 18-element sensor vector (SPEC.md §Sensors) — the patchbay `think` input. */
+  /** The 21-element sensor vector (SPEC.md §Sensors) — the patchbay `think` input. */
   senses: Float32Array;
 } {
   const t = world.config.tunables;
