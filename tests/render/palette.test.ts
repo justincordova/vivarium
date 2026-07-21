@@ -57,11 +57,11 @@ describe("appearance", () => {
     expect(satOf(starving.fill)).toBeLessThan(satOf(fed.fill));
   });
 
-  it("herbivores read round (many vertices), carnivores angular (few)", () => {
+  it("herbivores read plump/round, carnivores leaner", () => {
     const herb = appearance(frameOf({ diet: 0 }), 0);
     const carn = appearance(frameOf({ diet: 1 }), 0);
-    expect(herb.vertices).toBeGreaterThan(carn.vertices);
-    expect(carn.vertices).toBeGreaterThanOrEqual(3);
+    expect(herb.roundness).toBeGreaterThan(carn.roundness);
+    expect(carn.roundness).toBeGreaterThanOrEqual(0);
   });
 
   it("larger size → larger radius", () => {
@@ -70,11 +70,20 @@ describe("appearance", () => {
     expect(big.radius).toBeGreaterThan(small.radius);
   });
 
-  it("armor grows spikes; no armor → no spikes", () => {
+  it("faster creatures grow more/longer legs", () => {
+    const slow = appearance(frameOf({ speed: 0 }), 0);
+    const fast = appearance(frameOf({ speed: 10 }), 0);
+    expect(fast.legPairs).toBeGreaterThanOrEqual(slow.legPairs);
+    expect(fast.legLength).toBeGreaterThan(slow.legLength);
+    expect(Number.isInteger(fast.legPairs)).toBe(true);
+    expect(slow.legPairs).toBeGreaterThanOrEqual(2);
+  });
+
+  it("armor grows dorsal plates; no armor → no plates", () => {
     const bare = appearance(frameOf({ armor: 0 }), 0);
     const armored = appearance(frameOf({ armor: 9 }), 0);
-    expect(bare.spikes).toBe(0);
-    expect(armored.spikes).toBeGreaterThan(0);
+    expect(bare.plates).toBe(0);
+    expect(armored.plates).toBeGreaterThan(0);
   });
 
   it("high toxicity flags the ornament ring", () => {

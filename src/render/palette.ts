@@ -50,16 +50,7 @@ export interface Appearance {
   toxic: boolean;
   /** Age outline ring opacity 0..1 (older = more visible ring). */
   ageRing: number;
-  /** Legacy: polygon vertices (kept for the low-detail fallback silhouette). */
-  vertices: number;
-  /** Legacy radial spikes (low-detail fallback). */
-  spikes: number;
-  spikeLength: number;
 }
-
-// Silhouette vertex count endpoints for the low-detail fallback silhouette.
-const HERBIVORE_VERTICES = 16; // reads as a smooth disc
-const CARNIVORE_VERTICES = 3; // a sharp triangle
 
 // Body radius mapping from expressed `size` over its legal range. Bumped up so
 // creatures read as organisms, not specks.
@@ -84,9 +75,10 @@ function remap(v: number, inLo: number, inHi: number, outLo: number, outHi: numb
  * - **energyFrac** → saturation: a starving creature washes out toward gray
  *   (SPEC.md table). Lightness dips slightly when starving too, so the desaturation
  *   reads even against the dark chrome.
- * - **diet** → silhouette vertex count (round herbivore ↔ angular carnivore).
- * - **armor** → radial spikes.
- * - **toxicity** → a warning ornament ring past a threshold.
+ * - **diet** → body roundness (plump herbivore ↔ leaner carnivore).
+ * - **speed** → number of leg pairs + leg/tail length.
+ * - **armor** → dorsal plates.
+ * - **toxicity** → warning flank spots past a threshold.
  * - **age** → a faint outline ring that strengthens with age.
  */
 export function appearance(f: CreatureFrame, i: number): Appearance {
@@ -120,9 +112,8 @@ export function appearance(f: CreatureFrame, i: number): Appearance {
   const glow = `hsla(${hue.toFixed(0)} ${sat}% ${Math.min(70, light + 12)}% / ${glowAlpha})`;
 
   const [dietLo, dietHi] = TRAIT_RANGE.diet;
-  // Roundness: herbivore (diet→0) is plump/round, carnivore (diet→1) is sleek.
+  // Roundness: herbivore (diet→0) is plump/round, carnivore (diet→1) is leaner.
   const roundness = 1 - remap(diet, dietLo, dietHi, 0, 1);
-  const vertices = Math.round(remap(diet, dietLo, dietHi, HERBIVORE_VERTICES, CARNIVORE_VERTICES));
 
   const [speedLo, speedHi] = TRAIT_RANGE.speed;
   // Faster creatures grow more/longer legs and a slightly longer tail nub.
@@ -136,9 +127,6 @@ export function appearance(f: CreatureFrame, i: number): Appearance {
   const armored = armor > armorLo + (armorHi - armorLo) * 0.12;
   const plates = armored ? Math.round(remap(armor, armorLo, armorHi, 3, 8)) : 0;
   const plateSize = remap(armor, armorLo, armorHi, 0.28, 0.7);
-  // Legacy spikes for the low-detail fallback path.
-  const spikes = plates;
-  const spikeLength = plateSize;
 
   const [toxLo, toxHi] = TRAIT_RANGE.toxicity;
   const toxic = toxicity > toxLo + (toxHi - toxLo) * 0.5;
@@ -160,8 +148,5 @@ export function appearance(f: CreatureFrame, i: number): Appearance {
     plateSize,
     toxic,
     ageRing,
-    vertices: Math.max(3, vertices),
-    spikes,
-    spikeLength,
   };
 }

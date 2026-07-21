@@ -79,24 +79,24 @@ export function HelpLegend(): React.ReactElement {
               meaning="Lineage — same color, same family line."
             />
             <LegendRow
-              marker={<span className="h-3.5 w-3.5 rounded-full bg-[var(--accent)]" />}
-              label="Round shape"
-              meaning="Herbivore (plant-eater)."
+              marker={<span className="h-3.5 w-4 rounded-full bg-[var(--accent)]" />}
+              label="Plump body"
+              meaning="Herbivore (plant-eater). Leaner bodies are hunters."
             />
             <LegendRow
-              marker={
-                <span
-                  className="h-3.5 w-3.5 rotate-45 bg-[var(--accent)]"
-                  style={{ clipPath: "polygon(50% 0, 100% 50%, 50% 100%, 0 50%)" }}
-                />
-              }
-              label="Angular shape"
-              meaning="Carnivore (hunter)."
+              marker={<span className="text-[var(--fg-dim)]">▲</span>}
+              label="Back plates"
+              meaning="Armor — dorsal plates for defense."
             />
             <LegendRow
-              marker={<span className="text-[var(--fg-dim)]">✳</span>}
-              label="Spikes"
-              meaning="Armor & toxicity — defense and display."
+              marker={<span className="text-[rgb(245_240_120)]">●</span>}
+              label="Flank spots"
+              meaning="Toxicity — bright warning markings."
+            />
+            <LegendRow
+              marker={<span className="text-[var(--fg-dim)]">╫</span>}
+              label="More legs"
+              meaning="Faster creatures — longer legs and tail."
             />
             <LegendRow
               marker={<span className="h-3.5 w-3.5 rounded-full bg-[var(--fg-mute)] opacity-40" />}
