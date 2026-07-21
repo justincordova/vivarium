@@ -135,6 +135,8 @@ export function HelpLegend(): React.ReactElement {
             <ul className="space-y-1 text-[11px] text-[var(--fg-dim)]">
               <li>
                 <span className="text-[var(--fg)]">Click</span> a creature — read & edit its genome
+                (one slider per gene = its expressed value; “show alleles” reveals both inherited
+                copies)
               </li>
               <li>
                 <span className="text-[var(--fg)]">Drag</span> — pan the view

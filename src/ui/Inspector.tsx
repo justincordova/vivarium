@@ -1,17 +1,22 @@
 /**
- * Inspector.tsx — the creature inspector (Task 3.2). Click a creature → its full
- * genome (both alleles + expressed value per gene), a brain summary (enable density),
+ * Inspector.tsx — the creature inspector (Task 3.2). Click a creature → its
+ * genome (one expressed value per gene by default), a brain summary (enable density),
  * vitals, and lineage id. Trait genes are live-editable: dragging a field dispatches
  * `editGenome`, and the change is visible in the world next tick (DoD: "click a
  * creature and reads its genome"; "edits genomes live").
  *
- * Grayscale chrome, monospace numbers (SPEC.md §Visual Design). Never hides
- * information — every gene is shown, both alleles.
+ * The genome is diploid (two alleles per gene, expressed as their mean). By default the
+ * inspector shows ONE slider per gene — the expressed value — and dragging it moves both
+ * alleles together. A "show alleles" toggle reveals the two per-homolog sliders for users
+ * who want to set heterozygous genotypes. Nothing is hidden, just tucked behind a toggle.
+ *
+ * Grayscale chrome, monospace numbers (SPEC.md §Visual Design).
  */
 
 import { TRAIT_GENES, TRAIT_RANGE, type TraitGene } from "@sim/genetics";
 import type { Creature } from "@sim/types";
 import { useSimStore } from "@store/useSimStore";
+import { useState } from "react";
 
 function num(n: number, digits = 2): string {
   if (!Number.isFinite(n)) return "—";
@@ -30,13 +35,19 @@ function enableDensity(c: Creature): number {
   return a.length === 0 ? 0 : on / a.length;
 }
 
-/** One editable trait-gene row: both alleles as range sliders + the expressed mean. */
+/**
+ * One editable trait-gene row. By default a single slider drives the EXPRESSED value
+ * (dragging it sets both alleles to that value). When `showAlleles` is on, the two
+ * per-homolog sliders are shown instead, so a heterozygous genotype can be set.
+ */
 function GeneRow({
   creature,
   gene,
+  showAlleles,
 }: {
   creature: Creature;
   gene: TraitGene | "hue";
+  showAlleles: boolean;
 }): React.ReactElement {
   const editGenome = useSimStore((s) => s.editGenome);
   // Hue wraps mod 360 in the worker, so cap the slider at 359 — a max of 360 would
@@ -49,6 +60,12 @@ function GeneRow({
   const edit = (idx: 0 | 1, value: number): void => {
     editGenome(creature.id, { kind: "trait", gene, allele: idx, value });
   };
+  // Setting the expressed value moves both homologs to it (a homozygous edit) so the
+  // single slider reads as "the value this creature expresses".
+  const editExpressed = (value: number): void => {
+    edit(0, value);
+    edit(1, value);
+  };
 
   return (
     <div className="py-1">
@@ -56,23 +73,36 @@ function GeneRow({
         <span className="text-[10px] uppercase tracking-wide text-[var(--fg-mute)]">{gene}</span>
         <span className="tabular text-[11px] text-[var(--fg-dim)]">{num(expressed)}</span>
       </div>
-      {/* Alleles stacked full-width — two sliders side-by-side in a 288px panel squished
-          them illegibly. Each homolog now gets the whole row. */}
-      <div className="flex flex-col gap-1">
-        {[0, 1].map((i) => (
-          <input
-            key={i}
-            type="range"
-            min={lo}
-            max={hi}
-            step={step}
-            value={allele[i as 0 | 1]}
-            onChange={(e) => edit(i as 0 | 1, Number(e.target.value))}
-            className="h-1 w-full cursor-pointer appearance-none rounded bg-[rgb(var(--panel-border)/0.25)] accent-[var(--accent)]"
-            aria-label={`${gene} allele ${i}`}
-          />
-        ))}
-      </div>
+      {showAlleles ? (
+        // Alleles stacked full-width — two sliders side-by-side in a 288px panel squished
+        // them illegibly. Each homolog gets the whole row.
+        <div className="flex flex-col gap-1">
+          {[0, 1].map((i) => (
+            <input
+              key={i}
+              type="range"
+              min={lo}
+              max={hi}
+              step={step}
+              value={allele[i as 0 | 1]}
+              onChange={(e) => edit(i as 0 | 1, Number(e.target.value))}
+              className="h-1 w-full cursor-pointer appearance-none rounded bg-[rgb(var(--panel-border)/0.25)] accent-[var(--accent)]"
+              aria-label={`${gene} allele ${i}`}
+            />
+          ))}
+        </div>
+      ) : (
+        <input
+          type="range"
+          min={lo}
+          max={hi}
+          step={step}
+          value={expressed}
+          onChange={(e) => editExpressed(Number(e.target.value))}
+          className="h-1 w-full cursor-pointer appearance-none rounded bg-[rgb(var(--panel-border)/0.25)] accent-[var(--accent)]"
+          aria-label={`${gene} expressed value`}
+        />
+      )}
     </div>
   );
 }
@@ -83,6 +113,7 @@ export function Inspector(): React.ReactElement | null {
   const followId = useSimStore((s) => s.followId);
   const setFollow = useSimStore((s) => s.setFollow);
   const remove = useSimStore((s) => s.remove);
+  const [showAlleles, setShowAlleles] = useState(false);
   if (inspected === null) return null;
 
   const following = followId === inspected.id;
@@ -140,15 +171,25 @@ export function Inspector(): React.ReactElement | null {
         </button>
       </div>
 
-      {/* genome — both alleles per gene, live-editable */}
+      {/* genome — one expressed slider per gene by default; alleles behind a toggle */}
       <div className="mt-2 border-t border-[rgb(var(--panel-border)/0.12)] pt-2">
-        <div className="mb-1 text-[10px] uppercase tracking-widest text-[var(--fg-mute)]">
-          genome · two alleles per gene → expressed value
+        <div className="mb-1 flex items-baseline justify-between">
+          <span className="text-[10px] uppercase tracking-widest text-[var(--fg-mute)]">
+            genome{showAlleles ? " · two alleles per gene" : ""}
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowAlleles((v) => !v)}
+            className="text-[10px] uppercase tracking-wide text-[var(--fg-mute)] hover:text-[var(--fg)]"
+            aria-pressed={showAlleles}
+          >
+            {showAlleles ? "hide alleles" : "show alleles"}
+          </button>
         </div>
         {(TRAIT_GENES as readonly TraitGene[]).map((g) => (
-          <GeneRow key={g} creature={inspected} gene={g} />
+          <GeneRow key={g} creature={inspected} gene={g} showAlleles={showAlleles} />
         ))}
-        <GeneRow creature={inspected} gene="hue" />
+        <GeneRow creature={inspected} gene="hue" showAlleles={showAlleles} />
       </div>
     </div>
   );
