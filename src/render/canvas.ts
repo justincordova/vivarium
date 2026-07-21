@@ -261,7 +261,7 @@ function drawCreature(
 
   ctx.restore();
 
-  // 8. Age ring — a faint circle in world space (drawn after restore, centered on sx,sy).
+  // 8. Age ring — a faint circle in screen space (drawn after restore, centered on sx,sy).
   if (a.ageRing > 0.02) {
     ctx.save();
     ctx.strokeStyle = `rgba(230, 230, 235, ${a.ageRing.toFixed(3)})`;
@@ -319,17 +319,17 @@ export function draw(frame: RenderFrame, ctx: CanvasRenderingContext2D, cam: Cam
     const sx = worldToScreenX(cam, c.x[i] as number);
     const sy = worldToScreenY(cam, c.y[i] as number);
     const a = appearance(c, i);
-    const rPx = a.radius * cam.zoom;
-    // Cull against the FULL drawn extent, not just the body radius: `drawCreature`
-    // extends spikes to `r·(1 + spikeLength)`. Using bare `rPx` here makes a large,
-    // armored creature pop in/out at the viewport edge (its spikes are still visible
-    // while its center is culled). `+6` covers the age ring / min-radius floor.
-    const margin = rPx * (1 + a.spikeLength) + 6;
+    const rPx = Math.max(1.5, a.radius * cam.zoom);
+    // Cull against the FULL drawn extent, not the body radius: the organism's legs reach
+    // ~2.7·r laterally and the glow halo ~2.2·r, so a bare-radius cull pops large/fast
+    // creatures in/out at the viewport edge (limbs/glow still on-screen while the center
+    // is culled). Use the larger extent + a few px of ring/floor slack.
+    const margin = rPx * 2.8 + 6;
     if (sx < -margin || sy < -margin || sx > cam.viewW + margin || sy > cam.viewH + margin) {
       continue;
     }
     // Rich detail only pays off when the creature is big enough on screen to see it.
-    drawCreature(ctx, sx, sy, c.heading[i] as number, Math.max(1.5, rPx), a, rich && rPx > 2.5);
+    drawCreature(ctx, sx, sy, c.heading[i] as number, rPx, a, rich && rPx > 2.5);
   }
 
   drawDayNight(ctx, cam, frame.light);
