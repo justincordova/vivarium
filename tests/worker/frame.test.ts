@@ -114,6 +114,25 @@ describe("frame↔palette contract", () => {
       expect(frame.biome[i]).toBeLessThanOrEqual(4);
     }
   });
+
+  it("carries nests as a struct-of-arrays (drives the nest render)", () => {
+    const world = createWorld(1, makeConfig({}));
+    world.nests = [
+      { id: 1, x: 10, y: 20, lineage: 5, strength: world.config.tunables.NEST_MAX_STRENGTH },
+      { id: 2, x: 30, y: 40, lineage: 5, strength: 0 },
+    ];
+    const frame = buildRenderFrame(world);
+    expect(frame.nests.count).toBe(2);
+    expect(frame.nests.x[0]).toBe(10);
+    expect(frame.nests.y[0]).toBe(20);
+    // strengthFrac is normalized against NEST_MAX_STRENGTH (full strength → 1).
+    expect(frame.nests.strengthFrac[0]).toBeCloseTo(1, 5);
+    expect(frame.nests.strengthFrac[1]).toBe(0);
+    // Same lineage → same display hue; hue is a valid 0..360 value.
+    expect(frame.nests.hue[0]).toBe(frame.nests.hue[1]);
+    expect(frame.nests.hue[0] as number).toBeGreaterThanOrEqual(0);
+    expect(frame.nests.hue[0] as number).toBeLessThan(360);
+  });
 });
 
 describe("dayLight", () => {

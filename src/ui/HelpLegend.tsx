@@ -119,6 +119,13 @@ export function HelpLegend(): React.ReactElement {
               label="The land"
               meaning="Blue water, green grass/forest, tan barren, gray rock — each grows food and slows movement differently."
             />
+            <LegendRow
+              marker={
+                <span className="h-3.5 w-3.5 rounded-full bg-[rgb(120_96_150)] opacity-70 ring-1 ring-[rgb(150_130_180)]/40" />
+              }
+              label="Nests"
+              meaning="Homes built by a lineage. Kin cluster around them and shelter to save energy — packs and territories emerge here."
+            />
           </div>
 
           <div className="mt-3 border-t border-[rgb(var(--panel-border)/0.12)] pt-2">

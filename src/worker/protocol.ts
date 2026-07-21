@@ -70,6 +70,17 @@ export interface CorpseFrame {
   energyFrac: Float32Array;
 }
 
+/** Nests (Society) as a lean struct-of-arrays: position, strength fraction, owner hue. */
+export interface NestFrame {
+  count: number;
+  x: Float32Array;
+  y: Float32Array;
+  /** strength / NEST_MAX_STRENGTH, clamped 0..1 — drives marker size/opacity. */
+  strengthFrac: Float32Array;
+  /** Owning lineage's hue (0..360) for tinting, or -1 if unknown. */
+  hue: Float32Array;
+}
+
 /**
  * One full render snapshot. `light` is the day/night level in 0..1 (1 = noon,
  * 0 = deep night), computed worker-side from `tick % TICKS_PER_DAY`; the renderer
@@ -96,6 +107,8 @@ export interface RenderFrame {
   creatures: CreatureFrame;
   plants: PlantFrame;
   corpses: CorpseFrame;
+  /** Nests (Society) — emergent homes rendered as lineage-tinted markers. */
+  nests: NestFrame;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

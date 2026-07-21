@@ -150,6 +150,26 @@ export function buildRenderFrame(world: World): RenderFrame {
   // Authored biome per cell (copied so the frame owns its buffer for transfer).
   const biome = new Uint8Array(world.terrain.biome);
 
+  // Nests (Society) — struct-of-arrays with a stable per-lineage hue (hashed from the
+  // root id so a lineage's homes read as one color without scanning creatures).
+  const nn = world.nests.length;
+  const nests = {
+    count: nn,
+    x: new Float32Array(nn),
+    y: new Float32Array(nn),
+    strengthFrac: new Float32Array(nn),
+    hue: new Float32Array(nn),
+  };
+  const nestMax = t.NEST_MAX_STRENGTH > 0 ? t.NEST_MAX_STRENGTH : 1;
+  for (let i = 0; i < nn; i++) {
+    const n = world.nests[i];
+    if (n === undefined) continue;
+    nests.x[i] = n.x;
+    nests.y[i] = n.y;
+    nests.strengthFrac[i] = clamp01(n.strength / nestMax);
+    nests.hue[i] = lineageHue(n.lineage);
+  }
+
   return {
     tick: world.tick,
     worldWidth: world.config.worldWidth,
@@ -162,7 +182,15 @@ export function buildRenderFrame(world: World): RenderFrame {
     creatures,
     plants,
     corpses,
+    nests,
   };
+}
+
+/** Stable display hue (0..360) for a lineage root id — a cheap integer hash, display-only. */
+function lineageHue(lineage: number): number {
+  // Mix the bits so adjacent ids get distinct hues; purely cosmetic (outside tick()).
+  const h = Math.imul(lineage ^ 0x9e3779b9, 0x85ebca6b) >>> 0;
+  return (h % 360000) / 1000;
 }
 
 /**
@@ -195,6 +223,10 @@ export function frameTransferables(frame: RenderFrame): ArrayBuffer[] {
     x.energyFrac.buffer,
     frame.water.buffer,
     frame.biome.buffer,
+    frame.nests.x.buffer,
+    frame.nests.y.buffer,
+    frame.nests.strengthFrac.buffer,
+    frame.nests.hue.buffer,
   ] as ArrayBuffer[];
 }
 

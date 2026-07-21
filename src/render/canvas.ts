@@ -310,6 +310,9 @@ export function draw(frame: RenderFrame, ctx: CanvasRenderingContext2D, cam: Cam
     ctx.restore();
   }
 
+  // Nests (Society) — emergent homes, under creatures so agents draw on top of them.
+  drawNests(ctx, frame, cam); // ctx-first, matching drawTerrain/drawBounds
+
   // Creatures — the vivid, glowing focus of the scene. The prettier "rich" path
   // (gradient body + glow + tapered spikes) is disabled under density so a packed world
   // holds frame rate; above the threshold we fall back to the flat silhouette.
@@ -333,6 +336,37 @@ export function draw(frame: RenderFrame, ctx: CanvasRenderingContext2D, cam: Cam
   }
 
   drawDayNight(ctx, cam, frame.light);
+}
+
+/**
+ * Draw nests (Society) as small lineage-tinted home markers — a rounded mound whose
+ * size and opacity scale with strength, plus a faint territory ring. Pure function of the
+ * frame; culls to the viewport. Cheap (a few paths per nest); nest count is bounded by
+ * NEST_CAP.
+ */
+export function drawNests(ctx: CanvasRenderingContext2D, frame: RenderFrame, cam: Camera): void {
+  const n = frame.nests;
+  for (let i = 0; i < n.count; i++) {
+    const sx = worldToScreenX(cam, n.x[i] as number);
+    const sy = worldToScreenY(cam, n.y[i] as number);
+    const strength = n.strengthFrac[i] as number;
+    const r = Math.max(2.5, (3 + 5 * strength) * cam.zoom);
+    if (sx < -r - 6 || sy < -r - 6 || sx > cam.viewW + r + 6 || sy > cam.viewH + r + 6) continue;
+    const hue = n.hue[i] as number;
+    ctx.save();
+    // Territory ring — faint, scales with strength.
+    ctx.strokeStyle = `hsla(${hue.toFixed(0)}, 45%, 60%, ${(0.15 + 0.2 * strength).toFixed(3)})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(sx, sy, r * 1.8, 0, Math.PI * 2);
+    ctx.stroke();
+    // Mound — a filled circle tinted by the owning lineage.
+    ctx.fillStyle = `hsla(${hue.toFixed(0)}, 40%, 42%, ${(0.4 + 0.4 * strength).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.arc(sx, sy, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
 }
 
 /**
