@@ -46,6 +46,15 @@ function fingerprint(w: World): string {
   return parts.join("|");
 }
 
+/**
+ * A small world for the catch-up invariant tests. Bit-identity of catch-up vs. live is
+ * world-size-independent; the enlarged 1000×1000 default makes these two-world property
+ * comparisons exceed the timeout under full-suite parallelism.
+ */
+function smallConfig() {
+  return makeConfig({ worldWidth: 200, worldHeight: 200, gridCols: 64, gridRows: 64 });
+}
+
 /** The reference: what the LIVE loop does per tick (tick + recordHistory), minus emit. */
 function liveReplay(world: World, n: number): void {
   for (let i = 0; i < n; i++) {
@@ -61,10 +70,10 @@ describe("offline catch-up — bit-identical invariant", () => {
         fc.integer({ min: 1, max: 100000 }),
         fc.integer({ min: 1, max: 600 }),
         (seed, n) => {
-          const live = createWorld(seed, makeConfig({}));
+          const live = createWorld(seed, smallConfig());
           liveReplay(live, n);
 
-          const caught = createWorld(seed, makeConfig({}));
+          const caught = createWorld(seed, smallConfig());
           runCatchup(caught, n, () => {}, 100);
 
           expect(fingerprint(caught)).toBe(fingerprint(live));
@@ -75,7 +84,14 @@ describe("offline catch-up — bit-identical invariant", () => {
   }, 120_000);
 
   it("holds for the patchbay brain too (real forward-pass dynamics)", () => {
-    const cfg = () => makeConfig({ brainKind: "patchbay" });
+    const cfg = () =>
+      makeConfig({
+        brainKind: "patchbay",
+        worldWidth: 200,
+        worldHeight: 200,
+        gridCols: 64,
+        gridRows: 64,
+      });
     const live = createWorld(42, cfg());
     liveReplay(live, 400);
     const caught = createWorld(42, cfg());
@@ -84,7 +100,7 @@ describe("offline catch-up — bit-identical invariant", () => {
   }, 60_000);
 
   it("progress callback fires monotonically and ends at (owed, owed)", () => {
-    const w = createWorld(3, makeConfig({}));
+    const w = createWorld(3, smallConfig());
     const calls: [number, number][] = [];
     runCatchup(w, 250, (done, total) => calls.push([done, total]), 100);
     // done values: 0, 100, 200, then the final 250.
@@ -99,7 +115,7 @@ describe("offline catch-up — bit-identical invariant", () => {
   });
 
   it("runCatchup with 0 owed is a no-op (no ticks, no progress)", () => {
-    const w = createWorld(1, makeConfig({}));
+    const w = createWorld(1, smallConfig());
     const before = fingerprint(w);
     let called = false;
     runCatchup(w, 0, () => {
@@ -112,21 +128,21 @@ describe("offline catch-up — bit-identical invariant", () => {
 
 describe("ticksOwed — cap + clock-skew safety", () => {
   it("computes floor(elapsed / MS_PER_TICK)", () => {
-    const w = createWorld(1, makeConfig({}));
+    const w = createWorld(1, smallConfig());
     const ms = w.config.tunables.MS_PER_TICK;
     expect(ticksOwed(w, 1000, 1000 + ms * 10)).toBe(10);
     expect(ticksOwed(w, 1000, 1000 + ms * 10 + ms / 2)).toBe(10); // floors
   });
 
   it("caps at MAX_OFFLINE_TICKS", () => {
-    const w = createWorld(1, makeConfig({}));
+    const w = createWorld(1, smallConfig());
     const ms = w.config.tunables.MS_PER_TICK;
     const huge = 1000 + ms * (w.config.tunables.MAX_OFFLINE_TICKS + 5000);
     expect(ticksOwed(w, 1000, huge)).toBe(w.config.tunables.MAX_OFFLINE_TICKS);
   });
 
   it("clock moved backward (now < saved) → 0, never negative", () => {
-    const w = createWorld(1, makeConfig({}));
+    const w = createWorld(1, smallConfig());
     expect(ticksOwed(w, 5000, 1000)).toBe(0);
     expect(ticksOwed(w, 5000, 5000)).toBe(0);
   });
