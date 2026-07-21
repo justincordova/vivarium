@@ -107,6 +107,14 @@ function applySeedWiring(t: BrainTemplate, H: number): void {
   wire(arrowSensorHidden(0, 2, H), 1.0); // bias → hidden 2
   wire(arrowHiddenAction(2, 2, H), 2.0); // hidden 2 → eat
   wire(arrowHiddenAction(2, 5, H), 2.0); // hidden 2 → mate
+  // Nest intent from kin proximity via hidden 3 (Society, Phase 7A): when same-lineage
+  // kin are nearby (KinDensity, sensor 23) the creature attempts to build/reinforce a
+  // home. This makes nesting *reachable* from a cold start (like the forage/mate seed
+  // above) — evolution still decides whether to keep, strengthen, or discard it; nesting
+  // costs energy and only pays off where sheltering helps, so it is selected, not scripted.
+  wire(arrowSensorHidden(23, 3, H), 1.6); // KinDensity → hidden 3
+  wire(arrowSensorHidden(0, 3, H), 0.3); // bias → hidden 3 (small standing drive)
+  wire(arrowHiddenAction(3, 7, H), 1.8); // hidden 3 → nest
 }
 
 /**

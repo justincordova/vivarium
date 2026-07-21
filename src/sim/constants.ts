@@ -317,12 +317,15 @@ export const NEST_THRESHOLD = 0.6; // (tunable) — nest output must be fairly s
 // Nests  (Society, Phase 7A — build/claim a home; emergent packs/territories)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Max nest strength; reinforcement saturates here. (tunable) */
-export const NEST_MAX_STRENGTH = 300;
-/** Strength lost per tick (a nest fades unless reinforced). (tunable) */
+/** Max nest strength; reinforcement saturates here. High so a well-tended home persists
+ * across long gaps between reinforcing visits — nests are durable places. (tunable) */
+export const NEST_MAX_STRENGTH = 1200;
+/** Strength lost per tick (a nest fades unless reinforced). Integer so `strength` stays a
+ * whole number (serialized world state). (tunable) */
 export const NEST_DECAY = 1;
-/** Strength gained per successful nest action. (tunable) */
-export const NEST_REINFORCE = 30;
+/** Strength gained per successful nest action — a single visit buys a lasting home.
+ * (tunable) */
+export const NEST_REINFORCE = 120;
 /** Energy cost of a nest action, paid creature→reservoir (building isn't free). (tunable) */
 export const NEST_COST = 3;
 /** Distance under which an existing same-lineage nest is reinforced (and within which its
