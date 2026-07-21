@@ -109,6 +109,11 @@ export function HelpLegend(): React.ReactElement {
               meaning="Age — older creatures ring brighter."
             />
             <LegendRow
+              marker={<span className="inline-block h-2.5 w-2.5 rotate-45 bg-[hsl(28_18%_46%)]" />}
+              label="Brown diamond"
+              meaning="A corpse — a dead creature. It holds energy scavengers can eat before it decays into the soil."
+            />
+            <LegendRow
               marker={
                 <span className="flex h-3.5 w-3.5 overflow-hidden rounded-sm">
                   <span className="h-full w-1/3 bg-[rgb(26_58_92)]" />
