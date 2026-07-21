@@ -97,12 +97,16 @@ function drawBounds(ctx: CanvasRenderingContext2D, frame: RenderFrame, cam: Came
   ctx.restore();
 }
 
-/** Draw a single creature body (polygon silhouette + spikes + rings).
+/**
+ * Draw a single creature as a procedural ORGANISM (Living World Phase 2) — a body plan
+ * grown entirely from the genome: a streamlined body (roundness ← diet), lateral fins +
+ * a trailing tail (← speed), dorsal armor plates (← armor), toxicity warning spots, a
+ * forward head with an eye, plus the hue/energy color and age ring. Nothing is designed;
+ * every part is a function of `Appearance`, so evolution drives the look.
  *
- * `rich` enables the prettier path — a soft radial-gradient body with a faint
- * bioluminescent glow and tapered (triangular) spikes. It is disabled under density so
- * a packed world holds frame rate; the plain path is the old flat silhouette. Either
- * way the shape/color/spikes are still fully derived from `Appearance` (the genome). */
+ * `rich` is the full organism; the low-detail fallback (under density / tiny on screen)
+ * is a simple oriented blob so a packed world holds frame rate.
+ */
 function drawCreature(
   ctx: CanvasRenderingContext2D,
   sx: number,
@@ -112,125 +116,140 @@ function drawCreature(
   a: Appearance,
   rich: boolean,
 ): void {
-  // Soft glow halo (rich only): a cheap-ish radial gradient behind the body, tinted by
-  // the creature's own color — reads as bioluminescence without a per-pixel shader.
-  if (rich && r > 2) {
-    const g = ctx.createRadialGradient(sx, sy, r * 0.2, sx, sy, r * 2.1);
+  // Work in a body-local frame: +x = forward, +y = right. Far simpler and cheaper than
+  // rotating every vertex by hand, and keeps the part math readable.
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.rotate(heading);
+
+  if (!rich || r <= 2) {
+    // Low-detail fallback: an oriented teardrop blob (still shows facing + color).
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r * 1.2, r * 0.85, 0, 0, Math.PI * 2);
+    ctx.fillStyle = a.fill;
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  const bodyLen = r * 1.5; // nose-to-tail half-length
+  const bodyWide = r * (0.55 + 0.4 * a.roundness); // fatter herbivore, sleeker carnivore
+
+  // 1. Bioluminescent glow halo behind everything.
+  {
+    const g = ctx.createRadialGradient(0, 0, r * 0.2, 0, 0, r * 2.2);
     g.addColorStop(0, a.glow);
     g.addColorStop(1, "rgba(0,0,0,0)");
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.arc(sx, sy, r * 2.1, 0, Math.PI * 2);
+    ctx.arc(0, 0, r * 2.2, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
 
-  // Spikes (behind the body). Tapered filled triangles when rich; thin lines otherwise.
-  if (a.spikes > 0) {
-    ctx.save();
-    if (rich) ctx.fillStyle = a.stroke;
-    else {
-      ctx.strokeStyle = a.stroke;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-    }
-    for (let s = 0; s < a.spikes; s++) {
-      const ang = heading + (s / a.spikes) * Math.PI * 2;
-      const inner = r * 0.9;
-      const outer = r * (1 + a.spikeLength);
-      if (rich) {
-        const w = r * 0.28;
-        const nx = -Math.sin(ang) * w;
-        const ny = Math.cos(ang) * w;
-        ctx.beginPath();
-        ctx.moveTo(sx + Math.cos(ang) * inner + nx, sy + Math.sin(ang) * inner + ny);
-        ctx.lineTo(sx + Math.cos(ang) * inner - nx, sy + Math.sin(ang) * inner - ny);
-        ctx.lineTo(sx + Math.cos(ang) * outer, sy + Math.sin(ang) * outer);
-        ctx.closePath();
-        ctx.fill();
-      } else {
-        ctx.moveTo(sx + Math.cos(ang) * inner, sy + Math.sin(ang) * inner);
-        ctx.lineTo(sx + Math.cos(ang) * outer, sy + Math.sin(ang) * outer);
-      }
-    }
-    if (!rich) ctx.stroke();
-    ctx.restore();
+  // 2. Tail — a trailing translucent fin sweeping behind (length ← speed).
+  {
+    const tx = -bodyLen; // tail root at the back
+    const tl = bodyLen * a.tailLength;
+    ctx.beginPath();
+    ctx.moveTo(tx, 0);
+    ctx.quadraticCurveTo(tx - tl * 0.6, -bodyWide * 0.9, tx - tl, -bodyWide * 0.5);
+    ctx.quadraticCurveTo(tx - tl * 0.7, 0, tx - tl, bodyWide * 0.5);
+    ctx.quadraticCurveTo(tx - tl * 0.6, bodyWide * 0.9, tx, 0);
+    ctx.closePath();
+    ctx.fillStyle = a.glow;
+    ctx.fill();
   }
 
-  // Body polygon, oriented by heading (first vertex points forward). When rich, the body
-  // is elongated ALONG the heading (a swimming-organism teardrop) instead of a symmetric
-  // disc — this, plus the eye-spot below, is what makes it read as a creature with a
-  // front, not a dot. `diet` still drives roundness via `a.vertices`.
-  const cosH = Math.cos(heading);
-  const sinH = Math.sin(heading);
-  const stretch = rich ? 1.35 : 1; // forward/back elongation factor
-  const squash = rich ? 0.82 : 1; // lateral narrowing
-  ctx.beginPath();
-  for (let v = 0; v < a.vertices; v++) {
-    const ang = (v / a.vertices) * Math.PI * 2; // body-local angle (0 = forward)
-    // Local body coords: x forward (elongated), y lateral (narrowed), then rotate by heading.
-    const lx = Math.cos(ang) * r * stretch;
-    const ly = Math.sin(ang) * r * squash;
-    const px = sx + lx * cosH - ly * sinH;
-    const py = sy + lx * sinH + ly * cosH;
-    if (v === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
+  // 3. Lateral fins — a pair mid-body, size ← speed.
+  {
+    const fx = -bodyLen * 0.15;
+    const fl = bodyWide * (1 + a.finSize * 1.6);
+    ctx.fillStyle = a.glow;
+    for (const side of [-1, 1] as const) {
+      ctx.beginPath();
+      ctx.moveTo(fx, side * bodyWide * 0.5);
+      ctx.quadraticCurveTo(fx - fl * 0.5, side * fl, fx - fl, side * fl * 0.8);
+      ctx.quadraticCurveTo(fx - fl * 0.3, side * bodyWide * 0.6, fx, side * bodyWide * 0.5);
+      ctx.closePath();
+      ctx.fill();
+    }
   }
+
+  // 4. Body — a streamlined teardrop: rounded nose forward, tapering to the tail. Filled
+  //    with a lit gradient (highlight near the top-front → base fill).
+  ctx.beginPath();
+  ctx.moveTo(bodyLen, 0); // nose
+  ctx.quadraticCurveTo(bodyLen * 0.3, -bodyWide, -bodyLen * 0.5, -bodyWide * 0.7);
+  ctx.quadraticCurveTo(-bodyLen, -bodyWide * 0.25, -bodyLen, 0); // tail root
+  ctx.quadraticCurveTo(-bodyLen, bodyWide * 0.25, -bodyLen * 0.5, bodyWide * 0.7);
+  ctx.quadraticCurveTo(bodyLen * 0.3, bodyWide, bodyLen, 0);
   ctx.closePath();
-  if (rich && r > 2) {
-    // Radial gradient body: a bright off-center highlight → base fill, for a soft,
-    // rounded, lit look instead of a flat fill.
-    const hx = sx - cosH * r * 0.3;
-    const hy = sy - sinH * r * 0.3;
-    const bg = ctx.createRadialGradient(hx, hy, r * 0.1, sx, sy, r * stretch);
+  {
+    const bg = ctx.createRadialGradient(bodyLen * 0.3, -bodyWide * 0.3, r * 0.1, 0, 0, bodyLen);
     bg.addColorStop(0, a.highlight);
     bg.addColorStop(1, a.fill);
     ctx.fillStyle = bg;
-  } else {
-    ctx.fillStyle = a.fill;
-  }
-  ctx.fill();
-  ctx.strokeStyle = a.stroke;
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  // Eye-spot near the front (rich only, and only when big enough to see) — the single
-  // cue that most makes a blob read as a facing creature.
-  if (rich && r > 3) {
-    const ex = sx + cosH * r * 0.72;
-    const ey = sy + sinH * r * 0.72;
-    const er = Math.max(1, r * 0.16);
-    ctx.beginPath();
-    ctx.arc(ex, ey, er, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(10, 12, 18, 0.9)";
     ctx.fill();
-    // A tiny catch-light so the eye reads as wet/alive.
-    ctx.beginPath();
-    ctx.arc(ex - er * 0.3, ey - er * 0.3, Math.max(0.5, er * 0.4), 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(235, 240, 255, 0.85)";
-    ctx.fill();
-  }
-
-  // Toxicity ornament: a dashed inner ring.
-  if (a.toxic) {
-    ctx.save();
-    ctx.setLineDash([2, 2]);
     ctx.strokeStyle = a.stroke;
-    ctx.beginPath();
-    ctx.arc(sx, sy, r * 0.5, 0, Math.PI * 2);
+    ctx.lineWidth = 1;
     ctx.stroke();
-    ctx.restore();
   }
 
-  // Age ring: a faint outline that strengthens with age.
+  // 5. Dorsal armor plates along the back ridge (count/size ← armor).
+  if (a.plates > 0) {
+    ctx.fillStyle = a.stroke;
+    for (let p = 0; p < a.plates; p++) {
+      const t = a.plates === 1 ? 0.5 : p / (a.plates - 1);
+      const px = bodyLen * 0.6 - t * bodyLen * 1.3; // front→back along the ridge
+      const ph = bodyWide * a.plateSize; // plate height
+      ctx.beginPath();
+      ctx.moveTo(px + ph * 0.6, 0);
+      ctx.lineTo(px, -ph);
+      ctx.lineTo(px - ph * 0.6, 0);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  // 6. Toxicity warning spots — bright dots along the flanks.
+  if (a.toxic) {
+    ctx.fillStyle = "rgba(245, 240, 120, 0.9)";
+    for (const side of [-1, 1] as const) {
+      for (let s = 0; s < 3; s++) {
+        const px = bodyLen * 0.3 - s * bodyLen * 0.35;
+        ctx.beginPath();
+        ctx.arc(px, side * bodyWide * 0.45, Math.max(0.8, r * 0.12), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  // 7. Head + eye near the nose — the cue that reads it as a facing creature.
+  if (r > 3) {
+    const ex = bodyLen * 0.55;
+    const er = Math.max(1, r * 0.18);
+    ctx.beginPath();
+    ctx.arc(ex, 0, er, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(10, 12, 18, 0.92)";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(ex - er * 0.3, -er * 0.3, Math.max(0.5, er * 0.4), 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(235, 240, 255, 0.9)";
+    ctx.fill();
+  }
+
+  ctx.restore();
+
+  // 8. Age ring — a faint circle in world space (drawn after restore, centered on sx,sy).
   if (a.ageRing > 0.02) {
     ctx.save();
     ctx.strokeStyle = `rgba(230, 230, 235, ${a.ageRing.toFixed(3)})`;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.arc(sx, sy, r + 2, 0, Math.PI * 2);
+    ctx.arc(sx, sy, r * 1.7, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   }

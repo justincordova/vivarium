@@ -74,6 +74,7 @@ export function buildRenderFrame(world: World): RenderFrame {
     armor: new Float32Array(n),
     toxicity: new Float32Array(n),
     age: new Float32Array(n),
+    speed: new Float32Array(n),
   };
   for (let i = 0; i < n; i++) {
     const c = cs[i] as Creature;
@@ -88,6 +89,7 @@ export function buildRenderFrame(world: World): RenderFrame {
     creatures.armor[i] = expressTrait(c.genome.armor);
     creatures.toxicity[i] = expressTrait(c.genome.toxicity);
     creatures.age[i] = c.age;
+    creatures.speed[i] = expressTrait(c.genome.speed);
   }
 
   const ps = world.plants;
@@ -183,6 +185,7 @@ export function frameTransferables(frame: RenderFrame): ArrayBuffer[] {
     c.armor.buffer,
     c.toxicity.buffer,
     c.age.buffer,
+    c.speed.buffer,
     p.x.buffer,
     p.y.buffer,
     p.energyFrac.buffer,

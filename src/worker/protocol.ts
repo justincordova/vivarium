@@ -48,6 +48,8 @@ export interface CreatureFrame {
   armor: Float32Array;
   toxicity: Float32Array;
   age: Float32Array;
+  /** expressed `speed` — drives fin prominence + tail length (procedural body plan). */
+  speed: Float32Array;
 }
 
 /** Plants as a lean struct-of-arrays: position + energy fraction + hue. */

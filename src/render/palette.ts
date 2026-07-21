@@ -14,9 +14,14 @@
 import { TRAIT_RANGE } from "@sim/genetics";
 import type { CreatureFrame } from "@worker/protocol";
 
-/** Resolved drawing parameters for one creature. Consumed by `canvas.ts`. */
+/**
+ * Resolved drawing parameters for one creature — a procedural BODY PLAN grown from the
+ * genome (Living World Phase 2). Still "derived, never designed": every field below is a
+ * pure function of the expressed genes, so evolution drives appearance and every creature
+ * is unique. `canvas.ts` assembles body + head + fins + tail + armor + markings from it.
+ */
 export interface Appearance {
-  /** World-unit radius to draw. */
+  /** World-unit body half-length (the body is drawn elongated along heading). */
   radius: number;
   /** HSL fill (the creature body). Saturation encodes energy. */
   fill: string;
@@ -27,27 +32,35 @@ export interface Appearance {
   /** Translucent glow color for the bioluminescent halo (rich render). */
   glow: string;
   /**
-   * Body silhouette: number of polygon vertices. Herbivores read round (many
-   * vertices ≈ circle); carnivores read angular (few, sharp vertices). `diet` in
-   * 0..1 interpolates between the two.
+   * Body roundness 0..1 from `diet`: 1 = plump/round herbivore, 0 = sleek/streamlined
+   * carnivore. Drives the body outline's forward taper and width.
    */
-  vertices: number;
-  /** Radial spikes drawn around the body (defense/display: `armor`). 0 = none. */
-  spikes: number;
-  /** Spike length as a fraction of radius. */
-  spikeLength: number;
-  /** Whether to draw the toxicity ornament ring (a dashed inner ring). */
+  roundness: number;
+  /** Fin size as a fraction of body length (from `speed`) — fast = prominent fins. */
+  finSize: number;
+  /** Tail length as a fraction of body length (from `speed`). */
+  tailLength: number;
+  /** Armored dorsal plates count (defense: `armor`). 0 = none. */
+  plates: number;
+  /** Plate prominence as a fraction of radius. */
+  plateSize: number;
+  /** Whether to draw toxicity warning markings (bright dorsal spots). */
   toxic: boolean;
   /** Age outline ring opacity 0..1 (older = more visible ring). */
   ageRing: number;
+  /** Legacy: polygon vertices (kept for the low-detail fallback silhouette). */
+  vertices: number;
+  /** Legacy radial spikes (low-detail fallback). */
+  spikes: number;
+  spikeLength: number;
 }
 
-// Silhouette vertex count endpoints: herbivore (round) ↔ carnivore (angular).
+// Silhouette vertex count endpoints for the low-detail fallback silhouette.
 const HERBIVORE_VERTICES = 16; // reads as a smooth disc
 const CARNIVORE_VERTICES = 3; // a sharp triangle
 
 // Body radius mapping from expressed `size` over its legal range. Bumped up so
-// creatures read as organisms, not specks (Tier 1 visual overhaul).
+// creatures read as organisms, not specks.
 const MIN_RADIUS = 3.4;
 const MAX_RADIUS = 14;
 
@@ -81,6 +94,7 @@ export function appearance(f: CreatureFrame, i: number): Appearance {
   const armor = f.armor[i] as number;
   const toxicity = f.toxicity[i] as number;
   const age = f.age[i] as number;
+  const speed = f.speed[i] as number;
   const hue = (((f.hue[i] as number) % 360) + 360) % 360;
 
   const [sizeLo, sizeHi] = TRAIT_RANGE.size;
@@ -100,15 +114,24 @@ export function appearance(f: CreatureFrame, i: number): Appearance {
   const glow = `hsla(${hue.toFixed(0)} ${sat}% ${Math.min(70, light + 12)}% / ${glowAlpha})`;
 
   const [dietLo, dietHi] = TRAIT_RANGE.diet;
+  // Roundness: herbivore (diet→0) is plump/round, carnivore (diet→1) is sleek.
+  const roundness = 1 - remap(diet, dietLo, dietHi, 0, 1);
   const vertices = Math.round(remap(diet, dietLo, dietHi, HERBIVORE_VERTICES, CARNIVORE_VERTICES));
 
+  const [speedLo, speedHi] = TRAIT_RANGE.speed;
+  // Fast creatures grow prominent fins + a long tail; slow ones are stubby.
+  const speedNorm = remap(speed, speedLo, speedHi, 0, 1);
+  const finSize = 0.25 + 0.55 * speedNorm;
+  const tailLength = 0.4 + 0.9 * speedNorm;
+
   const [armorLo, armorHi] = TRAIT_RANGE.armor;
-  // Only creatures with meaningful armor grow visible spikes.
-  const spikes =
-    armor > armorLo + (armorHi - armorLo) * 0.12
-      ? Math.round(remap(armor, armorLo, armorHi, 3, 10))
-      : 0;
-  const spikeLength = remap(armor, armorLo, armorHi, 0.25, 0.7);
+  // Armored creatures grow dorsal plates along the back.
+  const armored = armor > armorLo + (armorHi - armorLo) * 0.12;
+  const plates = armored ? Math.round(remap(armor, armorLo, armorHi, 3, 8)) : 0;
+  const plateSize = remap(armor, armorLo, armorHi, 0.28, 0.7);
+  // Legacy spikes for the low-detail fallback path.
+  const spikes = plates;
+  const spikeLength = plateSize;
 
   const [toxLo, toxHi] = TRAIT_RANGE.toxicity;
   const toxic = toxicity > toxLo + (toxHi - toxLo) * 0.5;
@@ -122,10 +145,15 @@ export function appearance(f: CreatureFrame, i: number): Appearance {
     stroke,
     highlight,
     glow,
+    roundness,
+    finSize,
+    tailLength,
+    plates,
+    plateSize,
+    toxic,
+    ageRing,
     vertices: Math.max(3, vertices),
     spikes,
     spikeLength,
-    toxic,
-    ageRing,
   };
 }

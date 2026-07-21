@@ -16,6 +16,7 @@ function frameOf(v: {
   armor?: number;
   toxicity?: number;
   age?: number;
+  speed?: number;
 }): CreatureFrame {
   return {
     count: 1,
@@ -30,6 +31,7 @@ function frameOf(v: {
     armor: Float32Array.of(v.armor ?? 0),
     toxicity: Float32Array.of(v.toxicity ?? 0),
     age: Float32Array.of(v.age ?? 0),
+    speed: Float32Array.of(v.speed ?? 5),
   };
 }
 
