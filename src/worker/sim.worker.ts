@@ -328,6 +328,11 @@ self.onmessage = (ev: MessageEvent<Command>): void => {
       void boot(cmd.seed, cmd.config, cmd.coldOpen, cmd.source).catch((e) => {
         post({ t: "persistError", reason: e instanceof Error ? e.message : String(e) });
         post({ t: "ready" });
+        // If a world loaded but boot threw AFTER installing the autosaver yet BEFORE
+        // `startAutosave()` (e.g. a frame-builder throw), the session would otherwise run
+        // with autosave permanently off and lose everything on reopen. Start it now
+        // (idempotent) so a recovered world still persists.
+        if (world !== null && autosaver !== null) startAutosave();
       });
       break;
     case "setCatchup":
