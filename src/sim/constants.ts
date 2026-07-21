@@ -498,6 +498,14 @@ export const DOMINANCE_WINDOW = 1000;
  * events (the report only ever narrates a recent slice). (tunable) */
 export const MAX_LINEAGE_EVENTS = 500;
 
+/**
+ * Ring cap on `world.eventLog`. It fires per-tick (birth/kill/extinct) and was
+ * previously unbounded, so a long-lived persistent world grew it without limit —
+ * inflating memory and every autosave blob, and slowing the periodic extinction scan.
+ * Front-pruned like `lineageEvents`; determinism-safe (the log is never read back into
+ * `tick()`; live and catch-up prune identically). (tunable) */
+export const MAX_EVENT_LOG = 2000;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 1 — sweep ranking (plan Task 1.5)
 //

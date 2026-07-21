@@ -60,7 +60,6 @@ function runSeed(seed: number): SeedOutcome {
   let births = 0;
   let kills = 0;
 
-  let prevEventLen = 0;
   for (let i = 0; i < TICKS; i++) {
     tick(world);
     const pop = world.creatures.length;
@@ -69,9 +68,14 @@ function runSeed(seed: number): SeedOutcome {
       break;
     }
     peakPop = Math.max(peakPop, pop);
-    // Count events emitted this tick (birth / kill markers in the sim event log).
-    for (let e = prevEventLen; e < world.eventLog.length; e++) {
-      const ev = world.eventLog[e]?.event ?? "";
+    // Count events emitted THIS tick by scanning the trailing run tagged with the tick
+    // they were pushed at. Birth/kill are pushed DURING the tick, before `world.tick++`
+    // at the end, so they carry `world.tick - 1`. Scanning the tail (rather than a
+    // length delta) is robust to the bounded `eventLog` ring's front-pruning.
+    const emittedTick = world.tick - 1;
+    const log = world.eventLog;
+    for (let e = log.length - 1; e >= 0 && (log[e]?.tick ?? -1) === emittedTick; e--) {
+      const ev = log[e]?.event ?? "";
       if (ev.startsWith("birth:")) {
         births++;
         matings++; // a birth implies a successful mating
@@ -79,7 +83,6 @@ function runSeed(seed: number): SeedOutcome {
         kills++;
       }
     }
-    prevEventLen = world.eventLog.length;
   }
   return { seed, survived, peakPop, births, kills, matings };
 }

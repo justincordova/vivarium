@@ -29,7 +29,7 @@ import {
   transferUpTo,
 } from "./energy";
 import { crossover, distance, expressTrait, mutate, plantSeed } from "./genetics";
-import { registerLineage } from "./history";
+import { pushEvent, registerLineage } from "./history";
 import { localDensity, SpatialHash, type SpatialPoint } from "./spatial";
 import { growthMultiplier, moveCostMultiplier } from "./terrain";
 import {
@@ -706,7 +706,7 @@ function tryAttack(
     target.health -= toQuantum(power);
     if (target.health < 0) target.health = 0;
     if (target.health === 0) {
-      world.eventLog.push({ tick: world.tick, event: `kill:${target.id}` });
+      pushEvent(world, `kill:${target.id}`);
     }
     // Scavenge-to-gain: commit to the target so next tick seeks the corpse.
     attacker.ruleState.targetId = target.id;
@@ -816,7 +816,7 @@ function tryMate(
   byId.set(child.id, child);
   // Inherit the parent's founder-lineage root (Phase 5A.3) — the initiating parent `a`.
   registerLineage(world, child.id, a.id);
-  world.eventLog.push({ tick: world.tick, event: `birth:${child.id}` });
+  pushEvent(world, `birth:${child.id}`);
 }
 
 // ── 4.2 Removals (ascending id) ──────────────────────────────────────────────

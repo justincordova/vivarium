@@ -118,7 +118,7 @@ export function recordHistory(world: World): void {
   // loop stays free of derived bookkeeping; still deterministic (a pure function of
   // sampled population). Extinction is "total collapse" (SPEC.md §World-Health).
   if (sample.population === 0 && prev !== undefined && prev.population > 0) {
-    world.eventLog.push({ tick: world.tick, event: "extinct" });
+    pushEvent(world, "extinct");
   }
   // Typed lineage events (Phase 5A.3) — detected on this same cadence so they fire
   // identically live or during offline catch-up (deterministic; no RNG/wall-clock).
@@ -134,6 +134,19 @@ function pushLineageEvent(world: World, ev: LineageEvent): void {
   world.lineageEvents.push(ev);
   const overflow = world.lineageEvents.length - C.MAX_LINEAGE_EVENTS;
   if (overflow > 0) world.lineageEvents.splice(0, overflow);
+}
+
+/**
+ * Append a `{tick, event}` entry to the sim event log with a bounded front-prune ring
+ * (`MAX_EVENT_LOG`). The log fires per tick (birth/kill/extinct) but is only ever read
+ * for the rare `extinct` entries and a recent debug slice, so an ancient world keeps only
+ * the most recent window. Deterministic: never read back into `tick()`; live and catch-up
+ * prune identically. Central so every push site is bounded.
+ */
+export function pushEvent(world: World, event: string): void {
+  world.eventLog.push({ tick: world.tick, event });
+  const overflow = world.eventLog.length - C.MAX_EVENT_LOG;
+  if (overflow > 0) world.eventLog.splice(0, overflow);
 }
 
 /**
