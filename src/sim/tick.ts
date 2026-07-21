@@ -582,8 +582,15 @@ function applyCreature(
   const moveMul = moveCostMultiplier(
     world.terrain.biome[cellIndexOf(world.config, c.x, c.y)] as number,
   );
-  c.x = clamp(c.x + c.vx * moveMul, 0, world.config.worldWidth);
-  c.y = clamp(c.y + c.vy * moveMul, 0, world.config.worldHeight);
+  // Boundaries clamp position, but a clamped axis must also have its velocity
+  // zeroed — otherwise a creature driving into a wall stays pinned there with an
+  // out-of-bounds velocity vector forever (two walls = a permanent corner trap).
+  const nextX = c.x + c.vx * moveMul;
+  const nextY = c.y + c.vy * moveMul;
+  c.x = clamp(nextX, 0, world.config.worldWidth);
+  c.y = clamp(nextY, 0, world.config.worldHeight);
+  if (c.x !== nextX) c.vx = 0;
+  if (c.y !== nextY) c.vy = 0;
   if (appliedAccel !== 0) {
     transferUpTo(cEnergy, reservoir, toQuantum(speed * speed * t.MOVEMENT_COST_COEF + 1));
   }
