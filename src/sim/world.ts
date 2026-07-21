@@ -76,6 +76,17 @@ function arrowHiddenAction(h: number, a: number, H: number): number {
  *   - bias (sensor 0)        → hidden 2 → eat/mate gates (actions 2,5): try to
  *     eat/mate when a target is in reach (the resolve path still gates on reach).
  */
+/**
+ * Public wrapper (used by the god-power spawn path in `worker/commands.ts`): overlay the
+ * minimal forage/mate seed circuit onto any brain arrays (weightsA/B + enabledA/B). A
+ * god-spawned patchbay creature otherwise gets an all-disabled brain and cannot act —
+ * it would just sit there (the exact "spawned creatures stand still" symptom). This gives
+ * it the same purposeful starting bias founders get; everything still evolves from there.
+ */
+export function seedBrainWiring(brain: BrainTemplate, hidden: number): void {
+  applySeedWiring(brain, hidden);
+}
+
 function applySeedWiring(t: BrainTemplate, H: number): void {
   const wire = (k: number, w: number): void => {
     t.weightsA[k] = w;

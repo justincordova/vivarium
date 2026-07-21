@@ -16,7 +16,9 @@
 import * as C from "@sim/constants";
 import { cellCompartment, fieldCompartment, transfer, transferUpTo } from "@sim/energy";
 import { TRAIT_GENES, TRAIT_RANGE, type TraitGene } from "@sim/genetics";
+import { registerLineage } from "@sim/history";
 import type { Allele, Corpse, Creature, Genome, Tunables, World } from "@sim/types";
+import { seedBrainWiring } from "@sim/world";
 import type { GenomePatch, PaintField, SpawnSpec } from "./protocol";
 
 /** Grid cell index for a world position (mirrors sim's cellIndexOf/cellIndex). */
@@ -37,9 +39,10 @@ function clamp(v: number, lo: number, hi: number): number {
 
 /**
  * Build a diploid genome from an expressed-trait spec: both alleles set to the given
- * (clamped) expressed value, hue split evenly, and a small default brain (all arrows
- * enabled at the newborn fraction, zero weights — a blank slate; brains are dormant
- * under RuleBasedBrain anyway). No RNG — spawns are deterministic given the spec.
+ * (clamped) expressed value, hue split evenly, and a brain that starts all-disabled.
+ * `applySpawn` then overlays the minimal forage/mate seed wiring so a patchbay-brained
+ * spawn can actually act (under `brainKind:'rule'` the brain is ignored). No RNG — spawns
+ * are deterministic given the spec.
  */
 function genomeFromSpec(spec: SpawnSpec): Genome {
   const weightsA = new Float32Array(C.ARROWS);
@@ -66,6 +69,10 @@ function genomeFromSpec(spec: SpawnSpec): Genome {
 export function applySpawn(world: World, spec: SpawnSpec): number {
   const x = clamp(spec.x, 0, world.config.worldWidth);
   const y = clamp(spec.y, 0, world.config.worldHeight);
+  const genome = genomeFromSpec(spec);
+  // Overlay the minimal forage/mate seed circuit so a patchbay-brained spawn can act
+  // instead of sitting inert (an all-disabled brain is brain-dead). Deterministic.
+  seedBrainWiring(genome, world.config.hidden);
   const creature: Creature = {
     id: world.nextId++,
     parentId: null,
@@ -78,7 +85,7 @@ export function applySpawn(world: World, spec: SpawnSpec): number {
     hydration: 0,
     health: C.MAX_HEALTH_BASE,
     age: 0,
-    genome: genomeFromSpec(spec),
+    genome,
     hidden: new Float32Array(world.config.hidden),
     ruleState: { mode: "wander", targetId: -1, targetKind: "none", committedTicks: 0 },
     actionWindow: new Float32Array(C.ACTIONS),
@@ -98,6 +105,10 @@ export function applySpawn(world: World, spec: SpawnSpec): number {
 
   world.creatures.push(creature);
   world.creatureIds.push(creature.id);
+  // Register the spawn as its own lineage root, so its descendants inherit its lineage
+  // (a founder-style dynasty) instead of each fragmenting into its own root in the
+  // speciation view (`registerLineage(child, parentId=spawnId)` resolves via this map).
+  registerLineage(world, creature.id, null);
   return creature.id;
 }
 
