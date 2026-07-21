@@ -49,7 +49,7 @@ export function Landing(): React.ReactElement | null {
         />
 
         <h1 className="display text-[clamp(3rem,11vw,7rem)] font-semibold leading-none tracking-tight text-[var(--fg)] drop-shadow-[0_2px_24px_rgba(0,0,0,0.6)]">
-          Vivarium
+          vivarium
         </h1>
         <div className="landing-rule mx-auto mt-5 h-px w-40" />
         <p className="mt-5 max-w-md text-[15px] leading-relaxed tracking-wide text-[var(--fg-dim)]">
