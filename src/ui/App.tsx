@@ -117,6 +117,55 @@ function DetachedBadge(): React.ReactElement | null {
 }
 
 /**
+ * Extinction / empty-world state. If every creature dies, the canvas would otherwise
+ * go silently blank with no way back. This surfaces a calm panel that names what
+ * happened and offers a one-click restart (re-seed the same world and resume). Gated on
+ * proof that life *existed* (a prior nonzero population point) so it never flashes during
+ * the first empty frame of a booting world.
+ */
+function ExtinctionOverlay(): React.ReactElement | null {
+  const stats = useSimStore((s) => s.stats);
+  const popHistory = useSimStore((s) => s.popHistory);
+  const seed = useSimStore((s) => s.seed);
+  const setSeed = useSimStore((s) => s.setSeed);
+  const reinit = useSimStore((s) => s.reinit);
+  const play = useSimStore((s) => s.play);
+
+  const pop = stats ? Object.values(stats.population).reduce((a, b) => a + b, 0) : 0;
+  const hadLife = popHistory.some((p) => p.population > 0);
+  if (!stats || pop > 0 || !hadLife) return null;
+
+  const restart = (): void => {
+    // Advance the seed so the new world genuinely differs — re-seeding the same seed is
+    // deterministic and would just replay the same run to the same extinction.
+    setSeed(seed + 1);
+    reinit();
+    play();
+  };
+
+  return (
+    <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center">
+      <div className="panel pointer-events-auto w-80 p-6 text-center">
+        <div className="mb-1 text-[10px] uppercase tracking-widest text-[var(--fg-mute)]">
+          the world fell silent
+        </div>
+        <div className="display mb-3 text-lg text-[var(--fg)]">Everything died out.</div>
+        <p className="mb-5 text-[13px] leading-relaxed text-[var(--fg-dim)]">
+          Every lineage in this world is gone. Evolution ran its course and the population collapsed
+          to zero — it can't recover on its own.
+        </p>
+        <button type="button" onClick={restart} className="btn-accent w-full px-2 py-2 text-sm">
+          begin a new world
+        </button>
+        <p className="mt-3 text-[10px] uppercase tracking-wider text-[var(--fg-mute)]">
+          or spawn creatures with the tools above
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/**
  * The offline catch-up overlay (Phase 5A). A full-screen grayscale scrim shown only
  * while the worker replays owed ticks on reopen — the world underneath is hidden until
  * it has caught up, so the reveal is of the *current* world, not a stale one. Chrome
@@ -313,6 +362,7 @@ export function App(): React.ReactElement {
           <HelpLegend />
 
           <Timeline />
+          <ExtinctionOverlay />
           <DetachedBadge />
           <PersistErrorBadge />
           <div className="tabular pointer-events-none absolute bottom-4 left-4 text-[10px] uppercase tracking-widest text-[var(--fg-mute)]">
