@@ -34,6 +34,7 @@ import { localDensity, SpatialHash, type SpatialPoint } from "./spatial";
 import { growthMultiplier, moveCostMultiplier } from "./terrain";
 import {
   Action,
+  Biome,
   type Config,
   type Corpse,
   type Creature,
@@ -243,7 +244,8 @@ function senseContext(
     ruleState: self.ruleState,
   };
 
-  // The 18-sensor umwelt (SPEC.md §Sensors — exact indices, polarities, normalizers).
+  // The 21-sensor umwelt (SPEC.md §Sensors — exact indices, polarities, normalizers;
+  // Living World Phase 6B appended 3 terrain senses).
   // Distance sensors follow the pinned polarity: 0 = adjacent, 1 = at/beyond limit /
   // absent (a null percept reads 1.0, indistinguishable from "nothing there").
   const senses = new Float32Array(SENSORS);
@@ -279,7 +281,51 @@ function senseContext(
   // gradient sample keeps "change one thing at a time" and avoids a second field pass.
   senses[Sensor.ScentGradient] = 0;
 
+  // Terrain senses (Living World, Phase 6B). Local biome normalized to 0..1, and a unit
+  // vector toward the nearest water cell (0,0 if none within the search radius). All
+  // read-only functions of terrain + position → deterministic.
+  senses[Sensor.LocalBiome] = (world.terrain.biome[cellIdx] as number) / 4;
+  const [wdx, wdy] = nearestWaterDir(world, self.x, self.y);
+  senses[Sensor.WaterDirX] = wdx;
+  senses[Sensor.WaterDirY] = wdy;
+
   return { ctx, food, mate, threat, mateInReachFull, senses };
+}
+
+/**
+ * Unit vector from `(x,y)` toward the center of the nearest Water-biome cell within a
+ * bounded ring search, or `[0,0]` if none is found. Deterministic and index-based
+ * (expanding square rings around the creature's cell), so it never iterates a Set or
+ * depends on insertion order.
+ */
+function nearestWaterDir(world: World, x: number, y: number): [number, number] {
+  const { gridCols: cols, gridRows: rows, worldWidth: ww, worldHeight: wh } = world.config;
+  const cw = ww / cols;
+  const ch = wh / rows;
+  const c0 = Math.min(cols - 1, Math.max(0, Math.floor((x / ww) * cols)));
+  const r0 = Math.min(rows - 1, Math.max(0, Math.floor((y / wh) * rows)));
+  const MAX_RING = 8; // bounded search — a local sense, not a global oracle
+  for (let ring = 0; ring <= MAX_RING; ring++) {
+    for (let dr = -ring; dr <= ring; dr++) {
+      const rr = r0 + dr;
+      if (rr < 0 || rr >= rows) continue;
+      for (let dc = -ring; dc <= ring; dc++) {
+        // Only the ring perimeter (skip the interior already scanned).
+        if (ring > 0 && Math.abs(dr) !== ring && Math.abs(dc) !== ring) continue;
+        const cc = c0 + dc;
+        if (cc < 0 || cc >= cols) continue;
+        if (world.terrain.biome[rr * cols + cc] === Biome.Water) {
+          const tx = (cc + 0.5) * cw;
+          const ty = (rr + 0.5) * ch;
+          const ddx = tx - x;
+          const ddy = ty - y;
+          const len = Math.hypot(ddx, ddy);
+          return len > 0 ? [ddx / len, ddy / len] : [0, 0];
+        }
+      }
+    }
+  }
+  return [0, 0];
 }
 
 function cellIndexOf(config: Config, x: number, y: number): number {

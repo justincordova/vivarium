@@ -4,13 +4,13 @@ import { describe, expect, it } from "vitest";
 describe("constants — structural relations", () => {
   it("ARROWS equals the sum of the three connection groups", () => {
     // Guards the ARROWS literal against the skeleton dimensions
-    // (SPEC.md §Brain Design: 180 + 100 + 70 === 350).
+    // (Living World Phase 6B: 210 + 100 + 70 === 380, up from 350 with 3 terrain senses).
     expect(C.ARROWS).toBe(C.SENSORS * C.HIDDEN + C.HIDDEN * C.HIDDEN + C.HIDDEN * C.ACTIONS);
-    expect(C.ARROWS).toBe(350);
+    expect(C.ARROWS).toBe(380);
   });
 
-  it("skeleton dimensions match the pinned v1 umwelt/action counts", () => {
-    expect(C.SENSORS).toBe(18);
+  it("skeleton dimensions match the pinned umwelt/action counts", () => {
+    expect(C.SENSORS).toBe(21); // 18 base + 3 terrain senses (Living World Phase 6B)
     expect(C.HIDDEN).toBe(10);
     expect(C.ACTIONS).toBe(7);
   });

@@ -519,6 +519,11 @@ export enum Sensor {
   LocalFertility = 15,
   ScentValue = 16,
   ScentGradient = 17,
+  // Terrain senses (Living World, Phase 6B) — appended so existing sensor indices are
+  // unchanged (though the total arrow COUNT/geometry changes, breaking old brains).
+  LocalBiome = 18, // normalized biome id (0..1)
+  WaterDirX = 19, // unit vector toward nearest water cell, x
+  WaterDirY = 20, // unit vector toward nearest water cell, y
 }
 
 /** The 7 action output indices (SPEC.md §Actions). */

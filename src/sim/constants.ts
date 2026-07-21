@@ -83,8 +83,9 @@ export const K_ARMOR = 0.5;
 // Brain skeleton  (SPEC.md §"Brain Design — the patchbay")
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Sensor input count. Fixed — widening it is a version bump (SPEC.md §Sensors). */
-export const SENSORS = 18;
+/** Sensor input count. Widening it is a breaking world-geometry change (Living World
+ * Phase 6B added 3 terrain senses: 18 → 21; reshapes ARROWS and old brains). */
+export const SENSORS = 21;
 /** Hidden-neuron count. Free parameter with a memory cost; subject of the enlargement experiment. */
 export const HIDDEN = 10;
 /** Action output count (SPEC.md §Actions). */
@@ -92,10 +93,10 @@ export const ACTIONS = 7;
 /**
  * Total arrows per homolog. A plain literal (SPEC.md: "keep each value a plain
  * literal; do not compute"); the structural relation
- * `ARROWS === SENSORS*HIDDEN + HIDDEN*HIDDEN + HIDDEN*ACTIONS` (350 === 180+100+70)
+ * `ARROWS === SENSORS*HIDDEN + HIDDEN*HIDDEN + HIDDEN*ACTIONS` (380 === 210+100+70)
  * is asserted by constants.test.ts, which guards this literal.
  */
-export const ARROWS = 350;
+export const ARROWS = 380;
 /** Fraction of arrows enabled in a newborn — sparse start (SPEC.md §"Newborns are sparse"). (tunable) */
 export const NEWBORN_ENABLE_FRAC = 0.15;
 /**

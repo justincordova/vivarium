@@ -310,12 +310,13 @@ describe("PatchbayBrain.think — forward pass", () => {
   });
 
   it("pins the forward pass against a hard-coded golden output vector", () => {
-    // Golden vector computed by an independent reference (see /tmp golden.mjs in the
-    // Phase 4 work) summing in the specified index order. Any reorder of the
-    // accumulation — even a "harmless" one — changes low FP bits and fails this.
+    // Golden vector for the 21-sensor geometry (Living World Phase 6B re-baseline). The
+    // independent `referenceForward` test above summing in the pinned index order is the
+    // real cross-check; this pins the exact low-FP-bit output so any later accidental
+    // reorder still fails. Regenerated when SENSORS went 18 → 21 (ARROWS 350 → 380).
     const golden = [
-      -0.1964922994375229, 0.1743593066930771, 0.3235314190387726, -0.1327136754989624,
-      -0.2703844904899597, 0.30330780148506165, -0.4343004524707794,
+      -0.17741656303405762, -0.22186525166034698, -0.32099679112434387, -0.34097760915756226,
+      -0.003967548254877329, -0.6500503420829773, -0.7263026237487793,
     ];
     const { weights, enabled } = fixedExpressedBrain(123456789);
     const brain = genomeFromExpressed(weights, enabled);
