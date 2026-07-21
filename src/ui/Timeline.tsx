@@ -100,12 +100,13 @@ export function Timeline(): React.ReactElement | null {
               x2={xOf(t)}
               y1={0}
               y2={H}
-              stroke="#525252"
+              stroke="#f6c65b"
+              strokeOpacity={0.5}
               strokeWidth={0.3}
             />
           ))}
-        {/* Population history. */}
-        <path d={path} fill="none" stroke="#e5e5e5" strokeWidth={0.6} />
+        {/* Population history — warm aqua trace. */}
+        <path d={path} fill="none" stroke="#5eeabe" strokeWidth={0.6} />
         {/* Hover marker. */}
         {hover !== null && (
           <line
@@ -113,7 +114,7 @@ export function Timeline(): React.ReactElement | null {
             x2={xOf(hover.tick)}
             y1={0}
             y2={H}
-            stroke="#a3a3a3"
+            stroke="#a7c2b6"
             strokeWidth={0.4}
             strokeDasharray="1 1"
           />

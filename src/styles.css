@@ -1,37 +1,41 @@
 @import "tailwindcss";
 
 /*
- * Theme tokens for the "beautiful welcoming observatory" (SPEC.md §Visual Design).
- * The world (the canvas) is still the richest thing on screen, but the chrome is
- * themed, not austere: a deep-space base, translucent blurred panel surfaces, and a
- * single bioluminescent teal→cyan accent (deliberately NOT the purple-on-white
- * cliché). All colors flow from these tokens — never hardcode in components.
- * Numbers remain monospace.
+ * Theme tokens for the "soft organic / living world" chrome (docs/designs/
+ * soft-organic-ui.md). The world (canvas) stays the luminous hero on a dark stage; the
+ * chrome around it is warm, dark, rounded and tactile — like a premium mobile nature
+ * game, not a clinical dashboard. Deep warm green-teal base, generous rounding, soft
+ * layered glows instead of hard borders, and a warm bioluminescent aqua→lime accent.
+ * All colors flow from these tokens — never hardcode in components. Numbers stay mono.
+ *
+ * DESIGN NOTE: panels are plain rounded surfaces — NO ::before/::after texture overlays
+ * (they clipped content and fought scroll). Keep the surface simple; carry personality
+ * through color, rounding, glow and spacing.
  */
 :root {
   color-scheme: dark;
 
-  /* Base / surfaces */
-  --bg: #0a0b12; /* deep space */
-  --bg-2: #0d0f1a;
-  --panel: 20 24 38; /* rgb triplet for translucent panels via rgb(var(--panel)/α) */
-  --panel-border: 148 163 208; /* cool slate, used at low α */
-  --panel-glow: 34 211 238; /* accent, used at very low α for inner highlight */
+  /* Base / surfaces — warm, dark, faintly green (a forest floor at night, not space) */
+  --bg: #0b1210; /* deep warm green-black */
+  --bg-2: #0f1815;
+  --panel: 22 34 30; /* rgb triplet for translucent panels via rgb(var(--panel)/α) */
+  --panel-border: 150 210 185; /* warm mint, used at low α for soft edges */
+  --panel-glow: 94 234 190; /* accent, used at very low α for inner highlight */
 
-  /* Text */
-  --fg: #e6e9f2;
-  --fg-dim: #aab2c8;
-  --fg-mute: #6b748f;
+  /* Text — warm off-white → soft sage greys */
+  --fg: #eaf3ee;
+  --fg-dim: #a7c2b6;
+  --fg-mute: #6f8b80;
 
-  /* Accent — bioluminescent teal → cyan */
-  --accent: #22d3ee;
-  --accent-2: #2dd4bf;
-  --accent-ink: #06212a; /* readable text on an accent fill */
+  /* Accent — warm bioluminescent aqua → lime-green */
+  --accent: #5eeabe;
+  --accent-2: #a7e86a;
+  --accent-ink: #062018; /* readable text on an accent fill */
 
   /* Semantic (sparse) */
-  --positive: #4ade80;
-  --warn: #fbbf24;
-  --danger: #f87171;
+  --positive: #5eeabe;
+  --warn: #f6c65b;
+  --danger: #ff8a73;
 
   /* Typography */
   --font-display:
@@ -40,9 +44,11 @@
   --font-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", monospace;
 
-  /* Depth */
-  --shadow-panel: 0 8px 30px -12px rgb(0 0 0 / 0.7);
-  --radius: 0.625rem;
+  /* Depth — soft, diffuse, layered (no hard drop) */
+  --shadow-panel: 0 10px 34px -14px rgb(0 0 0 / 0.66), 0 2px 10px -6px rgb(0 0 0 / 0.5);
+  /* Generous rounding = the "soft/organic" personality. */
+  --radius: 1.1rem;
+  --radius-sm: 0.7rem;
 }
 
 html,
@@ -71,45 +77,116 @@ body {
   letter-spacing: -0.01em;
 }
 
-/* Themed panel surface: translucent, blurred, soft border + faint inner accent glow. */
+/*
+ * Soft organic panel surface: a rounded, translucent, blurred "pebble" that floats over
+ * the world. Soft diffuse shadow + a faint inner top-highlight give a tactile, pillowy
+ * feel. No texture overlays — a plain surface so nested/scrolling content never clips.
+ */
 .panel {
-  background: rgb(var(--panel) / 0.78);
-  border: 1px solid rgb(var(--panel-border) / 0.14);
+  background: rgb(var(--panel) / 0.72);
+  border: 1px solid rgb(var(--panel-border) / 0.12);
   border-radius: var(--radius);
   box-shadow:
     var(--shadow-panel),
-    inset 0 1px 0 0 rgb(var(--panel-glow) / 0.06);
-  backdrop-filter: blur(10px);
+    inset 0 1px 0 0 rgb(var(--panel-glow) / 0.08);
+  backdrop-filter: blur(14px);
 }
 
-/* Primary accent button. */
+/* Primary accent button — a warm bioluminescent pill. */
 .btn-accent {
-  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+  background: linear-gradient(150deg, var(--accent), var(--accent-2));
   color: var(--accent-ink);
-  border-radius: 0.5rem;
+  border-radius: 999px;
   font-weight: 600;
+  box-shadow: 0 4px 16px -6px rgb(var(--panel-glow) / 0.55);
   transition:
-    filter 0.15s ease,
-    transform 0.15s ease;
+    filter 0.16s ease,
+    transform 0.16s ease,
+    box-shadow 0.16s ease;
 }
 .btn-accent:hover {
-  filter: brightness(1.08);
+  filter: brightness(1.06);
+  box-shadow: 0 6px 20px -6px rgb(var(--panel-glow) / 0.7);
 }
 .btn-accent:active {
-  transform: translateY(1px);
+  transform: translateY(1px) scale(0.99);
 }
 
-/* Quiet (ghost) button on panel surfaces. */
+/* Quiet (ghost) button — soft rounded, warms on hover. */
 .btn-ghost {
   color: var(--fg-dim);
-  border-radius: 0.5rem;
+  border-radius: 999px;
   transition:
-    background-color 0.15s ease,
-    color 0.15s ease;
+    background-color 0.16s ease,
+    color 0.16s ease;
 }
 .btn-ghost:hover {
   background: rgb(var(--panel-border) / 0.1);
   color: var(--fg);
+}
+
+/*
+ * Soft tactile control — the workhorse for playback/step/speed/seed buttons. Rounded,
+ * translucent, gently lifts on hover. Use `.ctl-active` for the selected state (accent
+ * tint) so we don't need per-component conditional class soup.
+ */
+.ctl {
+  border-radius: var(--radius-sm);
+  background: rgb(var(--panel-border) / 0.08);
+  color: var(--fg-dim);
+  border: 1px solid transparent;
+  transition:
+    background-color 0.16s ease,
+    color 0.16s ease,
+    border-color 0.16s ease;
+}
+.ctl:hover {
+  background: rgb(var(--panel-border) / 0.15);
+  color: var(--fg);
+}
+.ctl-active {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--accent);
+}
+
+/* Soft rounded input field. */
+.field {
+  background: rgb(0 0 0 / 0.25);
+  border: 1px solid rgb(var(--panel-border) / 0.16);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+}
+.field:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/* Rounded pill slider with a soft glowing thumb. */
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: rgb(var(--panel-border) / 0.2);
+  cursor: pointer;
+}
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 10px -1px rgb(var(--panel-glow) / 0.8);
+}
+.slider::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 10px -1px rgb(var(--panel-glow) / 0.8);
 }
 
 /* Landing (game title screen) flourishes. */
@@ -136,7 +213,9 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .btn-accent,
-  .btn-ghost {
+  .btn-ghost,
+  .ctl,
+  .field {
     transition: none;
   }
   .landing-float {

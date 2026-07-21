@@ -6,8 +6,9 @@
  * oscillation (the DoD's headline signal); the trait histogram shows a gene's
  * distribution over the current population from the worker's fixed-domain `TraitBins`.
  *
- * Grayscale chrome, monospace axis text, and NO chart animation — the only thing that
- * moves is the simulation (SPEC.md §Visual Design).
+ * Soft-organic chrome (docs/designs/soft-organic-ui.md): warm aqua/lime series on the
+ * dark panel, token-driven axes. NO chart animation — the only thing that moves is the
+ * simulation (SPEC.md §Visual Design).
  */
 
 import { useSimStore } from "@store/useSimStore";
@@ -25,8 +26,10 @@ import {
   YAxis,
 } from "recharts";
 
-const AXIS = { fontSize: 9, fontFamily: "ui-monospace, Menlo, monospace", fill: "#737373" };
-const GRID = "#262626";
+const AXIS = { fontSize: 9, fontFamily: "ui-monospace, Menlo, monospace", fill: "#6f8b80" };
+const GRID = "#1e2f2a";
+const ACCENT = "#5eeabe"; // primary series (warm aqua)
+const ACCENT_2 = "#a7e86a"; // secondary series (lime)
 
 const TRAIT_OPTIONS = ["size", "diet", "aggression", "speed", "armor", "toxicity"] as const;
 
@@ -34,7 +37,7 @@ function PopulationChart(): React.ReactElement {
   const popHistory = useSimStore((s) => s.popHistory);
   return (
     <div>
-      <div className="mb-1 text-[10px] uppercase tracking-widest text-neutral-500">
+      <div className="mb-1 text-[10px] uppercase tracking-widest text-[var(--fg-mute)]">
         population / species
       </div>
       <ResponsiveContainer width="100%" height={92}>
@@ -45,7 +48,7 @@ function PopulationChart(): React.ReactElement {
           <Line
             type="monotone"
             dataKey="population"
-            stroke="#e5e5e5"
+            stroke={ACCENT}
             dot={false}
             strokeWidth={1.5}
             isAnimationActive={false}
@@ -53,7 +56,7 @@ function PopulationChart(): React.ReactElement {
           <Line
             type="monotone"
             dataKey="species"
-            stroke="#737373"
+            stroke={ACCENT_2}
             dot={false}
             strokeWidth={1}
             isAnimationActive={false}
@@ -71,13 +74,15 @@ function PopulationChart(): React.ReactElement {
  * (a band vanishing) are all directly legible — speciation made viewable (the 5C gate)
  * without a heavyweight phylo tree. Grayscale ramp; the world stays the only color.
  */
-const LINEAGE_SHADES = ["#e5e5e5", "#c4c4c4", "#a3a3a3", "#828282", "#616161", "#484848"];
+const LINEAGE_SHADES = ["#5eeabe", "#68c9a6", "#6ba98d", "#688a75", "#5c6d61", "#47554d"];
 function LineageChart(): React.ReactElement {
   const lineageHistory = useSimStore((s) => s.lineageHistory);
   const topLineages = useSimStore((s) => s.topLineages);
   return (
     <div>
-      <div className="mb-1 text-[10px] uppercase tracking-widest text-neutral-500">lineages</div>
+      <div className="mb-1 text-[10px] uppercase tracking-widest text-[var(--fg-mute)]">
+        lineages
+      </div>
       <ResponsiveContainer width="100%" height={82}>
         <AreaChart data={lineageHistory} margin={{ top: 2, right: 4, bottom: 0, left: -18 }}>
           <CartesianGrid stroke={GRID} strokeDasharray="2 3" />
@@ -110,11 +115,13 @@ function TraitChart(): React.ReactElement {
   return (
     <div>
       <div className="mb-1 flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-widest text-neutral-500">distribution</span>
+        <span className="text-[10px] uppercase tracking-widest text-[var(--fg-mute)]">
+          distribution
+        </span>
         <select
           value={gene}
           onChange={(e) => setGene(e.target.value)}
-          className="tabular rounded border border-neutral-700 bg-neutral-900 px-1 py-0.5 text-[10px] text-neutral-300"
+          className="field tabular px-1.5 py-0.5 text-[10px] text-[var(--fg-dim)]"
           aria-label="trait gene"
         >
           {TRAIT_OPTIONS.map((g) => (
@@ -128,7 +135,7 @@ function TraitChart(): React.ReactElement {
         <BarChart data={data} margin={{ top: 2, right: 4, bottom: 0, left: -18 }}>
           <XAxis dataKey="bin" tick={AXIS} stroke={GRID} minTickGap={20} />
           <YAxis tick={AXIS} stroke={GRID} width={34} />
-          <Bar dataKey="count" fill="#a3a3a3" isAnimationActive={false} />
+          <Bar dataKey="count" fill={ACCENT} fillOpacity={0.8} isAnimationActive={false} />
         </BarChart>
       </ResponsiveContainer>
     </div>

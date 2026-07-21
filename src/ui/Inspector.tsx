@@ -86,7 +86,7 @@ function GeneRow({
               step={step}
               value={allele[i as 0 | 1]}
               onChange={(e) => edit(i as 0 | 1, Number(e.target.value))}
-              className="h-1 w-full cursor-pointer appearance-none rounded bg-[rgb(var(--panel-border)/0.25)] accent-[var(--accent)]"
+              className="slider w-full"
               aria-label={`${gene} allele ${i}`}
             />
           ))}
@@ -99,7 +99,7 @@ function GeneRow({
           step={step}
           value={expressed}
           onChange={(e) => editExpressed(Number(e.target.value))}
-          className="h-1 w-full cursor-pointer appearance-none rounded bg-[rgb(var(--panel-border)/0.25)] accent-[var(--accent)]"
+          className="slider w-full"
           aria-label={`${gene} expressed value`}
         />
       )}
