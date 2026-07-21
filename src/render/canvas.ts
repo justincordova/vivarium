@@ -132,8 +132,12 @@ function drawCreature(
     return;
   }
 
-  const bodyLen = r * 1.5; // nose-to-tail half-length
-  const bodyWide = r * (0.55 + 0.4 * a.roundness); // fatter herbivore, sleeker carnivore
+  // A land-capable organism (NOT a fish): a rounded torso with a distinct head and a
+  // pair-row of little legs; a short tail nub, not a swimmer's fin. `roundness` (←diet)
+  // fattens the torso; leg count/length (←speed) says how mobile it is.
+  const torso = r; // torso half-radius (roundish)
+  const torsoLen = r * (1.05 + 0.25 * a.roundness); // forward half-length
+  const torsoWide = r * (0.7 + 0.35 * a.roundness); // lateral half-width
 
   // 1. Bioluminescent glow halo behind everything.
   {
@@ -149,46 +153,48 @@ function drawCreature(
     ctx.restore();
   }
 
-  // 2. Tail — a trailing translucent fin sweeping behind (length ← speed).
+  // 2. Legs — pairs of little limbs along the flanks (count + length ← speed). Drawn
+  //    under the torso so they read as limbs poking out, not fins.
   {
-    const tx = -bodyLen; // tail root at the back
-    const tl = bodyLen * a.tailLength;
-    ctx.beginPath();
-    ctx.moveTo(tx, 0);
-    ctx.quadraticCurveTo(tx - tl * 0.6, -bodyWide * 0.9, tx - tl, -bodyWide * 0.5);
-    ctx.quadraticCurveTo(tx - tl * 0.7, 0, tx - tl, bodyWide * 0.5);
-    ctx.quadraticCurveTo(tx - tl * 0.6, bodyWide * 0.9, tx, 0);
-    ctx.closePath();
-    ctx.fillStyle = a.glow;
-    ctx.fill();
-  }
-
-  // 3. Lateral fins — a pair mid-body, size ← speed.
-  {
-    const fx = -bodyLen * 0.15;
-    const fl = bodyWide * (1 + a.finSize * 1.6);
-    ctx.fillStyle = a.glow;
-    for (const side of [-1, 1] as const) {
-      ctx.beginPath();
-      ctx.moveTo(fx, side * bodyWide * 0.5);
-      ctx.quadraticCurveTo(fx - fl * 0.5, side * fl, fx - fl, side * fl * 0.8);
-      ctx.quadraticCurveTo(fx - fl * 0.3, side * bodyWide * 0.6, fx, side * bodyWide * 0.5);
-      ctx.closePath();
-      ctx.fill();
+    const legPairs = a.legPairs;
+    const legLen = torsoWide * (0.5 + a.legLength);
+    ctx.strokeStyle = a.stroke;
+    ctx.lineCap = "round";
+    ctx.lineWidth = Math.max(1, r * 0.16);
+    for (let p = 0; p < legPairs; p++) {
+      // Distribute pairs from just behind the head to the rear.
+      const t = legPairs === 1 ? 0.5 : p / (legPairs - 1);
+      const lx = torsoLen * 0.5 - t * torsoLen * 1.4;
+      for (const side of [-1, 1] as const) {
+        const rootY = side * torsoWide * 0.7;
+        // Slight backward splay so legs read as mid-stride, not spokes.
+        const tipX = lx - legLen * 0.35;
+        const tipY = side * (torsoWide + legLen);
+        ctx.beginPath();
+        ctx.moveTo(lx, rootY);
+        ctx.lineTo(tipX, tipY);
+        ctx.stroke();
+      }
     }
   }
 
-  // 4. Body — a streamlined teardrop: rounded nose forward, tapering to the tail. Filled
-  //    with a lit gradient (highlight near the top-front → base fill).
-  ctx.beginPath();
-  ctx.moveTo(bodyLen, 0); // nose
-  ctx.quadraticCurveTo(bodyLen * 0.3, -bodyWide, -bodyLen * 0.5, -bodyWide * 0.7);
-  ctx.quadraticCurveTo(-bodyLen, -bodyWide * 0.25, -bodyLen, 0); // tail root
-  ctx.quadraticCurveTo(-bodyLen, bodyWide * 0.25, -bodyLen * 0.5, bodyWide * 0.7);
-  ctx.quadraticCurveTo(bodyLen * 0.3, bodyWide, bodyLen, 0);
-  ctx.closePath();
+  // 3. Tail nub — a short stub at the back (small; not a propulsion fin).
   {
-    const bg = ctx.createRadialGradient(bodyLen * 0.3, -bodyWide * 0.3, r * 0.1, 0, 0, bodyLen);
+    const tx = -torsoLen;
+    const tl = torso * (0.35 + 0.35 * a.tailLength);
+    ctx.beginPath();
+    ctx.moveTo(tx, -torso * 0.28);
+    ctx.quadraticCurveTo(tx - tl, 0, tx, torso * 0.28);
+    ctx.closePath();
+    ctx.fillStyle = a.fill;
+    ctx.fill();
+  }
+
+  // 4. Torso — a rounded oval body, lit gradient (highlight top-front → base fill).
+  ctx.beginPath();
+  ctx.ellipse(-torso * 0.05, 0, torsoLen, torsoWide, 0, 0, Math.PI * 2);
+  {
+    const bg = ctx.createRadialGradient(torsoLen * 0.3, -torsoWide * 0.4, r * 0.1, 0, 0, torsoLen);
     bg.addColorStop(0, a.highlight);
     bg.addColorStop(1, a.fill);
     ctx.fillStyle = bg;
@@ -203,8 +209,8 @@ function drawCreature(
     ctx.fillStyle = a.stroke;
     for (let p = 0; p < a.plates; p++) {
       const t = a.plates === 1 ? 0.5 : p / (a.plates - 1);
-      const px = bodyLen * 0.6 - t * bodyLen * 1.3; // front→back along the ridge
-      const ph = bodyWide * a.plateSize; // plate height
+      const px = torsoLen * 0.5 - t * torsoLen * 1.1;
+      const ph = torsoWide * a.plateSize;
       ctx.beginPath();
       ctx.moveTo(px + ph * 0.6, 0);
       ctx.lineTo(px, -ph);
@@ -219,26 +225,38 @@ function drawCreature(
     ctx.fillStyle = "rgba(245, 240, 120, 0.9)";
     for (const side of [-1, 1] as const) {
       for (let s = 0; s < 3; s++) {
-        const px = bodyLen * 0.3 - s * bodyLen * 0.35;
+        const px = torsoLen * 0.3 - s * torsoLen * 0.35;
         ctx.beginPath();
-        ctx.arc(px, side * bodyWide * 0.45, Math.max(0.8, r * 0.12), 0, Math.PI * 2);
+        ctx.arc(px, side * torsoWide * 0.45, Math.max(0.8, r * 0.12), 0, Math.PI * 2);
         ctx.fill();
       }
     }
   }
 
-  // 7. Head + eye near the nose — the cue that reads it as a facing creature.
-  if (r > 3) {
-    const ex = bodyLen * 0.55;
-    const er = Math.max(1, r * 0.18);
+  // 7. Head — a smaller rounded lobe at the front + an eye, so it reads as a facing
+  //    creature with a head distinct from the torso.
+  {
+    const hx = torsoLen * 0.85;
+    const hr = torso * 0.55;
     ctx.beginPath();
-    ctx.arc(ex, 0, er, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(10, 12, 18, 0.92)";
+    ctx.ellipse(hx, 0, hr, hr * 0.85, 0, 0, Math.PI * 2);
+    ctx.fillStyle = a.fill;
     ctx.fill();
-    ctx.beginPath();
-    ctx.arc(ex - er * 0.3, -er * 0.3, Math.max(0.5, er * 0.4), 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(235, 240, 255, 0.9)";
-    ctx.fill();
+    ctx.strokeStyle = a.stroke;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    if (r > 3) {
+      const ex = hx + hr * 0.25;
+      const er = Math.max(1, r * 0.16);
+      ctx.beginPath();
+      ctx.arc(ex, -hr * 0.25, er, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(10, 12, 18, 0.92)";
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(ex - er * 0.3, -hr * 0.25 - er * 0.3, Math.max(0.5, er * 0.4), 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(235, 240, 255, 0.9)";
+      ctx.fill();
+    }
   }
 
   ctx.restore();

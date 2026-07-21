@@ -32,13 +32,15 @@ export interface Appearance {
   /** Translucent glow color for the bioluminescent halo (rich render). */
   glow: string;
   /**
-   * Body roundness 0..1 from `diet`: 1 = plump/round herbivore, 0 = sleek/streamlined
-   * carnivore. Drives the body outline's forward taper and width.
+   * Body roundness 0..1 from `diet`: 1 = plump/round herbivore, 0 = leaner carnivore.
+   * Fattens the torso. These are LAND-capable creatures, not fish.
    */
   roundness: number;
-  /** Fin size as a fraction of body length (from `speed`) — fast = prominent fins. */
-  finSize: number;
-  /** Tail length as a fraction of body length (from `speed`). */
+  /** Number of leg PAIRS along the flanks (from `speed`) — faster = more legs. */
+  legPairs: number;
+  /** Leg length as a fraction of torso width (from `speed`). */
+  legLength: number;
+  /** Tail-nub length 0..1 (from `speed`) — a short stub, not a swimmer's fin. */
   tailLength: number;
   /** Armored dorsal plates count (defense: `armor`). 0 = none. */
   plates: number;
@@ -119,10 +121,11 @@ export function appearance(f: CreatureFrame, i: number): Appearance {
   const vertices = Math.round(remap(diet, dietLo, dietHi, HERBIVORE_VERTICES, CARNIVORE_VERTICES));
 
   const [speedLo, speedHi] = TRAIT_RANGE.speed;
-  // Fast creatures grow prominent fins + a long tail; slow ones are stubby.
+  // Faster creatures grow more/longer legs and a slightly longer tail nub.
   const speedNorm = remap(speed, speedLo, speedHi, 0, 1);
-  const finSize = 0.25 + 0.55 * speedNorm;
-  const tailLength = 0.4 + 0.9 * speedNorm;
+  const legPairs = Math.max(2, Math.round(2 + speedNorm * 2)); // 2..4 pairs
+  const legLength = 0.4 + 0.7 * speedNorm;
+  const tailLength = 0.3 + 0.6 * speedNorm;
 
   const [armorLo, armorHi] = TRAIT_RANGE.armor;
   // Armored creatures grow dorsal plates along the back.
@@ -146,7 +149,8 @@ export function appearance(f: CreatureFrame, i: number): Appearance {
     highlight,
     glow,
     roundness,
-    finSize,
+    legPairs,
+    legLength,
     tailLength,
     plates,
     plateSize,
