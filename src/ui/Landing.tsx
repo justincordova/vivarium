@@ -26,14 +26,14 @@ export function Landing(): React.ReactElement | null {
         className="absolute inset-0"
         style={{
           background:
-            "linear-gradient(180deg, rgba(6,7,12,0.85) 0%, rgba(6,7,12,0.25) 28%, rgba(6,7,12,0.25) 62%, rgba(6,7,12,0.92) 100%)",
+            "linear-gradient(180deg, rgba(6,10,7,0.85) 0%, rgba(6,10,7,0.25) 28%, rgba(6,10,7,0.25) 62%, rgba(6,10,7,0.92) 100%)",
         }}
       />
       <div
         className="absolute inset-0"
         style={{
           background:
-            "radial-gradient(75% 75% at 50% 45%, transparent 45%, rgba(6,7,12,0.65) 100%)",
+            "radial-gradient(75% 75% at 50% 45%, transparent 45%, rgba(6,10,7,0.65) 100%)",
         }}
       />
 
@@ -45,10 +45,10 @@ export function Landing(): React.ReactElement | null {
           aria-hidden="true"
           width={72}
           height={72}
-          className="landing-float mb-6 h-[4.5rem] w-[4.5rem] drop-shadow-[0_0_30px_rgba(34,211,238,0.5)]"
+          className="landing-float mb-6 h-[4.5rem] w-[4.5rem] drop-shadow-[0_0_30px_rgba(59,240,122,0.55)]"
         />
 
-        <h1 className="display text-[clamp(3rem,11vw,7rem)] font-semibold leading-none tracking-tight text-[var(--fg)] drop-shadow-[0_2px_24px_rgba(0,0,0,0.6)]">
+        <h1 className="display text-[clamp(3rem,11vw,7rem)] font-semibold leading-none tracking-tight text-[var(--fg)] drop-shadow-[0_0_28px_rgba(59,240,122,0.35)]">
           vivarium
         </h1>
         <div className="landing-rule mx-auto mt-5 h-px w-40" />

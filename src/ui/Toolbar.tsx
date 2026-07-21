@@ -38,10 +38,10 @@ export function Toolbar(): React.ReactElement {
             key={t.id}
             onClick={() => setTool(t.id)}
             title={t.hint}
-            className={`rounded px-2.5 py-1 text-xs transition-colors ${
+            className={`rounded-[var(--radius)] border px-2.5 py-1 text-xs transition-colors ${
               tool === t.id
-                ? "bg-[var(--accent)] font-medium text-[var(--accent-ink)]"
-                : "text-[var(--fg-dim)] hover:bg-[rgb(var(--panel-border)/0.12)] hover:text-[var(--fg)]"
+                ? "crt-glow-amber border-[color-mix(in_srgb,var(--accent-2)_55%,transparent)] bg-[color-mix(in_srgb,var(--accent-2)_18%,transparent)] font-medium text-[var(--accent-2)]"
+                : "border-transparent text-[var(--fg-dim)] hover:bg-[rgb(var(--panel-border)/0.12)] hover:text-[var(--fg)]"
             }`}
           >
             {t.label}

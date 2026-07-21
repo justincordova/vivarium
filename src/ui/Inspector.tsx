@@ -10,7 +10,8 @@
  * alleles together. A "show alleles" toggle reveals the two per-homolog sliders for users
  * who want to set heterozygous genotypes. Nothing is hidden, just tucked behind a toggle.
  *
- * Grayscale chrome, monospace numbers (SPEC.md §Visual Design).
+ * CRT bio-terminal chrome (docs/designs/chrome-crt-redesign.md): a "specimen readout"
+ * screen. Phosphor-green vitals; follow = green (observe), delete = danger.
  */
 
 import { TRAIT_GENES, TRAIT_RANGE, type TraitGene } from "@sim/genetics";
@@ -86,7 +87,7 @@ function GeneRow({
               step={step}
               value={allele[i as 0 | 1]}
               onChange={(e) => edit(i as 0 | 1, Number(e.target.value))}
-              className="h-1 w-full cursor-pointer appearance-none rounded bg-[rgb(var(--panel-border)/0.25)] accent-[var(--accent)]"
+              className="slider w-full"
               aria-label={`${gene} allele ${i}`}
             />
           ))}
@@ -99,7 +100,7 @@ function GeneRow({
           step={step}
           value={expressed}
           onChange={(e) => editExpressed(Number(e.target.value))}
-          className="h-1 w-full cursor-pointer appearance-none rounded bg-[rgb(var(--panel-border)/0.25)] accent-[var(--accent)]"
+          className="slider w-full"
           aria-label={`${gene} expressed value`}
         />
       )}
@@ -121,8 +122,8 @@ export function Inspector(): React.ReactElement | null {
   return (
     <div className="panel w-72 shrink-0 p-3">
       <div className="mb-2 flex items-center justify-between">
-        <span className="tabular text-[11px] font-medium uppercase tracking-widest text-[var(--fg-dim)]">
-          creature #{inspected.id}
+        <span className="tabular crt-glow text-[11px] font-medium uppercase tracking-widest text-[var(--accent)]">
+          ◈ specimen #{inspected.id}
         </span>
         <button
           type="button"
@@ -151,21 +152,22 @@ export function Inspector(): React.ReactElement | null {
         <button
           type="button"
           onClick={() => setFollow(following ? null : inspected.id)}
-          className={`flex-1 rounded px-2 py-1 text-[11px] transition-colors ${
+          className={`flex-1 rounded-[var(--radius)] border px-2 py-1 text-[11px] transition-colors ${
             following
-              ? "bg-[var(--accent)] font-medium text-[var(--accent-ink)]"
-              : "bg-[rgb(var(--panel-border)/0.12)] text-[var(--fg-dim)] hover:bg-[rgb(var(--panel-border)/0.2)]"
+              ? "crt-glow border-[color-mix(in_srgb,var(--accent)_55%,transparent)] bg-[color-mix(in_srgb,var(--accent)_18%,transparent)] font-medium text-[var(--accent)]"
+              : "border-[rgb(var(--panel-border)/0.18)] bg-[rgb(var(--panel-border)/0.06)] text-[var(--fg-dim)] hover:text-[var(--fg)]"
           }`}
         >
           {following ? "following" : "follow"}
         </button>
+        {/* delete a creature = destructive intervention (danger). */}
         <button
           type="button"
           onClick={() => {
             remove(inspected.id);
             clear();
           }}
-          className="flex-1 rounded bg-[rgb(var(--panel-border)/0.12)] px-2 py-1 text-[11px] text-[var(--fg-dim)] transition-colors hover:bg-[color-mix(in_srgb,var(--danger)_35%,transparent)] hover:text-[var(--danger)]"
+          className="flex-1 rounded-[var(--radius)] border border-[color-mix(in_srgb,var(--danger)_35%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] px-2 py-1 text-[11px] text-[var(--danger)] transition-colors hover:bg-[color-mix(in_srgb,var(--danger)_25%,transparent)]"
         >
           delete
         </button>
@@ -199,7 +201,7 @@ function Vital({ label, value }: { label: string; value: string }): React.ReactE
   return (
     <div className="flex items-baseline justify-between gap-2">
       <span className="text-[10px] uppercase tracking-wide text-[var(--fg-mute)]">{label}</span>
-      <span className="tabular text-xs text-[var(--fg)]">{value}</span>
+      <span className="tabular text-xs text-[var(--accent)]">{value}</span>
     </div>
   );
 }

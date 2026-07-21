@@ -8,7 +8,8 @@
  * makes the whole run legible at a glance: booms, crashes, and how far the world has
  * come. Hovering reads out the tick/population under the cursor.
  *
- * Grayscale chrome, monospace numbers, no animation (the only motion is the sim).
+ * CRT bio-terminal chrome (docs/designs/chrome-crt-redesign.md): a phosphor-green
+ * oscilloscope trace with amber extinction ticks. No animation (the only motion is the sim).
  */
 
 import { useSimStore } from "@store/useSimStore";
@@ -100,12 +101,13 @@ export function Timeline(): React.ReactElement | null {
               x2={xOf(t)}
               y1={0}
               y2={H}
-              stroke="#525252"
+              stroke="#ffb54d"
+              strokeOpacity={0.55}
               strokeWidth={0.3}
             />
           ))}
-        {/* Population history. */}
-        <path d={path} fill="none" stroke="#e5e5e5" strokeWidth={0.6} />
+        {/* Population history — phosphor-green oscilloscope trace. */}
+        <path d={path} fill="none" stroke="#3bf07a" strokeWidth={0.6} />
         {/* Hover marker. */}
         {hover !== null && (
           <line
@@ -113,7 +115,7 @@ export function Timeline(): React.ReactElement | null {
             x2={xOf(hover.tick)}
             y1={0}
             y2={H}
-            stroke="#a3a3a3"
+            stroke="#86c79a"
             strokeWidth={0.4}
             strokeDasharray="1 1"
           />
