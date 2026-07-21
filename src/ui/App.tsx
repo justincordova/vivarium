@@ -49,7 +49,7 @@ function Stat({
       >
         {label}
       </span>
-      <span className="tabular crt-glow text-sm text-[var(--accent)]">{value}</span>
+      <span className="tabular text-sm text-[var(--fg)]">{value}</span>
     </div>
   );
 }
@@ -61,7 +61,7 @@ function Hud(): React.ReactElement {
     // The panel stays click-through (canvas underneath); individual stat labels opt back
     // into pointer events so their hover tooltips are reachable.
     <div className="panel pointer-events-none w-52 p-3">
-      <div className="crt-title mb-2 text-[10px] font-medium text-[var(--fg-mute)]">
+      <div className="mb-2 text-[10px] font-medium uppercase tracking-widest text-[var(--fg-mute)]">
         world · vital signs
       </div>
       <div className="space-y-1">
@@ -145,13 +145,11 @@ function ExtinctionOverlay(): React.ReactElement | null {
 
   return (
     <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center">
-      <div className="panel pointer-events-auto w-80 border-[color-mix(in_srgb,var(--accent-2)_35%,transparent)] p-6 text-center">
-        <div className="crt-title crt-glow-amber mb-1 text-[10px] text-[var(--accent-2)]">
-          &gt; signal lost
-        </div>
-        <div className="tabular crt-glow-amber mb-3 text-lg text-[var(--accent-2)]">
+      <div className="panel pointer-events-auto w-80 p-6 text-center">
+        <div className="mb-1 text-[10px] uppercase tracking-widest text-[var(--fg-mute)]">
           the world fell silent
         </div>
+        <div className="display mb-3 text-lg text-[var(--fg)]">Everything died out.</div>
         <p className="mb-5 text-[13px] leading-relaxed text-[var(--fg-dim)]">
           Every lineage in this world is gone. Evolution ran its course and the population collapsed
           to zero — it can't recover on its own.
@@ -180,10 +178,10 @@ function CatchupOverlay(): React.ReactElement | null {
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-[var(--bg)]/95 backdrop-blur-sm">
       <div className="w-72 px-2">
-        <div className="crt-title mb-3 text-[10px] text-[var(--fg-mute)]">
-          &gt; replaying while you were away
+        <div className="mb-3 text-[10px] uppercase tracking-widest text-[var(--fg-mute)]">
+          while you were away
         </div>
-        <div className="tabular crt-glow mb-3 text-sm text-[var(--accent)]">
+        <div className="tabular mb-3 text-sm text-[var(--fg-dim)]">
           catching up · generation {fmt(catchup.done)}
         </div>
         {/* Thin progress rail (accent) — the moving number is the real feedback. */}
@@ -229,9 +227,11 @@ function WhileYouWereAwayReport(): React.ReactElement | null {
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-[var(--bg)]/95 backdrop-blur-sm">
       <div className="panel w-80 p-5">
-        <div className="crt-title mb-1 text-[10px] text-[var(--fg-mute)]">&gt; system report</div>
-        <div className="tabular crt-glow mb-4 text-lg text-[var(--accent)]">
-          generation {fmt(report.nowTick)}
+        <div className="mb-1 text-[10px] uppercase tracking-widest text-[var(--fg-mute)]">
+          while you were away
+        </div>
+        <div className="display mb-4 text-lg text-[var(--fg)]">
+          Generation {fmt(report.nowTick)}
         </div>
         <ul className="mb-5 space-y-1.5">
           {shown.map((line, i) => (
@@ -240,7 +240,7 @@ function WhileYouWereAwayReport(): React.ReactElement | null {
               key={i}
               className="tabular text-sm text-[var(--fg-dim)]"
             >
-              <span className="text-[var(--fg-mute)]">·</span> {line}
+              {line}
             </li>
           ))}
           {extraCount > 0 && (
@@ -258,16 +258,12 @@ function WhileYouWereAwayReport(): React.ReactElement | null {
 }
 
 /**
- * Onboarding boot sequence (docs/designs/chrome-crt-redesign.md) — the CRT bio-terminal
- * first-run experience. Replaces the old one-shot fade caption. A short sequence of
- * phosphor coach-marks, each anchored to a real region of chrome (the world, the toolbar,
- * the HUD), teaching what the terminal shows and lets you do. Shown on first visit, and
- * re-triggerable at any time via the `?` help panel's "replay intro" (a custom event).
- * Reduced-motion: no typing/blink, captions appear statically.
+ * Onboarding captions (Phase 5B.2) — a COLD OPEN, not a tutorial. On the first visit a
+ * few unobtrusive grayscale captions fade in over the already-living pre-evolved world,
+ * then fade out and get out of the way (SPEC.md §Player Experience). Shown once, gated
+ * by a localStorage flag; never on a returning visit.
  */
 const VISITED_KEY = "vivarium:visited";
-const REPLAY_EVENT = "vivarium:replay-intro";
-
 function firstVisit(): boolean {
   try {
     if (localStorage.getItem(VISITED_KEY) === "1") return false;
@@ -278,101 +274,32 @@ function firstVisit(): boolean {
   }
 }
 
-/** Fire from anywhere to re-run the intro (the help panel calls this). */
-export function replayIntro(): void {
-  window.dispatchEvent(new CustomEvent(REPLAY_EVENT));
-}
-
-interface BootStep {
-  tag: string;
-  title: string;
-  body: string;
-  // Where the caption card sits on screen (anchored near the chrome it describes).
-  pos: string;
-}
-
-const BOOT_STEPS: BootStep[] = [
-  {
-    tag: "> biome monitor online",
-    title: "A living world.",
-    body: "Nobody scripted this. Every creature evolved its own brain — they hunt, flee, mate, and build homes on their own.",
-    pos: "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center",
-  },
-  {
-    tag: "> specimen scan",
-    title: "Read any organism.",
-    body: "Click a creature to open its genome — vitals, lineage, and genes you can edit live and watch play out.",
-    pos: "left-1/2 top-24 -translate-x-1/2 text-center",
-  },
-  {
-    tag: "> intervention tools",
-    title: "Play god (amber = you touch the world).",
-    body: "The tools up top let you spawn life, cull it, or move water to cause a drought or flood.",
-    pos: "left-1/2 top-20 -translate-x-1/2 text-center",
-  },
-  {
-    tag: "> vitals",
-    title: "The world's pulse.",
-    body: "Top-left readings are the world's vital signs. Hover any of them to decode what it means.",
-    pos: "left-56 top-6",
-  },
-];
-
-function BootSequence(): React.ReactElement | null {
-  const [step, setStep] = useState<number>(-1); // -1 = inactive
+function OnboardingCaptions(): React.ReactElement | null {
+  const [phase, setPhase] = useState<0 | 1 | 2>(0);
   const report = useSimStore((s) => s.report);
-
   useEffect(() => {
-    if (firstVisit()) setStep(0);
-    const onReplay = (): void => setStep(0);
-    window.addEventListener(REPLAY_EVENT, onReplay);
-    return () => window.removeEventListener(REPLAY_EVENT, onReplay);
+    if (!firstVisit()) return;
+    setPhase(1);
+    const t1 = setTimeout(() => setPhase(2), 5200);
+    const t2 = setTimeout(() => setPhase(0), 6600);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
   }, []);
-
-  const s = BOOT_STEPS[step];
-  // The report modal owns the screen; don't overlap the intro with it.
-  if (step < 0 || s === undefined || report !== null) return null;
-
-  const last = step === BOOT_STEPS.length - 1;
-  const next = (): void => setStep(last ? -1 : step + 1);
-  const skip = (): void => setStep(-1);
-
+  // The report modal owns the screen; don't overlap captions with it.
+  if (phase === 0 || report !== null) return null;
   return (
-    // Dim scrim so the coach-marks read clearly; click the scrim to skip. The world stays
-    // visible underneath (it's the hero even during onboarding).
-    <div className="absolute inset-0 z-40 bg-[var(--bg)]/45 backdrop-blur-[1px]">
-      {/* A real <button> backdrop for click-to-skip (a11y: no ARIA role hacks). */}
-      <button
-        type="button"
-        onClick={skip}
-        className="absolute inset-0 h-full w-full cursor-default"
-        aria-label="dismiss intro"
-      />
-      <div
-        className={`panel pointer-events-auto absolute w-72 p-4 ${s.pos}`}
-        role="dialog"
-        aria-label="intro"
-      >
-        <div className="crt-title crt-glow crt-caret mb-2 text-[10px] text-[var(--accent)]">
-          {s.tag}
-        </div>
-        <div className="mb-1.5 text-sm font-medium text-[var(--fg)]">{s.title}</div>
-        <p className="mb-4 text-[12px] leading-relaxed text-[var(--fg-dim)]">{s.body}</p>
-        <div className="flex items-center justify-between">
-          <span className="tabular text-[10px] tracking-widest text-[var(--fg-mute)]">
-            {step + 1}/{BOOT_STEPS.length}
-          </span>
-          <div className="flex gap-1.5">
-            {!last && (
-              <button type="button" onClick={skip} className="btn px-2.5 py-1 text-[11px]">
-                skip
-              </button>
-            )}
-            <button type="button" onClick={next} className="btn-accent px-3 py-1 text-[11px]">
-              {last ? "enter" : "next"}
-            </button>
-          </div>
-        </div>
+    <div
+      className={`pointer-events-none absolute left-1/2 top-16 -translate-x-1/2 text-center transition-opacity duration-1000 ${
+        phase === 1 ? "opacity-100" : "opacity-0"
+      }`}
+    >
+      <div className="display text-sm tracking-wide text-[var(--fg)]">
+        This world has been evolving for thousands of generations.
+      </div>
+      <div className="mt-1 text-[11px] uppercase tracking-widest text-[var(--fg-mute)]">
+        nobody scripted what these creatures do · click one to read its genome
       </div>
     </div>
   );
@@ -441,7 +368,7 @@ export function App(): React.ReactElement {
           <div className="tabular pointer-events-none absolute bottom-4 left-4 text-[10px] uppercase tracking-widest text-[var(--fg-mute)]">
             vivarium · seed {seed}
           </div>
-          <BootSequence />
+          <OnboardingCaptions />
         </>
       )}
 

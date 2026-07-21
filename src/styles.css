@@ -1,52 +1,48 @@
 @import "tailwindcss";
 
 /*
- * Theme tokens for the "retro bio-terminal / CRT" chrome (docs/designs/
- * chrome-crt-redesign.md). The chrome is a vintage lab computer monitoring a terrarium:
- * near-black phosphor screen, two-phosphor palette (green = observe/safe, amber =
- * intervene/warn), boxy terminal windows, static scanline texture, mono-first type.
- *
- * IMPORTANT: the CRT treatment is CHROME ONLY. The world canvas is never tinted — creature
- * lineage color (hue = family) is load-bearing visual language. The world glows *through*
- * the terminal; it does not become the terminal. All colors flow from these tokens —
- * never hardcode in components.
+ * Theme tokens for the "beautiful welcoming observatory" (SPEC.md §Visual Design).
+ * The world (the canvas) is still the richest thing on screen, but the chrome is
+ * themed, not austere: a deep-space base, translucent blurred panel surfaces, and a
+ * single bioluminescent teal→cyan accent (deliberately NOT the purple-on-white
+ * cliché). All colors flow from these tokens — never hardcode in components.
+ * Numbers remain monospace.
  */
 :root {
   color-scheme: dark;
 
-  /* Base / surfaces — unlit CRT with a faint green-black cast */
-  --bg: #060a07;
-  --bg-2: #0a0f0b;
-  --panel: 10 20 13; /* rgb triplet for translucent panels via rgb(var(--panel)/α) */
-  --panel-border: 90 200 130; /* phosphor green, used at low α for borders/dividers */
-  --panel-glow: 59 240 122; /* accent, used at very low α for inner highlight */
+  /* Base / surfaces */
+  --bg: #0a0b12; /* deep space */
+  --bg-2: #0d0f1a;
+  --panel: 20 24 38; /* rgb triplet for translucent panels via rgb(var(--panel)/α) */
+  --panel-border: 148 163 208; /* cool slate, used at low α */
+  --panel-glow: 34 211 238; /* accent, used at very low α for inner highlight */
 
-  /* Text — phosphor green-white → dimmer green-grays */
-  --fg: #d6f5df;
-  --fg-dim: #86c79a;
-  --fg-mute: #4f8763;
+  /* Text */
+  --fg: #e6e9f2;
+  --fg-dim: #aab2c8;
+  --fg-mute: #6b748f;
 
-  /* Accent — primary phosphor GREEN (observation / safe) */
-  --accent: #3bf07a;
-  --accent-2: #ffb54d; /* second phosphor: AMBER (intervention / warning) */
-  --accent-ink: #04160a; /* readable text on a green fill */
-  --accent-ink-amber: #1a1204; /* readable text on an amber fill */
+  /* Accent — bioluminescent teal → cyan */
+  --accent: #22d3ee;
+  --accent-2: #2dd4bf;
+  --accent-ink: #06212a; /* readable text on an accent fill */
 
   /* Semantic (sparse) */
-  --positive: #3bf07a;
-  --warn: #ffb54d;
-  --danger: #ff6b57;
+  --positive: #4ade80;
+  --warn: #fbbf24;
+  --danger: #f87171;
 
-  /* Typography — mono-first for the terminal; display face for the Landing title only */
+  /* Typography */
   --font-display:
     "Space Grotesk", "Avenir Next", "Segoe UI Variable Display", "SF Pro Display", system-ui,
     sans-serif;
-  --font-body: ui-monospace, "JetBrains Mono", "SF Mono", "Menlo", monospace;
+  --font-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", monospace;
 
-  /* Depth — boxy terminal windows, not soft cards */
-  --shadow-panel: 0 6px 26px -10px rgb(0 0 0 / 0.75);
-  --radius: 0.25rem;
+  /* Depth */
+  --shadow-panel: 0 8px 30px -12px rgb(0 0 0 / 0.7);
+  --radius: 0.625rem;
 }
 
 html,
@@ -63,212 +59,57 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* All numeric readouts render monospace (already the body face, but explicit). */
+/* All numeric readouts render monospace (SPEC.md §Visual Design). */
 .tabular {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
-/* Display face for the Landing title / branding only — a face with character. */
+/* Display face for headings/branding — a face with character, not the default sans. */
 .display {
   font-family: var(--font-display);
   letter-spacing: -0.01em;
 }
 
-/* A terminal-window header label: mono, uppercase, wide tracking. Color is intentionally
-   NOT set here so a `text-[...]` utility can override it (e.g. accent/amber tags); default
-   its color at the call site with a text utility (usually text-[var(--fg-mute)]). */
-.crt-title {
-  font-family: var(--font-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-}
-
-/*
- * Themed panel surface: a boxy terminal window. Opaque-ish phosphor glass, hard-ish
- * border, faint inner scanlines + top highlight (the CRT "bezel" glow). The ::before
- * paints the scanline texture; ::after a subtle vignette so panels read as lit screens.
- */
+/* Themed panel surface: translucent, blurred, soft border + faint inner accent glow. */
 .panel {
-  position: relative;
-  background: rgb(var(--panel) / 0.86);
-  border: 1px solid rgb(var(--panel-border) / 0.22);
+  background: rgb(var(--panel) / 0.78);
+  border: 1px solid rgb(var(--panel-border) / 0.14);
   border-radius: var(--radius);
   box-shadow:
     var(--shadow-panel),
-    inset 0 1px 0 0 rgb(var(--panel-glow) / 0.1);
-  backdrop-filter: blur(6px);
-  /* NOTE: no `overflow: hidden` here — it would break scrollable panels (the legend
-     uses overflow-y-auto). The texture pseudo-elements are inset:0 and carry their own
-     border-radius, so they clip to the panel without needing overflow clipping. */
-}
-/* Static scanline overlay — never animated (nausea/accessibility + SPEC motion rule).
-   `inherit` radius keeps the texture inside the rounded corners without overflow:hidden. */
-.panel::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background: repeating-linear-gradient(
-    0deg,
-    rgb(0 0 0 / 0.16) 0px,
-    rgb(0 0 0 / 0.16) 1px,
-    transparent 1px,
-    transparent 3px
-  );
-  mix-blend-mode: multiply;
-  opacity: 0.5;
-  z-index: 0;
-}
-/* Faint corner vignette for the lit-screen feel. */
-.panel::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background: radial-gradient(120% 120% at 50% 0%, transparent 55%, rgb(0 0 0 / 0.35) 100%);
-  z-index: 0;
-}
-/* Panel content sits above the texture layers. */
-.panel > * {
-  position: relative;
-  z-index: 1;
-}
-/* An active/hovered panel lifts forward with a slightly hotter border. */
-.panel:focus-within {
-  border-color: rgb(var(--panel-border) / 0.4);
+    inset 0 1px 0 0 rgb(var(--panel-glow) / 0.06);
+  backdrop-filter: blur(10px);
 }
 
-/* Soft phosphor bloom for headings/readouts that should "glow" on the screen. */
-.crt-glow {
-  text-shadow: 0 0 6px rgb(var(--accent) / 0.45);
-}
-.crt-glow-amber {
-  text-shadow: 0 0 6px rgb(255 181 77 / 0.45);
-}
-
-/* ── Buttons ─────────────────────────────────────────────────────────────────── */
-
-/* Base terminal button: boxy, mono, dim-phosphor idle. */
-.btn {
-  font-family: var(--font-mono);
-  border-radius: var(--radius);
-  border: 1px solid rgb(var(--panel-border) / 0.18);
-  background: rgb(var(--panel-border) / 0.06);
-  color: var(--fg-dim);
-  transition:
-    background-color 0.12s ease,
-    color 0.12s ease,
-    border-color 0.12s ease;
-}
-.btn:hover {
-  background: rgb(var(--panel-border) / 0.14);
-  color: var(--fg);
-  border-color: rgb(var(--panel-border) / 0.32);
-}
-
-/* Primary GREEN action (observe/safe) — filled phosphor. */
+/* Primary accent button. */
 .btn-accent {
-  font-family: var(--font-mono);
-  background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 80%, #000));
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
   color: var(--accent-ink);
-  border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
-  border-radius: var(--radius);
+  border-radius: 0.5rem;
   font-weight: 600;
-  box-shadow: 0 0 14px -2px rgb(var(--accent) / 0.5);
   transition:
     filter 0.15s ease,
     transform 0.15s ease;
 }
 .btn-accent:hover {
-  filter: brightness(1.1);
+  filter: brightness(1.08);
 }
 .btn-accent:active {
   transform: translateY(1px);
 }
 
-/* AMBER action (intervention/warning) — for god-powers, destructive, "you touch the world". */
-.btn-amber {
-  font-family: var(--font-mono);
-  border-radius: var(--radius);
-  border: 1px solid color-mix(in srgb, var(--accent-2) 45%, transparent);
-  background: color-mix(in srgb, var(--accent-2) 12%, transparent);
-  color: var(--accent-2);
-  transition:
-    background-color 0.12s ease,
-    color 0.12s ease,
-    border-color 0.12s ease;
-}
-.btn-amber:hover {
-  background: color-mix(in srgb, var(--accent-2) 22%, transparent);
-  border-color: color-mix(in srgb, var(--accent-2) 70%, transparent);
-}
-
 /* Quiet (ghost) button on panel surfaces. */
 .btn-ghost {
-  font-family: var(--font-mono);
   color: var(--fg-dim);
-  border-radius: var(--radius);
+  border-radius: 0.5rem;
   transition:
     background-color 0.15s ease,
     color 0.15s ease;
 }
 .btn-ghost:hover {
-  background: rgb(var(--panel-border) / 0.12);
+  background: rgb(var(--panel-border) / 0.1);
   color: var(--fg);
-}
-
-/* ── Inputs ──────────────────────────────────────────────────────────────────── */
-
-/* Terminal input field (number / text). */
-.field {
-  font-family: var(--font-mono);
-  background: rgb(0 0 0 / 0.35);
-  border: 1px solid rgb(var(--panel-border) / 0.22);
-  border-radius: var(--radius);
-  color: var(--fg);
-}
-.field:focus {
-  outline: none;
-  border-color: rgb(var(--panel-border) / 0.5);
-}
-
-/* Phosphor range slider: thin green track + square thumb. */
-.slider {
-  -webkit-appearance: none;
-  appearance: none;
-  height: 3px;
-  border-radius: 1px;
-  background: rgb(var(--panel-border) / 0.25);
-  cursor: pointer;
-}
-.slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 10px;
-  height: 10px;
-  border-radius: 1px;
-  background: var(--accent);
-  box-shadow: 0 0 8px -1px rgb(var(--accent) / 0.7);
-}
-.slider::-moz-range-thumb {
-  width: 10px;
-  height: 10px;
-  border: none;
-  border-radius: 1px;
-  background: var(--accent);
-  box-shadow: 0 0 8px -1px rgb(var(--accent) / 0.7);
-}
-/* Amber variant for slider tracks that edit the world (god-power tunables). */
-.slider-amber::-webkit-slider-thumb {
-  background: var(--accent-2);
-  box-shadow: 0 0 8px -1px rgb(255 181 77 / 0.7);
-}
-.slider-amber::-moz-range-thumb {
-  background: var(--accent-2);
-  box-shadow: 0 0 8px -1px rgb(255 181 77 / 0.7);
 }
 
 /* Landing (game title screen) flourishes. */
@@ -293,30 +134,12 @@ body {
   }
 }
 
-/* Terminal cursor blink for the boot-sequence onboarding. */
-.crt-caret::after {
-  content: "▋";
-  margin-left: 0.1em;
-  color: var(--accent);
-  animation: crt-blink 1.1s step-end infinite;
-}
-@keyframes crt-blink {
-  50% {
-    opacity: 0;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .btn,
   .btn-accent,
-  .btn-amber,
   .btn-ghost {
     transition: none;
   }
   .landing-float {
-    animation: none;
-  }
-  .crt-caret::after {
     animation: none;
   }
 }

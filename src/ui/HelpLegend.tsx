@@ -49,9 +49,7 @@ export function HelpLegend(): React.ReactElement {
       {open && (
         <div className="panel absolute right-4 top-14 z-20 max-h-[80vh] w-64 overflow-y-auto p-4">
           <div className="mb-2 flex items-center justify-between">
-            <span className="crt-title crt-glow text-[11px] text-[var(--accent)]">
-              &gt; what you're seeing
-            </span>
+            <span className="display text-sm text-[var(--fg)]">What you're seeing</span>
             <button
               type="button"
               onClick={() => setOpen(false)}
@@ -155,18 +153,6 @@ export function HelpLegend(): React.ReactElement {
                 <span className="text-[var(--fg)]">Tools</span> (top) — spawn, delete, or move water
               </li>
             </ul>
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                // Fire the intro replay event (see App's BootSequence). Dispatched directly
-                // rather than imported from App to avoid an App↔HelpLegend import cycle.
-                window.dispatchEvent(new CustomEvent("vivarium:replay-intro"));
-              }}
-              className="btn mt-3 w-full px-2 py-1.5 text-[11px]"
-            >
-              &gt; replay intro
-            </button>
           </div>
         </div>
       )}

@@ -7,9 +7,8 @@
  * *(tunable)* constants live. Every slider dispatches `setParam`, which writes
  * `world.config.tunables` (the sim reads tunables there, never from constants.ts).
  *
- * CRT bio-terminal chrome (docs/designs/chrome-crt-redesign.md): green = observation/
- * playback, amber = intervention (re-init, share/export/import, param sliders). Changing
- * a slider detaches the world from its shareable URL — surfaced by the badge in App.
+ * Grayscale chrome, monospace numbers. Changing a slider detaches the world from its
+ * shareable URL — surfaced by the `detached` badge in App.
  */
 
 import { useSimStore } from "@store/useSimStore";
@@ -74,12 +73,9 @@ function ParamSlider({ def }: { def: SliderDef }): React.ReactElement {
   return (
     <label className="block py-1">
       <div className="mb-0.5 flex items-baseline justify-between">
-        <span className="text-[10px] uppercase tracking-wide text-[var(--fg-mute)]">
-          {def.label}
-        </span>
-        <span className="tabular text-[11px] text-[var(--accent-2)]">{fmt(value, def.digits)}</span>
+        <span className="text-[10px] uppercase tracking-wide text-neutral-500">{def.label}</span>
+        <span className="tabular text-[11px] text-neutral-300">{fmt(value, def.digits)}</span>
       </div>
-      {/* Amber slider — tuning a parameter is a god-power that edits the world. */}
       <input
         type="range"
         min={def.min}
@@ -87,7 +83,7 @@ function ParamSlider({ def }: { def: SliderDef }): React.ReactElement {
         step={def.step}
         value={value}
         onChange={(e) => setParam(def.key, Number(e.target.value))}
-        className="slider slider-amber w-full"
+        className="h-1 w-full cursor-pointer appearance-none rounded bg-neutral-700 accent-neutral-300"
         aria-label={def.label}
       />
     </label>
@@ -145,29 +141,30 @@ export function ControlPanel(): React.ReactElement {
   return (
     <div className="panel w-52 shrink-0 p-3">
       <div className="mb-2 flex items-center justify-between">
-        <span className="crt-title text-[10px] font-medium text-[var(--fg-mute)]">controls</span>
+        <span className="text-[10px] font-medium uppercase tracking-widest text-[var(--fg-dim)]">
+          controls
+        </span>
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="text-[10px] uppercase tracking-wide text-[var(--fg-mute)] hover:text-[var(--fg)]"
+          className="text-[10px] text-neutral-500 hover:text-neutral-200"
         >
           {open ? "hide" : "show"}
         </button>
       </div>
 
-      {/* Playback = observation (green). */}
       <div className="flex gap-1">
         <button
           type="button"
           onClick={toggle}
-          className="btn tabular flex-1 px-2 py-1.5 text-sm text-[var(--fg)]"
+          className="tabular flex-1 rounded bg-neutral-800 px-2 py-1.5 text-sm text-neutral-200 hover:bg-neutral-700"
         >
           {running ? "pause" : "play"}
         </button>
         <button
           type="button"
           onClick={() => doStep(1)}
-          className="btn tabular px-2 py-1.5 text-sm"
+          className="tabular rounded bg-neutral-800 px-2 py-1.5 text-sm text-neutral-300 hover:bg-neutral-700"
           title="step 1 tick"
         >
           +1
@@ -175,7 +172,7 @@ export function ControlPanel(): React.ReactElement {
         <button
           type="button"
           onClick={() => doStep(100)}
-          className="btn tabular px-2 py-1.5 text-sm"
+          className="tabular rounded bg-neutral-800 px-2 py-1.5 text-sm text-neutral-300 hover:bg-neutral-700"
           title="step 100 ticks"
         >
           +100
@@ -188,10 +185,10 @@ export function ControlPanel(): React.ReactElement {
             type="button"
             key={s}
             onClick={() => setSpeed(s)}
-            className={`tabular flex-1 rounded-[var(--radius)] border px-2 py-1 text-xs transition-colors ${
+            className={`tabular flex-1 rounded px-2 py-1 text-xs ${
               speed === s
-                ? "border-[color-mix(in_srgb,var(--accent)_60%,transparent)] bg-[color-mix(in_srgb,var(--accent)_18%,transparent)] text-[var(--accent)]"
-                : "border-[rgb(var(--panel-border)/0.18)] bg-[rgb(var(--panel-border)/0.06)] text-[var(--fg-mute)] hover:text-[var(--fg)]"
+                ? "bg-neutral-200 text-neutral-950"
+                : "bg-neutral-800 text-neutral-400 hover:bg-neutral-700"
             }`}
           >
             {s}×
@@ -199,21 +196,19 @@ export function ControlPanel(): React.ReactElement {
         ))}
       </div>
 
-      <div className="mt-2 flex items-center gap-1 border-t border-[rgb(var(--panel-border)/0.15)] pt-2">
-        <span className="text-[10px] uppercase tracking-wide text-[var(--fg-mute)]">seed</span>
+      <div className="mt-2 flex items-center gap-1 border-t border-neutral-800 pt-2">
+        <span className="text-[10px] uppercase tracking-wide text-neutral-500">seed</span>
         <input
           type="number"
           value={seed}
           onChange={(e) => setSeed(Number(e.target.value))}
-          className="field tabular w-14 px-1 py-0.5 text-xs"
+          className="tabular w-14 rounded border border-neutral-700 bg-neutral-900 px-1 py-0.5 text-xs text-neutral-200"
           aria-label="seed"
         />
-        {/* re-init rebuilds the world = intervention (amber). */}
         <button
           type="button"
           onClick={reinit}
-          className="btn-amber flex-1 px-2 py-1 text-[11px]"
-          title="rebuild the world on this seed"
+          className="flex-1 rounded bg-neutral-800 px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-700"
         >
           re-init
         </button>
@@ -221,25 +216,25 @@ export function ControlPanel(): React.ReactElement {
 
       {/* Offline catch-up preference: when on, reopening replays the ticks owed while
           away; when off, the world resumes at its saved tick (time "paused"). */}
-      <label className="mt-2 flex items-center justify-between border-t border-[rgb(var(--panel-border)/0.15)] pt-2">
-        <span className="text-[10px] uppercase tracking-wide text-[var(--fg-mute)]">
+      <label className="mt-2 flex items-center justify-between border-t border-neutral-800 pt-2">
+        <span className="text-[10px] uppercase tracking-wide text-neutral-500">
           catch up offline
         </span>
         <input
           type="checkbox"
           checked={catchupEnabled}
           onChange={(e) => setCatchupEnabled(e.target.checked)}
-          className="h-3 w-3 cursor-pointer accent-[var(--accent)]"
+          className="h-3 w-3 cursor-pointer accent-neutral-300"
           aria-label="catch up offline"
         />
       </label>
 
-      {/* Share (URL) + export/import (file). Share/export/import move world data = amber. */}
-      <div className="mt-2 flex gap-1 border-t border-[rgb(var(--panel-border)/0.15)] pt-2">
+      {/* Share (URL) + export/import (file) — Phase 5A.4. */}
+      <div className="mt-2 flex gap-1 border-t border-neutral-800 pt-2">
         <button
           type="button"
           onClick={copyShare}
-          className="btn-amber flex-1 px-2 py-1 text-[11px]"
+          className="flex-1 rounded bg-neutral-800 px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-700"
           title="copy a shareable link to this world's initial config"
         >
           {copied ? "copied" : "share"}
@@ -247,7 +242,7 @@ export function ControlPanel(): React.ReactElement {
         <button
           type="button"
           onClick={exportWorld}
-          className="btn-amber flex-1 px-2 py-1 text-[11px]"
+          className="flex-1 rounded bg-neutral-800 px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-700"
           title="download this evolved world as a .viv.gz file"
         >
           export
@@ -255,7 +250,7 @@ export function ControlPanel(): React.ReactElement {
         <button
           type="button"
           onClick={() => fileRef.current?.click()}
-          className="btn-amber flex-1 px-2 py-1 text-[11px]"
+          className="flex-1 rounded bg-neutral-800 px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-700"
           title="load a .viv.gz world file"
         >
           import
@@ -271,7 +266,7 @@ export function ControlPanel(): React.ReactElement {
       </div>
 
       {open && (
-        <div className="mt-2 border-t border-[rgb(var(--panel-border)/0.15)] pt-1">
+        <div className="mt-2 border-t border-neutral-800 pt-1">
           {SLIDERS.map((d) => (
             <ParamSlider key={d.key} def={d} />
           ))}
