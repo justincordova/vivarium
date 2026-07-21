@@ -65,20 +65,23 @@ export function Timeline(): React.ReactElement | null {
   return (
     <div className="panel absolute bottom-4 left-1/2 z-10 w-[38rem] max-w-[70vw] -translate-x-1/2 px-3 py-2">
       <div className="mb-1 flex items-baseline justify-between">
-        <span className="text-[10px] uppercase tracking-widest text-[var(--fg-mute)]">
-          timeline
+        <span
+          className="cursor-help text-[10px] uppercase tracking-widest text-[var(--fg-mute)]"
+          title="A read-only overview of the world's whole history. Faint vertical marks are mass extinctions. Evolution only runs forward — hover to read the past, but you can't rewind."
+        >
+          history · overview
         </span>
         <span className="tabular text-[10px] text-[var(--fg-dim)]">
           {hover !== null
-            ? `gen ${fmt(hover.tick)} · pop ${fmt(hover.population)}`
-            : `gen ${fmt(timeline.now)}`}
+            ? `age ${fmt(hover.tick)} · pop ${fmt(hover.population)}`
+            : `age ${fmt(timeline.now)}`}
         </span>
       </div>
       <svg
         ref={svgRef}
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="none"
-        className="h-7 w-full"
+        className="h-7 w-full cursor-default"
         onMouseMove={onMove}
         onMouseLeave={() => setHover(null)}
         role="img"

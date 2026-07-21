@@ -104,8 +104,14 @@ function DetachedBadge(): React.ReactElement | null {
   const detached = useSimStore((s) => s.detached);
   if (!detached) return null;
   return (
-    <div className="panel tabular pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 px-2 py-1 text-[10px] uppercase tracking-widest text-[var(--accent-2)]">
-      detached from seed — god-powers active
+    <div
+      className="panel absolute bottom-4 left-1/2 flex max-w-xs -translate-x-1/2 items-center gap-2 px-3 py-1.5"
+      title="You've changed this world by hand (a slider, an edit, or a spawn). Your changes are saved and the world keeps running — but a share link now only reproduces the original starting point, not what you've made. Export the world to a file to keep this exact state."
+    >
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent-2)]" />
+      <span className="text-[10px] uppercase tracking-widest text-[var(--fg-dim)]">
+        your world — hand-edited
+      </span>
     </div>
   );
 }
