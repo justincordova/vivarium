@@ -43,6 +43,10 @@ interface DeathNote {
 export function SimCanvas(): React.ReactElement {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const camRef = useRef<Camera | null>(null);
+  // Whether the camera has been fit against a REAL frame's world dims (not the fallback).
+  // SimCanvas mounts before the worker posts any frame, so the initial `fitCanvas` fits to
+  // the 200×200 fallback; the real world is far larger — re-fit once the first frame lands.
+  const cameraFitToWorld = useRef<boolean>(false);
   const [deathNote, setDeathNote] = useState<DeathNote | null>(null);
   // Last-seen age of the followed creature, for the death caption.
   const followAge = useRef<number>(0);
@@ -67,6 +71,8 @@ export function SimCanvas(): React.ReactElement {
       if (camRef.current === null) {
         const f = latestFrame.current;
         camRef.current = fitCamera(f?.worldWidth ?? 200, f?.worldHeight ?? 200, w, h);
+        // Only count this as a real fit if a real frame backed it.
+        if (f !== null) cameraFitToWorld.current = true;
       } else {
         camRef.current = resize(camRef.current, w, h);
       }
@@ -81,6 +87,14 @@ export function SimCanvas(): React.ReactElement {
     const loop = (): void => {
       const frame = latestFrame.current;
       let cam = camRef.current;
+      // Re-fit the camera the first time a REAL frame arrives (the mount-time fit used the
+      // 200×200 fallback because no frame existed yet). Guarded so later pan/zoom/resize
+      // are never clobbered.
+      if (frame !== null && cam !== null && !cameraFitToWorld.current) {
+        cam = fitCamera(frame.worldWidth, frame.worldHeight, cam.viewW, cam.viewH);
+        camRef.current = cam;
+        cameraFitToWorld.current = true;
+      }
       if (frame !== null && cam !== null) {
         // Follow-cam: lock onto the followed creature, or announce its death.
         const followId = useSimStore.getState().followId;
