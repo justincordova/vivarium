@@ -229,11 +229,12 @@ export function App(): React.ReactElement {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-[var(--bg)] text-[var(--fg)]">
-      {/* The world renders in every phase — dimmed behind the landing so the front door
-          is itself alive. */}
+      {/* The world renders in every phase. On the landing it stays mostly visible (it is
+          the hero of a game title screen); Landing itself lays a cinematic vignette over
+          it for legibility rather than a flat dimming scrim. */}
       <div
         className={`absolute inset-0 transition-opacity duration-700 ${
-          phase === "landing" ? "opacity-40" : "opacity-100"
+          phase === "landing" ? "opacity-80" : "opacity-100"
         }`}
       >
         <SimCanvas />

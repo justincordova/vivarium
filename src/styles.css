@@ -112,9 +112,34 @@ body {
   color: var(--fg);
 }
 
+/* Landing (game title screen) flourishes. */
+.landing-rule {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--accent) 80%, transparent),
+    transparent
+  );
+}
+.landing-float {
+  animation: landing-float 6s ease-in-out infinite;
+}
+@keyframes landing-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .btn-accent,
   .btn-ghost {
     transition: none;
+  }
+  .landing-float {
+    animation: none;
   }
 }
