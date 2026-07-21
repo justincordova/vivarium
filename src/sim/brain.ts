@@ -65,7 +65,7 @@ export function derive(genome: Genome): { weights: Float32Array; enabled: Uint8A
  * summation order and low FP bits, so they are frozen. The golden-vector test in
  * `brain.test.ts` is the enforcement.
  *
- *   [0                     .. SENSORS*HIDDEN)            sensors → hidden   (180)
+ *   [0                     .. SENSORS*HIDDEN)            sensors → hidden   (210)
  *   [SENSORS*HIDDEN        .. +HIDDEN*HIDDEN)            hidden(prev) → hidden (100)
  *   [SENSORS*HIDDEN+HIDDEN*HIDDEN .. +HIDDEN*ACTIONS)    hidden → actions   (70)
  *

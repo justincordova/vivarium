@@ -297,7 +297,9 @@ export function createWorld(seed: number, config: Config): World {
       remainder--;
     }
   }
-  // Any still-remaining (e.g. all-water rounding) goes to cell 0.
+  // Defensive conservation guard: the loop above always fully drains `remainder` (it is
+  // < the number of eligible cells by construction), so this is unreachable today — kept
+  // only so a future change to the seeding math can never silently leak water.
   if (remainder > 0) fields.water[0] = (fields.water[0] as number) + remainder;
 
   const world: World = {
