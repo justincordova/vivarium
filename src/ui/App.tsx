@@ -24,11 +24,31 @@ function fmt(n: number, digits = 0): string {
   });
 }
 
-/** A labelled monospace readout used across the HUD. */
-function Stat({ label, value }: { label: string; value: string }): React.ReactElement {
+/**
+ * A labelled monospace readout used across the HUD. `help` is a plain-language
+ * explanation surfaced on hover — the HUD numbers are otherwise unexplained jargon
+ * ("trait var", "novelty") that a newcomer has no way to interpret. The label carries
+ * a dotted underline to signal it is hoverable.
+ */
+function Stat({
+  label,
+  value,
+  help,
+}: {
+  label: string;
+  value: string;
+  help: string;
+}): React.ReactElement {
   return (
     <div className="flex items-baseline justify-between gap-4">
-      <span className="text-[10px] uppercase tracking-wider text-[var(--fg-mute)]">{label}</span>
+      {/* Only the label re-enables pointer events, so the tooltip is reachable while the
+          rest of the HUD stays click-through to the canvas underneath. */}
+      <span
+        title={help}
+        className="pointer-events-auto cursor-help text-[10px] uppercase tracking-wider text-[var(--fg-mute)] underline decoration-dotted decoration-[rgb(var(--panel-border)/0.35)] underline-offset-2"
+      >
+        {label}
+      </span>
       <span className="tabular text-sm text-[var(--fg)]">{value}</span>
     </div>
   );
@@ -38,17 +58,43 @@ function Hud(): React.ReactElement {
   const stats = useSimStore((s) => s.stats);
   const pop = stats ? Object.values(stats.population).reduce((a, b) => a + b, 0) : 0;
   return (
+    // The panel stays click-through (canvas underneath); individual stat labels opt back
+    // into pointer events so their hover tooltips are reachable.
     <div className="panel pointer-events-none w-52 p-3">
       <div className="mb-2 text-[10px] font-medium uppercase tracking-widest text-[var(--fg-mute)]">
-        world
+        world · vital signs
       </div>
       <div className="space-y-1">
-        <Stat label="tick" value={fmt(stats?.tick ?? 0)} />
-        <Stat label="population" value={fmt(pop)} />
-        <Stat label="species" value={fmt(stats?.speciesCount ?? 0)} />
-        <Stat label="trait var" value={fmt(stats?.traitVariance ?? 0, 4)} />
-        <Stat label="novelty" value={fmt(stats?.behaviorNovelty ?? 0, 3)} />
-        <Stat label="extinctions" value={fmt(stats?.extinctionEvents ?? 0)} />
+        <Stat
+          label="age"
+          value={fmt(stats?.tick ?? 0)}
+          help="Sim time — how many ticks this world has lived (also called 'generation'). This is the world's own clock, not real-world time."
+        />
+        <Stat
+          label="population"
+          value={fmt(pop)}
+          help="How many creatures are alive right now. Watch it rise and crash as predators and prey cycle."
+        />
+        <Stat
+          label="species"
+          value={fmt(stats?.speciesCount ?? 0)}
+          help="Distinct breeding groups. Two groups count as separate species once they've drifted too far apart to interbreed."
+        />
+        <Stat
+          label="trait var"
+          value={fmt(stats?.traitVariance ?? 0, 4)}
+          help="Genetic diversity across the population. High = many different body plans; low = everyone's converging on one design."
+        />
+        <Stat
+          label="novelty"
+          value={fmt(stats?.behaviorNovelty ?? 0, 3)}
+          help="How much new behavior is appearing. Higher means creatures are still discovering new ways to live; near zero means the world has settled."
+        />
+        <Stat
+          label="extinctions"
+          value={fmt(stats?.extinctionEvents ?? 0)}
+          help="How many lineages have died out completely over this world's whole history."
+        />
       </div>
     </div>
   );
