@@ -97,7 +97,11 @@ export function appearance(f: CreatureFrame, i: number): Appearance {
   const toxicity = f.toxicity[i] as number;
   const age = f.age[i] as number;
   const speed = f.speed[i] as number;
-  const hue = (((f.hue[i] as number) % 360) + 360) % 360;
+  // Sanitize hue before the modulo: a NaN slot (corrupt save / out-of-range live edit)
+  // would otherwise yield the string "hsl(NaN …)", which canvas silently ignores — the
+  // creature would render in the PREVIOUS fillStyle's color. Mirrors the `remap` NaN guard.
+  const rawHue = f.hue[i] as number;
+  const hue = Number.isFinite(rawHue) ? ((rawHue % 360) + 360) % 360 : 0;
 
   const [sizeLo, sizeHi] = TRAIT_RANGE.size;
   const radius = remap(size, sizeLo, sizeHi, MIN_RADIUS, MAX_RADIUS);
