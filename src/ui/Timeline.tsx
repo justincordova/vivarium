@@ -84,19 +84,23 @@ export function Timeline(): React.ReactElement | null {
         role="img"
         aria-label="population timeline with extinction marks"
       >
-        {/* Extinction tick-marks (faint vertical lines). */}
-        {timeline.extinctionTicks.map((t, i) => (
-          <line
-            // biome-ignore lint/suspicious/noArrayIndexKey: static per-render marks
-            key={i}
-            x1={xOf(t)}
-            x2={xOf(t)}
-            y1={0}
-            y2={H}
-            stroke="#525252"
-            strokeWidth={0.3}
-          />
-        ))}
+        {/* Extinction tick-marks (faint vertical lines). Only those within the plotted
+            tick window — the event-log and history windows are bounded separately, so an
+            older extinction tick would otherwise map off the left edge. */}
+        {timeline.extinctionTicks
+          .filter((t) => t >= minTick && t <= maxTick)
+          .map((t, i) => (
+            <line
+              // biome-ignore lint/suspicious/noArrayIndexKey: static per-render marks
+              key={i}
+              x1={xOf(t)}
+              x2={xOf(t)}
+              y1={0}
+              y2={H}
+              stroke="#525252"
+              strokeWidth={0.3}
+            />
+          ))}
         {/* Population history. */}
         <path d={path} fill="none" stroke="#e5e5e5" strokeWidth={0.6} />
         {/* Hover marker. */}
