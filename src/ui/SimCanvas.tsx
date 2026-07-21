@@ -19,7 +19,6 @@ import {
   pan,
   resize,
   screenToWorld,
-  setZoom,
   zoomAt,
 } from "@render/camera";
 import { draw } from "@render/canvas";
@@ -32,9 +31,6 @@ const DRAG_THRESHOLD = 8;
 /** A press shorter than this (ms) always counts as a click, even if it wandered a bit —
  * so a quick tap is never swallowed as a pan. */
 const TAP_MS = 250;
-/** Zoom (screen px per world unit) the camera snaps to when spawning, so a freshly
- * placed creature fills enough of the view to actually see. */
-const SPAWN_FOCUS_ZOOM = 4;
 /** Water quanta moved per drought/flood click. */
 const WATER_BRUSH_DELTA = 400;
 const WATER_BRUSH_RADIUS = 2;
@@ -201,7 +197,8 @@ export function SimCanvas(): React.ReactElement {
       }
       case "spawn": {
         // Spawn a LARGE, well-endowed, low-metabolism creature at the click so it is easy
-        // to see and survives long enough to inspect (the worker auto-inspects it).
+        // to see and survives long enough to inspect (the worker auto-inspects it). The
+        // camera is intentionally NOT moved — the view stays where the user put it.
         store.spawn({
           x: wx,
           y: wy,
@@ -210,11 +207,6 @@ export function SimCanvas(): React.ReactElement {
           energy: 900,
           hydration: 400,
         });
-        // Bring the camera to it: center on the spawn point and ensure a close-up zoom so
-        // the new creature isn't a lost speck. Mutates the same ref the rAF loop reads.
-        const centered = centerOn(cam, wx, wy);
-        camRef.current =
-          cam.zoom < SPAWN_FOCUS_ZOOM ? setZoom(centered, SPAWN_FOCUS_ZOOM) : centered;
         break;
       }
       case "paintWaterDown":
