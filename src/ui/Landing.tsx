@@ -20,6 +20,10 @@ export function Landing(): React.ReactElement | null {
 
   return (
     <div className="absolute inset-0 z-40 overflow-hidden">
+      {/* Living aurora behind everything, so the title screen breathes with the brand's
+          bioluminescent glow even before the world boots (no flat black void). */}
+      <div className="landing-aurora" aria-hidden="true" />
+
       {/* Cinematic vignette: darken top & bottom (letterbox feel) and the far edges, so
           the title and buttons stay legible while the world still BREATHES through the
           middle — the living world is the hero of the title screen, so keep the center

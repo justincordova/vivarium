@@ -277,6 +277,11 @@ function firstVisit(): boolean {
 function OnboardingCaptions(): React.ReactElement | null {
   const [phase, setPhase] = useState<0 | 1 | 2>(0);
   const report = useSimStore((s) => s.report);
+  // Dismiss the moment the visitor engages (inspects a creature) — the caption's whole job
+  // is to prompt that first click, so once it happens the words have done their job and
+  // should get out of the way. This also makes the fade robust to background-tab timer
+  // throttling: engagement, not just elapsed time, ends the onboarding.
+  const inspected = useSimStore((s) => s.inspected);
   useEffect(() => {
     if (!firstVisit()) return;
     setPhase(1);
@@ -287,6 +292,9 @@ function OnboardingCaptions(): React.ReactElement | null {
       clearTimeout(t2);
     };
   }, []);
+  useEffect(() => {
+    if (inspected !== null) setPhase(0);
+  }, [inspected]);
   // The report modal owns the screen; don't overlap captions with it.
   if (phase === 0 || report !== null) return null;
   return (

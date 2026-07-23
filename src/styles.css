@@ -211,6 +211,36 @@ body {
   }
 }
 
+/*
+ * Landing aurora — two slow-drifting bioluminescent glows behind the title so the title
+ * screen feels ALIVE (a breathing world) even before the sim boots behind it, instead of
+ * a flat black void. Pure decoration; sits at the very back of the landing stack.
+ */
+.landing-aurora {
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(38% 42% at 32% 38%, rgb(var(--panel-glow) / 0.16), transparent 70%),
+    radial-gradient(34% 38% at 70% 62%, rgb(167 232 106 / 0.12), transparent 70%);
+  filter: blur(30px);
+  animation: landing-aurora 18s ease-in-out infinite alternate;
+}
+@keyframes landing-aurora {
+  0% {
+    transform: translate3d(-3%, -2%, 0) scale(1);
+    opacity: 0.85;
+  }
+  100% {
+    transform: translate3d(3%, 2%, 0) scale(1.08);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .landing-aurora {
+    animation: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .btn-accent,
   .btn-ghost,
