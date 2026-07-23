@@ -1,4 +1,5 @@
 import { makeConfig } from "@sim/config";
+import { ACTIONS } from "@sim/constants";
 import { expressTrait } from "@sim/genetics";
 import { totalEnergy, totalWater } from "@sim/stats";
 import { tick } from "@sim/tick";
@@ -126,6 +127,24 @@ describe("a birth never produces a stillborn (child born hydration 0)", () => {
     }
     // Guard against a vacuous pass: a birth actually occurred in the window.
     expect(sawBirth).toBe(true);
+  });
+});
+
+describe("a newborn's actionWindow matches every other creature's length", () => {
+  it("newborns get a full-length (ACTIONS) actionWindow, like founders/spawns/loads", () => {
+    // A shorter newborn window than founders' desyncs `behaviorNovelty`: it compares
+    // per-creature action histograms across the population, so mismatched lengths make
+    // `normalizeHistogram` (1/7 vs 1/8) and `jensenShannon` (reads past the shorter
+    // array) diverge. Every creature must carry the same fixed-length window.
+    const w = twoMateWorld(1, 1);
+    for (let i = 0; i < 80; i++) {
+      tick(w);
+      if (w.creatures.some((c) => c.parentId !== null)) break;
+    }
+    expect(w.creatures.some((c) => c.parentId !== null)).toBe(true);
+    for (const c of w.creatures) {
+      expect(c.actionWindow.length).toBe(ACTIONS);
+    }
   });
 });
 

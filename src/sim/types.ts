@@ -140,7 +140,7 @@ export interface Creature {
   /** Rule-brain hysteresis/rendezvous state. Serialized. */
   ruleState: RuleState;
   /**
-   * Per-creature trailing action-fire histogram (length ACTIONS = 7), backing the
+   * Per-creature trailing action-fire histogram (length ACTIONS = 8), backing the
    * `behaviorNovelty` metric (plan Task 1.1). An exponential-decay accumulator: each
    * tick every slot decays by `1 − 1/NOVELTY_WINDOW` and a fired action's slot gains
    * 1 — the bounded-memory realization of a trailing window. **Serialized runtime

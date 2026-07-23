@@ -923,7 +923,15 @@ function tryMate(
     genome: childGenome,
     hidden: new Float32Array(world.config.hidden),
     ruleState: { mode: "wander", targetId: -1, targetKind: "none", committedTicks: 0 },
-    actionWindow: new Float32Array(Action.EmitScent + 1),
+    // Length ACTIONS (Action.Nest + 1 = 8) — the SAME size as founders (world.ts),
+    // spawns (commands.ts), and a deserialized creature (serialize.ts). A shorter
+    // window here (e.g. EmitScent+1 = 7) makes a newborn's `actionWindow` a different
+    // length from everyone else's, which `behaviorNovelty` (stats.ts) then compares
+    // across creatures: `normalizeHistogram` yields different uniform values (1/7 vs
+    // 1/8) for otherwise-identical no-fire creatures, and a length mismatch in
+    // `jensenShannon` reads past the shorter array. Keep every creature's window one
+    // fixed length.
+    actionWindow: new Float32Array(Action.Nest + 1),
   };
   // Energy transferred from BOTH parents; water likewise (mirror). Never minted.
   transfer(fieldCompartment(a, "energy"), fieldCompartment(child, "energy"), invA);
