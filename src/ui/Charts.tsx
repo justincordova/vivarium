@@ -27,7 +27,7 @@ import {
 } from "recharts";
 
 const AXIS = { fontSize: 9, fontFamily: "ui-monospace, Menlo, monospace", fill: "#6f8b80" };
-const GRID = "#1e2f2a";
+const GRID = "#1a2823"; // softer than the panel text so the grid recedes behind the data
 const ACCENT = "#5eeabe"; // primary series (warm aqua)
 const ACCENT_2 = "#a7e86a"; // secondary series (lime)
 
@@ -38,7 +38,7 @@ function PopulationChart(): React.ReactElement {
   return (
     <div>
       <div className="mb-1 text-[10px] uppercase tracking-widest text-[var(--fg-mute)]">
-        population / species
+        life over time
       </div>
       <ResponsiveContainer width="100%" height={92}>
         <LineChart data={popHistory} margin={{ top: 2, right: 4, bottom: 0, left: -6 }}>
@@ -81,7 +81,7 @@ function LineageChart(): React.ReactElement {
   return (
     <div>
       <div className="mb-1 text-[10px] uppercase tracking-widest text-[var(--fg-mute)]">
-        lineages
+        family lines
       </div>
       <ResponsiveContainer width="100%" height={82}>
         <AreaChart data={lineageHistory} margin={{ top: 2, right: 4, bottom: 0, left: -6 }}>
@@ -116,7 +116,7 @@ function TraitChart(): React.ReactElement {
     <div>
       <div className="mb-1 flex items-center justify-between">
         <span className="text-[10px] uppercase tracking-widest text-[var(--fg-mute)]">
-          distribution
+          who's out there
         </span>
         <select
           value={gene}
@@ -131,13 +131,18 @@ function TraitChart(): React.ReactElement {
           ))}
         </select>
       </div>
-      <ResponsiveContainer width="100%" height={80}>
+      <ResponsiveContainer width="100%" height={72}>
+        {/* No X-axis: the raw bin indices (2, 5, 8…) are meaningless to a player. The
+            low→high hint below the bars conveys the axis direction in plain words. */}
         <BarChart data={data} margin={{ top: 2, right: 4, bottom: 0, left: -6 }}>
-          <XAxis dataKey="bin" tick={AXIS} stroke={GRID} minTickGap={20} />
           <YAxis tick={AXIS} stroke={GRID} width={34} />
-          <Bar dataKey="count" fill={ACCENT} fillOpacity={0.8} isAnimationActive={false} />
+          <Bar dataKey="count" fill={ACCENT} fillOpacity={0.85} isAnimationActive={false} />
         </BarChart>
       </ResponsiveContainer>
+      <div className="mt-0.5 flex justify-between px-1 text-[9px] uppercase tracking-wider text-[var(--fg-mute)]">
+        <span>less {gene}</span>
+        <span>more {gene}</span>
+      </div>
     </div>
   );
 }

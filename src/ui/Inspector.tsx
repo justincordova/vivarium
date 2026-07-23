@@ -26,6 +26,32 @@ function num(n: number, digits = 2): string {
   });
 }
 
+/**
+ * Plain-language names for the genome rows, so a newcomer reads "sense range" instead of
+ * the raw "senseRadius" camelCase key. Any gene not listed falls back to its raw key.
+ */
+const GENE_LABELS: Record<string, string> = {
+  size: "size",
+  speed: "speed",
+  senseRadius: "sense range",
+  metabolism: "metabolism",
+  aggression: "aggression",
+  diet: "diet (plant↔meat)",
+  circadian: "day/night rhythm",
+  nightVision: "night vision",
+  armor: "armor",
+  toxicity: "toxicity",
+  offspringInvestment: "offspring investment",
+  matingThreshold: "mating threshold",
+  maxLifespan: "lifespan",
+  digestionEfficiency: "digestion",
+  sociality: "sociality",
+  hue: "color",
+};
+function geneLabel(gene: string): string {
+  return GENE_LABELS[gene] ?? gene;
+}
+
 /** Enable density = fraction of brain arrows enabled on either homolog (dominant-OR). */
 function enableDensity(c: Creature): number {
   const a = c.genome.enabledA;
@@ -70,7 +96,9 @@ function GeneRow({
   return (
     <div className="py-1">
       <div className="mb-1 flex items-baseline justify-between">
-        <span className="text-[10px] uppercase tracking-wide text-[var(--fg-mute)]">{gene}</span>
+        <span className="text-[10px] uppercase tracking-wide text-[var(--fg-mute)]">
+          {geneLabel(gene)}
+        </span>
         <span className="tabular text-[11px] text-[var(--fg-dim)]">{num(expressed)}</span>
       </div>
       {showAlleles ? (
@@ -87,7 +115,7 @@ function GeneRow({
               value={allele[i as 0 | 1]}
               onChange={(e) => edit(i as 0 | 1, Number(e.target.value))}
               className="slider w-full"
-              aria-label={`${gene} allele ${i}`}
+              aria-label={`${geneLabel(gene)} allele ${i}`}
             />
           ))}
         </div>
@@ -100,7 +128,7 @@ function GeneRow({
           value={expressed}
           onChange={(e) => editExpressed(Number(e.target.value))}
           className="slider w-full"
-          aria-label={`${gene} expressed value`}
+          aria-label={`${geneLabel(gene)} value`}
         />
       )}
     </div>

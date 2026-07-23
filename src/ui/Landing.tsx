@@ -21,19 +21,20 @@ export function Landing(): React.ReactElement | null {
   return (
     <div className="absolute inset-0 z-40 overflow-hidden">
       {/* Cinematic vignette: darken top & bottom (letterbox feel) and the far edges, so
-          the title and buttons stay legible while the world still breathes in the middle. */}
+          the title and buttons stay legible while the world still BREATHES through the
+          middle — the living world is the hero of the title screen, so keep the center
+          clear and only dim enough for text contrast. */}
       <div
         className="absolute inset-0"
         style={{
           background:
-            "linear-gradient(180deg, rgba(6,7,12,0.85) 0%, rgba(6,7,12,0.25) 28%, rgba(6,7,12,0.25) 62%, rgba(6,7,12,0.92) 100%)",
+            "linear-gradient(180deg, rgba(6,10,9,0.7) 0%, rgba(6,10,9,0.08) 30%, rgba(6,10,9,0.08) 60%, rgba(6,10,9,0.82) 100%)",
         }}
       />
       <div
         className="absolute inset-0"
         style={{
-          background:
-            "radial-gradient(75% 75% at 50% 45%, transparent 45%, rgba(6,7,12,0.65) 100%)",
+          background: "radial-gradient(80% 80% at 50% 45%, transparent 52%, rgba(6,10,9,0.5) 100%)",
         }}
       />
 

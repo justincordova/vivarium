@@ -62,7 +62,7 @@ function Hud(): React.ReactElement {
     // into pointer events so their hover tooltips are reachable.
     <div className="panel pointer-events-none w-52 p-3">
       <div className="mb-2 text-[10px] font-medium uppercase tracking-widest text-[var(--fg-mute)]">
-        world · vital signs
+        the world right now
       </div>
       <div className="space-y-1">
         <Stat
@@ -71,7 +71,7 @@ function Hud(): React.ReactElement {
           help="Sim time — how many ticks this world has lived (also called 'generation'). This is the world's own clock, not real-world time."
         />
         <Stat
-          label="population"
+          label="creatures"
           value={fmt(pop)}
           help="How many creatures are alive right now. Watch it rise and crash as predators and prey cycle."
         />
@@ -81,12 +81,12 @@ function Hud(): React.ReactElement {
           help="Distinct breeding groups. Two groups count as separate species once they've drifted too far apart to interbreed."
         />
         <Stat
-          label="trait var"
+          label="diversity"
           value={fmt(stats?.traitVariance ?? 0, 4)}
-          help="Genetic diversity across the population. High = many different body plans; low = everyone's converging on one design."
+          help="How varied the creatures are. High = many different body plans; low = everyone's converging on one design."
         />
         <Stat
-          label="novelty"
+          label="new behavior"
           value={fmt(stats?.behaviorNovelty ?? 0, 3)}
           help="How much new behavior is appearing. Higher means creatures are still discovering new ways to live; near zero means the world has settled."
         />
@@ -290,16 +290,21 @@ function OnboardingCaptions(): React.ReactElement | null {
   // The report modal owns the screen; don't overlap captions with it.
   if (phase === 0 || report !== null) return null;
   return (
+    // Sit the captions low-center (above the timeline), NOT at top-16 where they
+    // collided with the Toolbar + its tool hint. A soft panel plate lifts the words off
+    // the busy world so they stay legible over any terrain.
     <div
-      className={`pointer-events-none absolute left-1/2 top-16 -translate-x-1/2 text-center transition-opacity duration-1000 ${
+      className={`pointer-events-none absolute bottom-28 left-1/2 -translate-x-1/2 text-center transition-opacity duration-1000 ${
         phase === 1 ? "opacity-100" : "opacity-0"
       }`}
     >
-      <div className="display text-sm tracking-wide text-[var(--fg)]">
-        This world has been evolving for thousands of generations.
-      </div>
-      <div className="mt-1 text-[11px] uppercase tracking-widest text-[var(--fg-mute)]">
-        nobody scripted what these creatures do · click one to read its genome
+      <div className="panel px-5 py-3">
+        <div className="display text-sm tracking-wide text-[var(--fg)]">
+          This world has been evolving for thousands of generations.
+        </div>
+        <div className="mt-1 text-[11px] uppercase tracking-widest text-[var(--fg-mute)]">
+          nobody scripted what these creatures do · click one to read its genome
+        </div>
       </div>
     </div>
   );
@@ -335,7 +340,7 @@ export function App(): React.ReactElement {
           it for legibility rather than a flat dimming scrim. */}
       <div
         className={`absolute inset-0 transition-opacity duration-700 ${
-          phase === "landing" ? "opacity-80" : "opacity-100"
+          phase === "landing" ? "opacity-95" : "opacity-100"
         }`}
       >
         <SimCanvas />

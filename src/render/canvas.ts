@@ -42,13 +42,16 @@ export function fadeTrails(ctx: CanvasRenderingContext2D, width: number, height:
 }
 
 /** Muted per-biome fill colors (chrome-adjacent; creatures remain the vivid focus).
- * Index by `Biome` enum value: 0 Water, 1 Grassland, 2 Forest, 3 Barren, 4 Rock. */
+ * Index by `Biome` enum value: 0 Water, 1 Grassland, 2 Forest, 3 Barren, 4 Rock.
+ * Tuned a touch richer/warmer than the original flat tones so the world looks like an
+ * inviting living map, while staying dark and low-chroma enough that the vivid,
+ * lineage-hued creatures remain the clear focus (SPEC.md §Visual Design). */
 const BIOME_FILL = [
-  "rgb(26, 58, 92)", // water — deep blue
-  "rgb(38, 58, 40)", // grassland — muted green
-  "rgb(26, 44, 32)", // forest — darker green
-  "rgb(70, 62, 44)", // barren — dry tan-brown
-  "rgb(52, 54, 60)", // rock — cool gray
+  "rgb(28, 66, 96)", // water — deep teal-blue (leans toward the chrome accent)
+  "rgb(44, 70, 48)", // grassland — soft meadow green
+  "rgb(30, 52, 38)", // forest — deeper canopy green
+  "rgb(78, 68, 48)", // barren — warm dry earth
+  "rgb(56, 58, 64)", // rock — cool slate gray
 ] as const;
 
 /**
@@ -282,33 +285,43 @@ export function draw(frame: RenderFrame, ctx: CanvasRenderingContext2D, cam: Cam
   drawTerrain(ctx, frame, cam);
   drawBounds(ctx, frame, cam);
 
-  // Plants — faint muted marks (SPEC.md: fields/plants recede; creatures dominate).
+  // Plants — soft rounded dots (SPEC.md: fields/plants recede; creatures dominate). Round
+  // (not square pixels) so they read as organic growth/foliage, and a vigor-scaled radius
+  // + alpha so a lush patch looks alive while a barely-grown seed stays faint.
   const p = frame.plants;
   ctx.fillStyle = PLANT_COLOR;
   for (let i = 0; i < p.count; i++) {
     const sx = worldToScreenX(cam, p.x[i] as number);
     const sy = worldToScreenY(cam, p.y[i] as number);
     if (sx < -8 || sy < -8 || sx > cam.viewW + 8 || sy > cam.viewH + 8) continue;
-    const r = 1 + 1.5 * (p.energyFrac[i] as number);
-    ctx.globalAlpha = 0.35 + 0.35 * (p.energyFrac[i] as number);
-    ctx.fillRect(sx - r / 2, sy - r / 2, r, r);
+    const frac = p.energyFrac[i] as number;
+    const r = 0.9 + 1.5 * frac;
+    ctx.globalAlpha = 0.3 + 0.4 * frac;
+    ctx.beginPath();
+    ctx.arc(sx, sy, r, 0, Math.PI * 2);
+    ctx.fill();
   }
   ctx.globalAlpha = 1;
 
-  // Corpses — distinct desaturated diamonds.
+  // Corpses — soft faded diamonds that read as "a fallen creature" rather than UI noise:
+  // a translucent warm-gray fill so they clearly differ from both plants and the vivid
+  // living creatures, and fade as they decay (energyFrac → 0).
   const co = frame.corpses;
-  ctx.fillStyle = CORPSE_COLOR;
   for (let i = 0; i < co.count; i++) {
     const sx = worldToScreenX(cam, co.x[i] as number);
     const sy = worldToScreenY(cam, co.y[i] as number);
     if (sx < -8 || sy < -8 || sx > cam.viewW + 8 || sy > cam.viewH + 8) continue;
-    const r = 2 + 2 * (co.energyFrac[i] as number);
+    const frac = co.energyFrac[i] as number;
+    const r = 2.2 + 2.2 * frac;
     ctx.save();
+    ctx.globalAlpha = 0.4 + 0.4 * frac;
+    ctx.fillStyle = CORPSE_COLOR;
     ctx.translate(sx, sy);
     ctx.rotate(Math.PI / 4);
     ctx.fillRect(-r / 2, -r / 2, r, r);
     ctx.restore();
   }
+  ctx.globalAlpha = 1;
 
   // Nests (Society) — emergent homes, under creatures so agents draw on top of them.
   drawNests(ctx, frame, cam); // ctx-first, matching drawTerrain/drawBounds
@@ -379,8 +392,11 @@ export function drawDayNight(ctx: CanvasRenderingContext2D, cam: Camera, light: 
   if (darkness <= 0.001) return;
   ctx.save();
   ctx.globalCompositeOperation = "source-over";
-  // Cool night blue; alpha grows with darkness but caps so night stays legible.
-  ctx.fillStyle = `rgba(18, 24, 54, ${(darkness * 0.45).toFixed(3)})`;
+  // A soft dusk tint — a deep teal-blue that cools the world without muddying it. The
+  // alpha caps low (0.3) so creatures and terrain stay clearly legible at midnight: the
+  // point is a calm nocturnal MOOD, not a blackout. Warmer/greener than a flat navy so
+  // it reads as "nightfall over a living world," matching the chrome palette.
+  ctx.fillStyle = `rgba(20, 34, 52, ${(darkness * 0.3).toFixed(3)})`;
   ctx.fillRect(0, 0, cam.viewW, cam.viewH);
   ctx.restore();
 }
