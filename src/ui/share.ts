@@ -25,8 +25,14 @@ export function parseHash(hash: string): ShareParams | null {
   if (raw.length === 0) return null;
   const params = new URLSearchParams(raw);
   const seedStr = params.get("seed");
-  if (seedStr === null) return null;
-  const seed = Number(seedStr);
+  // Reject a missing OR blank/whitespace `seed=` (a truncated/broken link): `Number("")`
+  // and `Number("  ")` are 0 (finite), so without the blank check an empty `seed=` would
+  // silently boot the wrong world (seed 0) instead of falling through to the normal flow.
+  if (seedStr === null || seedStr.trim() === "") return null;
+  // Truncate to an integer, mirroring the store's `setSeed` invariant — a fractional
+  // seed is meaningless for the RNG, and the shared-hash path bypasses `setSeed`, so a
+  // hand-edited `#seed=1.9` link would otherwise leak a fractional value into the state.
+  const seed = Math.trunc(Number(seedStr));
   if (!Number.isFinite(seed)) return null;
 
   const tunables: Record<string, number> = {};
@@ -76,6 +82,18 @@ async function gunzip(bytes: Uint8Array): Promise<string> {
   return new Response(stream).text();
 }
 
+/**
+ * Validate a parsed value as a `SaveBlob` (a non-null object carrying a numeric `version`
+ * and a `config`). Guards the `JSON.parse` result BEFORE any property access — `JSON.parse`
+ * legitimately yields `null`/number/string/array for well-formed-but-wrong input, and
+ * dereferencing `.version` on `null` throws a raw `TypeError` instead of our clean error.
+ */
+function isSaveBlob(value: unknown): value is SaveBlob {
+  if (typeof value !== "object" || value === null) return false;
+  const b = value as Partial<SaveBlob>;
+  return typeof b.version === "number" && b.config !== undefined;
+}
+
 /** Trigger a browser download of a gzipped `SaveBlob` as `vivarium-<tick>.viv.gz`. */
 export async function exportWorld(blob: SaveBlob): Promise<void> {
   const bytes = await gzip(JSON.stringify(blob));
@@ -95,15 +113,31 @@ export async function exportWorld(blob: SaveBlob): Promise<void> {
   }, 0);
 }
 
-/** Read + gunzip + parse a `.viv.gz` file into a `SaveBlob`. Throws on malformed input. */
+/**
+ * Read + parse a save file into a `SaveBlob`. Accepts BOTH gzipped `.viv.gz` and raw
+ * uncompressed `.viv` JSON (the file picker advertises both): gunzip first, and on
+ * failure fall back to decoding the bytes as UTF-8 JSON directly — mirroring the
+ * cold-open fetch's try-gunzip-then-raw strategy. Throws a clean error on malformed
+ * input (validated as a `SaveBlob` before returning).
+ */
 export async function importWorld(file: File): Promise<SaveBlob> {
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const text = await gunzip(bytes);
-  const blob = JSON.parse(text) as SaveBlob;
-  if (typeof blob.version !== "number" || blob.config === undefined) {
+  let text: string;
+  try {
+    text = await gunzip(bytes);
+  } catch {
+    text = new TextDecoder().decode(bytes);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
     throw new Error("not a valid vivarium save");
   }
-  return blob;
+  if (!isSaveBlob(parsed)) {
+    throw new Error("not a valid vivarium save");
+  }
+  return parsed;
 }
 
 /**
@@ -125,9 +159,8 @@ export async function fetchColdOpen(url = "cold-open.viv.gz"): Promise<SaveBlob 
     } catch {
       text = new TextDecoder().decode(bytes);
     }
-    const blob = JSON.parse(text) as SaveBlob;
-    if (typeof blob.version !== "number" || blob.config === undefined) return null;
-    return blob;
+    const parsed: unknown = JSON.parse(text);
+    return isSaveBlob(parsed) ? parsed : null;
   } catch {
     return null;
   }

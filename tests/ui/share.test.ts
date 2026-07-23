@@ -41,6 +41,16 @@ describe("URL hash encode/parse", () => {
   it("rejects a non-numeric seed", () => {
     expect(parseHash("#seed=abc")).toBeNull();
   });
+
+  it("rejects a blank/whitespace seed (a truncated link is not seed 0)", () => {
+    expect(parseHash("#seed=")).toBeNull();
+    expect(parseHash("#seed=%20%20")).toBeNull();
+  });
+
+  it("truncates a fractional seed to an integer (mirrors setSeed)", () => {
+    expect(parseHash("#seed=1.9")).toEqual({ seed: 1 });
+    expect(parseHash("#seed=-3.7")).toEqual({ seed: -3 });
+  });
 });
 
 /** Gzip a string the same way `share.ts` does, and wrap it in a `File`. */
@@ -64,5 +74,19 @@ describe("gzip file import", () => {
   it("rejects a gzipped non-save file", async () => {
     const file = await gzippedFile(JSON.stringify({ hello: "world" }));
     await expect(importWorld(file)).rejects.toThrow();
+  });
+
+  it("rejects a gzipped `null`/primitive without a raw TypeError", async () => {
+    const file = await gzippedFile("null");
+    await expect(importWorld(file)).rejects.toThrow("not a valid vivarium save");
+  });
+
+  it("imports a raw (uncompressed) .viv JSON file too", async () => {
+    const world = createWorld(5, makeConfig({}));
+    const blob = serialize(world);
+    const file = new File([JSON.stringify(blob)], "w.viv", { type: "application/json" });
+    const imported = await importWorld(file);
+    expect(imported.version).toBe(blob.version);
+    expect(imported.creatures.length).toBe(blob.creatures.length);
   });
 });
