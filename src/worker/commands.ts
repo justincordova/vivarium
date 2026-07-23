@@ -155,6 +155,14 @@ export function applyEditGenome(world: World, id: number, patch: GenomePatch): b
   if (c === undefined) return false;
   const g = c.genome;
   if (patch.kind === "trait") {
+    // Reject a non-finite value before it enters the genome. A NaN/±Infinity here would
+    // propagate through the deterministic brain forward pass (patchbayForward's masked
+    // sum → tanhApprox → NaN actions → NaN heading/velocity/position) and permanently
+    // corrupt the creature's state and the spatial hash. `clamp(NaN, lo, hi)` returns
+    // NaN (both comparisons are false), so the clamp is NOT a guard. Mirrors the
+    // `Number.isFinite` reject in `applySetParam` — the worker validates, never trusts
+    // the sender (a hand-crafted postMessage can carry any float).
+    if (!Number.isFinite(patch.value)) return false;
     if (patch.gene === "hue") {
       const v = ((patch.value % 360) + 360) % 360;
       g.hue[patch.allele] = v;
@@ -168,6 +176,9 @@ export function applyEditGenome(world: World, id: number, patch: GenomePatch): b
   }
   // arrow edit
   if (patch.arrow < 0 || patch.arrow >= C.ARROWS) return false;
+  // Same non-finite guard as the trait path: a NaN/±Infinity brain weight poisons the
+  // forward pass and desyncs determinism. Reject rather than write it.
+  if (patch.weight !== undefined && !Number.isFinite(patch.weight)) return false;
   const weights = patch.homolog === "A" ? g.weightsA : g.weightsB;
   const enabled = patch.homolog === "A" ? g.enabledA : g.enabledB;
   if (patch.weight !== undefined) weights[patch.arrow] = patch.weight;

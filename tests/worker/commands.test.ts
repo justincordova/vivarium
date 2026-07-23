@@ -138,6 +138,37 @@ describe("applyEditGenome", () => {
     expect(totalEnergy(world)).toBe(e0);
     expect(totalWater(world)).toBe(w0);
   });
+
+  it("rejects a non-finite trait value instead of poisoning the genome", () => {
+    const world = createWorld(1, makeConfig({}));
+    const c = world.creatures[0] as Creature;
+    const before = c.genome.size[0] as number;
+    expect(
+      applyEditGenome(world, c.id, {
+        kind: "trait",
+        gene: "size",
+        allele: 0,
+        value: Number.NaN,
+      }),
+    ).toBe(false);
+    expect(c.genome.size[0]).toBe(before);
+    expect(Number.isFinite(c.genome.size[0] as number)).toBe(true);
+  });
+
+  it("rejects a non-finite brain-arrow weight (would desync the forward pass)", () => {
+    const world = createWorld(1, makeConfig({}));
+    const c = world.creatures[0] as Creature;
+    const before = c.genome.weightsA[5] as number;
+    expect(
+      applyEditGenome(world, c.id, {
+        kind: "arrow",
+        arrow: 5,
+        homolog: "A",
+        weight: Number.POSITIVE_INFINITY,
+      }),
+    ).toBe(false);
+    expect(c.genome.weightsA[5]).toBe(before);
+  });
 });
 
 describe("applyPaint", () => {
