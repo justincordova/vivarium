@@ -264,17 +264,31 @@ function WhileYouWereAwayReport(): React.ReactElement | null {
  * by a localStorage flag; never on a returning visit.
  */
 const VISITED_KEY = "vivarium:visited";
-function firstVisit(): boolean {
+/** Pure read — is this the first visit? MUST NOT mutate storage (see the effect below):
+ * marking the flag is a separate, deferred step so the check stays idempotent. */
+function isFirstVisit(): boolean {
   try {
-    if (localStorage.getItem(VISITED_KEY) === "1") return false;
-    localStorage.setItem(VISITED_KEY, "1");
-    return true;
+    return localStorage.getItem(VISITED_KEY) !== "1";
   } catch {
     return false;
   }
 }
+function markVisited(): void {
+  try {
+    localStorage.setItem(VISITED_KEY, "1");
+  } catch {
+    // storage-denied — best effort; the caption simply shows again next time.
+  }
+}
 
 function OnboardingCaptions(): React.ReactElement | null {
+  // Capture "is this a first visit?" ONCE, synchronously, in the state initializer. React
+  // runs the initializer exactly once (it is NOT re-run by StrictMode's double-invoke),
+  // and the read is pure. This is the key to StrictMode-safety: the effect below decides
+  // whether to run off this captured boolean, NOT off a live storage read that the effect
+  // itself mutates — the old bug was exactly that self-mutating read, which stranded the
+  // caption on-screen permanently after the double-invoke.
+  const [isFirst] = useState(isFirstVisit);
   const [phase, setPhase] = useState<0 | 1 | 2>(0);
   const report = useSimStore((s) => s.report);
   // Dismiss the moment the visitor engages (inspects a creature) — the caption's whole job
@@ -283,7 +297,11 @@ function OnboardingCaptions(): React.ReactElement | null {
   // throttling: engagement, not just elapsed time, ends the onboarding.
   const inspected = useSimStore((s) => s.inspected);
   useEffect(() => {
-    if (!firstVisit()) return;
+    if (!isFirst) return;
+    // Mark visited now that we've committed to showing the intro. Idempotent, so a
+    // StrictMode re-run is harmless; and it never feeds back into the `isFirst` decision
+    // (that was captured once above), so the timers always (re)schedule cleanly.
+    markVisited();
     setPhase(1);
     const t1 = setTimeout(() => setPhase(2), 5200);
     const t2 = setTimeout(() => setPhase(0), 6600);
@@ -291,7 +309,7 @@ function OnboardingCaptions(): React.ReactElement | null {
       clearTimeout(t1);
       clearTimeout(t2);
     };
-  }, []);
+  }, [isFirst]);
   useEffect(() => {
     if (inspected !== null) setPhase(0);
   }, [inspected]);
