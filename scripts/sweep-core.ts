@@ -86,7 +86,12 @@ function setPath(o: ConfigOverrides, path: string, value: number): void {
  * whole sweep is reproducible: same master seed → same K configs → same ranking.
  */
 export function sampleConfig(masterSeed: number, i: number): ConfigOverrides {
-  const r = mulberry32((masterSeed ^ (i * 0x9e3779b1)) >>> 0);
+  // `Math.imul` (not float `*`) keeps the low 32 bits exact regardless of `i`, so the
+  // per-sample seed is bit-stable at any sweep size — a plain `i * 0x9e3779b1` loses
+  // integer precision once the product exceeds 2^53 (~3.4M samples), which would silently
+  // alias distinct sample indices to identical configs. Matches the integer-hash house
+  // style in rng.ts / frame.ts, and honors this function's "same seed → same K configs".
+  const r = mulberry32((masterSeed ^ Math.imul(i, 0x9e3779b1)) >>> 0);
   const overrides: ConfigOverrides = {};
   for (let a = 0; a < SWEEP_AXES.length; a++) {
     const axis = SWEEP_AXES[a] as Axis;
