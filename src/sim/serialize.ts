@@ -289,7 +289,17 @@ function deFields(s: SerFields): Fields {
  */
 function deTerrain(blob: SaveBlob): Terrain {
   const cells = (blob.config?.gridCols ?? 0) * (blob.config?.gridRows ?? 0);
-  if (blob.terrain !== undefined) {
+  // Only trust a blob's terrain arrays if they exactly cover the config grid. A
+  // mismatched length (a hand-edited save, or one from a different grid resolution whose
+  // config was patched but whose terrain wasn't) would make `terrain.biome[i]` read past
+  // the end → undefined → NaN/0 (Water) biome multipliers, silently corrupting
+  // biome-dependent dynamics while the rest of the world runs at the configured
+  // resolution. Fall back to the flat-grassland default on any mismatch.
+  if (
+    blob.terrain !== undefined &&
+    (blob.terrain.biome ?? []).length === cells &&
+    (blob.terrain.elevation ?? []).length === cells
+  ) {
     return {
       biome: Uint8Array.from(blob.terrain.biome ?? []),
       elevation: Float32Array.from(blob.terrain.elevation ?? []),
@@ -404,6 +414,30 @@ export function deserialize(data: SaveBlob): World {
   const corpses: Corpse[] = (blob.corpses ?? []).map((co) => ({ ...co }));
   // Nests (Society, Phase 7A). Absent in a pre-v5 blob → empty (migrateV4toV5 default).
   const nests: Nest[] = (blob.nests ?? []).map((n) => ({ ...n }));
+  // Reconcile `nextId` against every loaded entity id. A corrupt/hand-edited blob (or one
+  // missing the field → default 0) whose `nextId` is ≤ an existing entity id would make
+  // the next birth/seed/corpse/nest reuse a LIVE id — colliding in `lineageRoots`,
+  // corrupting `parentId`-based lineage resolution (`registerLineage` reads the parent's
+  // root by id), and breaking the spatial hash's ascending-id tie-break (no longer a
+  // total order). Trust the blob's value only if it already pasts every existing id;
+  // otherwise advance it. A no-op for any well-formed save.
+  let nextId = blob.nextId ?? 0;
+  for (let i = 0; i < creatures.length; i++) {
+    const id = (creatures[i] as Creature).id;
+    if (id >= nextId) nextId = id + 1;
+  }
+  for (let i = 0; i < plants.length; i++) {
+    const id = (plants[i] as Plant).id;
+    if (id >= nextId) nextId = id + 1;
+  }
+  for (let i = 0; i < corpses.length; i++) {
+    const id = (corpses[i] as Corpse).id;
+    if (id >= nextId) nextId = id + 1;
+  }
+  for (let i = 0; i < nests.length; i++) {
+    const id = (nests[i] as Nest).id;
+    if (id >= nextId) nextId = id + 1;
+  }
   const rng: RngBundle = deserializeRng(blob.rng ?? {});
 
   return {
@@ -415,7 +449,7 @@ export function deserialize(data: SaveBlob): World {
     corpses,
     nests,
     creatureIds: creatures.map((c) => c.id),
-    nextId: blob.nextId ?? 0,
+    nextId,
     fields: deFields(blob.fields),
     terrain: deTerrain(blob),
     rng,
