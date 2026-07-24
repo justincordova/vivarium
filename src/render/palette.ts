@@ -99,16 +99,22 @@ export function appearance(f: CreatureFrame, i: number): Appearance {
   const radius = remap(size, sizeLo, sizeHi, MIN_RADIUS, MAX_RADIUS);
 
   // Saturation from energy: full energy = vivid, empty = near-gray. Keep a small
-  // floor so a live creature is never fully colorless.
-  const sat = Math.round(remap(energyFrac, 0, 1, 18, 88));
+  // floor so a live creature is never fully colorless. Guard `energyFrac` here (the
+  // single source for all three energy-derived channels): `remap` already clamps NaN →
+  // outLo for saturation/lightness, but the glow alpha below uses it raw, where a NaN
+  // frame slot would yield the string "NaN" — an invalid hsla() the canvas silently
+  // ignores, leaving the creature in the previous fillStyle (the exact failure the hue
+  // guard above prevents). Normalize once so every channel is consistent.
+  const ef = Number.isFinite(energyFrac) ? energyFrac : 0;
+  const sat = Math.round(remap(ef, 0, 1, 18, 88));
   // Slightly brighter when healthy so the world pops off the dark chrome.
-  const light = Math.round(remap(energyFrac, 0, 1, 42, 58));
+  const light = Math.round(remap(ef, 0, 1, 42, 58));
   const fill = `hsl(${hue.toFixed(0)} ${sat}% ${light}%)`;
   const stroke = `hsl(${hue.toFixed(0)} ${sat}% ${Math.max(0, light - 22)}%)`;
   // A brighter, more saturated tint for the body's lit highlight, and a translucent
   // same-hue glow whose strength tracks energy (a starving creature barely glows).
   const highlight = `hsl(${hue.toFixed(0)} ${Math.min(100, sat + 12)}% ${Math.min(80, light + 22)}%)`;
-  const glowAlpha = (0.1 + 0.28 * energyFrac).toFixed(3);
+  const glowAlpha = (0.1 + 0.28 * ef).toFixed(3);
   const glow = `hsla(${hue.toFixed(0)} ${sat}% ${Math.min(70, light + 12)}% / ${glowAlpha})`;
 
   const [dietLo, dietHi] = TRAIT_RANGE.diet;
