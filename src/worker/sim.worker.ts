@@ -134,7 +134,13 @@ function loadSave(blob: SaveBlob): void {
   stop();
   stopAutosave();
   world = deserialize(blob);
-  recordHistory(world);
+  // NOTE: deliberately do NOT call `recordHistory` here. `deserialize` restores
+  // `world.history` verbatim from the blob — it already contains every sample up to
+  // `blob.tick`, INCLUDING one AT blob.tick if it lands on a sample boundary. Calling
+  // `recordHistory` again would append a DUPLICATE sample (and a duplicate
+  // `rootPopSnapshots` entry / `lineageBoom` event) whenever blob.tick is a multiple of
+  // HISTORY_SAMPLE_INTERVAL. The peer `boot` deserialize paths likewise omit it; only
+  // `init`'s createWorld+recordHistory is a genuine first sample (tick 0).
   autosaver = new Autosaver(idbStore, null);
   emitFrame();
   emitStats();
