@@ -355,9 +355,17 @@ self.onmessage = (ev: MessageEvent<Command>): void => {
     case "pause":
       stop();
       break;
-    case "speed":
-      ticksPerFrame = Math.max(1, Math.floor(cmd.ticksPerFrame));
+    case "speed": {
+      // Guard against a non-finite value: `Math.max(1, Math.floor(NaN))` is NaN (a
+      // classic JS footgun — NaN comparisons are always false, so the `1` does NOT
+      // rescue it). With `ticksPerFrame = NaN`, the next `step()` runs zero ticks but
+      // reschedules on the 1ms floor → a ~1kHz frame flood (full frame build +
+      // postMessage per reschedule) that pins a core and starves the sim, reachable from
+      // a hand-crafted share URL or devtools postMessage. Coerce anything invalid to 1.
+      const n = Math.floor(cmd.ticksPerFrame);
+      ticksPerFrame = Number.isFinite(n) && n >= 1 ? n : 1;
       break;
+    }
     case "inspect": {
       if (world === null) break;
       const c = world.creatures.find((cr) => cr.id === cmd.id);
