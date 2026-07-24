@@ -861,6 +861,14 @@ function tryMate(
   // Both must be above their mating threshold.
   if (a.energy <= expressTrait(a.genome.matingThreshold)) return;
   if (b.energy <= expressTrait(b.genome.matingThreshold)) return;
+  // Gate the partner's health the same way the initiator is gated (at ~L498, before
+  // `applyCreature` runs). A partner killed EARLIER in this resolve-shuffle (its health
+  // reduced to 0 by an attack processed before this pair) is still in `byId` — removals
+  // run later, in step 4.2. Attacks cut health, not energy, so `b.energy` can still clear
+  // the threshold above; without this check a creature that is already dead this tick
+  // could sire offspring (energy is conserved either way, but the semantics are wrong and
+  // asymmetric with the initiator's own health gate).
+  if (b.health <= 0) return;
   // Deterministic single-birth: only the LOWER-id parent initiates, so the pair
   // produces one child regardless of processing order. Placed BEFORE the stochastic
   // brake so exactly one initiator per pair draws from the `mating` stream (RNG
