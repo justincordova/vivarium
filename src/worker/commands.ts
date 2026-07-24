@@ -235,7 +235,21 @@ export function applyPaint(
 ): void {
   const cells = world.config.gridCols * world.config.gridRows;
   if (cell < 0 || cell >= cells) return;
+  // A non-finite `delta` poisons sim-read fields: `Math.round(NaN)` is NaN, which
+  // persists in the Float32Array temperature/scent modulators (read by the deterministic
+  // brain) → NaN sensors → NaN actions → irreversible determinism corruption, and throws
+  // out of the ledger paths' integer-guarded transfers uncaught. Reject before any write,
+  // mirroring the `Number.isFinite` guards in `applyEditGenome`/`applySetParam` — the
+  // worker validates, never trusts the sender (a hand-crafted postMessage carries any
+  // float).
+  if (!Number.isFinite(delta)) return;
   const d = Math.round(delta);
+  // Clamp `brush` to the grid: an unbounded value makes `brushCells` iterate
+  // (2·brush+1)² cells (the in-bounds `continue` filters OUTPUT, not iteration), hanging
+  // the worker in a tight synchronous loop — a denial of service reachable from a crafted
+  // message. NaN collapses to the default 1.
+  const maxBrush = Math.max(world.config.gridCols, world.config.gridRows);
+  brush = Number.isFinite(brush) ? Math.min(Math.max(0, Math.floor(brush)), maxBrush) : 1;
 
   if (field === "temperature" || field === "scent") {
     // Use the rounded `d`, not the raw float: these modulators are read by sensors
