@@ -67,6 +67,21 @@ function genomeFromSpec(spec: SpawnSpec): Genome {
  * in, never minted. Spawn intentionally bypasses `CREATURE_CAP` — it is a god-power.
  */
 export function applySpawn(world: World, spec: SpawnSpec): number {
+  // Validate every numeric field BEFORE any ledger transfer. `clamp(NaN,…)` returns NaN
+  // (both comparisons are false), and a NaN coordinate/endowment then either poisons the
+  // cell compartment or makes the second transfer throw mid-way — after the first has
+  // already moved energy out of the reservoir into a creature local that never reaches
+  // `world.creatures`, permanently destroying that energy from the closed ledger. The
+  // worker validates, never trusts the sender. Returns -1 (a sentinel the handler won't
+  // find in `world.creatures`, so no creature reply is posted) for a rejected spec.
+  if (
+    !Number.isFinite(spec.x) ||
+    !Number.isFinite(spec.y) ||
+    !Number.isFinite(spec.energy) ||
+    !Number.isFinite(spec.hydration)
+  ) {
+    return -1;
+  }
   const x = clamp(spec.x, 0, world.config.worldWidth);
   const y = clamp(spec.y, 0, world.config.worldHeight);
   const genome = genomeFromSpec(spec);
