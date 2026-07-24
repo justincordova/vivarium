@@ -194,6 +194,13 @@ export function applyEditGenome(world: World, id: number, patch: GenomePatch): b
   // Same non-finite guard as the trait path: a NaN/±Infinity brain weight poisons the
   // forward pass and desyncs determinism. Reject rather than write it.
   if (patch.weight !== undefined && !Number.isFinite(patch.weight)) return false;
+  // The enable bit is a 0/1 mask. `patchbayForward` multiplies by `enabled[k]` raw
+  // (masked accumulation), so a crafted value other than 0/1 — e.g. 5 — would SCALE that
+  // arrow's contribution rather than merely enabling it, silently corrupting the forward
+  // pass (and the value persists in the Uint8Array homolog, propagating via inheritance).
+  // Reject anything that is not exactly 0 or 1, the same "worker validates, never trusts
+  // the sender" guard the weight path applies.
+  if (patch.enabled !== undefined && patch.enabled !== 0 && patch.enabled !== 1) return false;
   const weights = patch.homolog === "A" ? g.weightsA : g.weightsB;
   const enabled = patch.homolog === "A" ? g.enabledA : g.enabledB;
   if (patch.weight !== undefined) weights[patch.arrow] = patch.weight;
