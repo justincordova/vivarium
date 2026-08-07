@@ -24,6 +24,8 @@ bump. Patch bumps are fixes within a phase. `v1.0.0` is the beta definition-of-d
 | `v0.3.0` | Phase 2 — the window | Worker + canvas renderer show a live world without stutter. |
 | `v0.4.0` | Phase 3 — the sandbox | Inspector, mutation slider, god-powers, follow-cam, charts; **static deploy works** ("Ship it"). |
 | `v0.5.0` | Phase 4 — brains | `PatchbayBrain` swapped in; same-seed A/B done; the two swap-decision instruments + heritability gate recorded. |
+| `v0.6.0` | Phase 6 — terrain foundation | Terrain generated, serialized (save v4) and modulating growth/movement; `SENSORS` raised with the golden vector re-baselined; cold-open re-evolved under the new geometry. |
+| `v0.7.0` | Phase 7 — society | Nest action, kin senses and the `sociality` gene live; nests render; **the event feed narrates pack/home formation**; cold-open re-evolved. *Not yet taggable — the narration half of the feed is outstanding (`docs/plans/phase-7-society-plan.md` Task 8): `pushEvent(world, "nest:<root>")` is written in `tick.ts` and no consumer reads it.* |
 | `v1.0.0` | Phase 5A–5C — persistence closes the loop | Beta DoD met: a stranger opens a URL, sees oscillation, reads a genome, adjusts mutation, closes the tab, finds the world waiting (advanced, with a "while you were away" report). Shipped: persistence + offline catch-up + report, shareable URL/file, cold open, timeline + lineage speciation view, seasonal temperature pressure. **5D (Terrarium/Laboratory) is post-beta and deferred.** |
 
 Patch examples: `v0.1.1` = a Phase-0 bugfix after `v0.1.0` was tagged;
@@ -35,7 +37,8 @@ Post-beta work (Terrarium/Laboratory modes, LLM naturalist, etc. — SPEC.md
 ## 3. Save-format version — the serialized integer
 
 A monotonic integer inside every serialized world (started at `version: 1`; **now
-`3`** after Phase 5A.3, per SPEC.md §Persistence). **Independent of git tags and the
+`5`** after Phase 7A, per SPEC.md §Persistence — the authoritative value is
+`SAVE_VERSION` in `src/sim/serialize.ts`). **Independent of git tags and the
 SemVer above.**
 
 - Bump **only** on a breaking schema change, and ship a `migrate_vN_to_vN+1()`
@@ -45,6 +48,12 @@ SemVer above.**
 - **`2 → 3` (Phase 5A.3 lineage events):** `migrateV2toV3` defaults `lineageRoots`,
   `lineageEvents`, `dominant`, `rootPopSnapshots` so an older save loads and starts
   lineage tracking from reload.
+- **`3 → 4` (Phase 6 terrain):** `migrateV3toV4` bumps the version and lets `deTerrain`
+  default an older blob to flat grassland.
+- **`4 → 5` (Phase 7A society):** `migrateV4toV5` bumps the version; `deserialize` fills
+  the defaults — absent `nests` → `[]`, absent `sociality` → neutral. This release also
+  reshaped brain geometry (SENSORS 21→24, ACTIONS 7→8, ARROWS 380→420), so a 380-length
+  brain re-seeds inert at 420 rather than migrating weight-for-weight.
 - The save integer moves for its own reasons — never tie it to a git tag.
 - Seed reproducibility is guaranteed *within* a save version, not necessarily
   across (SPEC.md §Determinism / RNG Discipline).
