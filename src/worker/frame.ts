@@ -341,6 +341,12 @@ export function buildTimeline(world: World): TimelinePayload {
 /** How many narratable events the feed carries. Small: this is a story, not a log. */
 export const MAX_FEED_EVENTS = 40;
 
+/**
+ * A lineage founding another home within this many ticks of its last reported one is the
+ * same story, not a new one. Tuned to roughly a day (`TICKS_PER_DAY` = 1000).
+ */
+const HOME_COALESCE_TICKS = 1_000;
+
 /** Biome enum → the noun the narrator uses for a place. Index is the `Biome` value. */
 const BIOME_NOUN = ["shallows", "grassland", "forest", "flats", "highlands"] as const;
 
@@ -376,9 +382,17 @@ function placeName(world: World, x: number, y: number): string {
  * every stats tick. The result is truncated to the most recent `MAX_FEED_EVENTS`, which
  * makes the payload self-contained — the UI renders the latest list verbatim and needs
  * no accumulation or dedupe of its own.
+ *
+ * **Home events are coalesced per lineage** (`HOME_COALESCE_TICKS`). A thriving lineage
+ * founds homes in bursts, so without this the feed degenerates into a page of "the green
+ * bloodline built a home in the northern grassland" — and, worse, those repeats evict the
+ * genuinely rare drama (booms, extinctions, dominance shifts) from a fixed-size feed.
+ * Keeping the first of each burst preserves the news and drops the echo.
  */
 export function buildEventFeed(world: World): WorldEvent[] {
   const out: WorldEvent[] = [];
+  /** Last reported home tick per lineage, for burst coalescing (see the doc comment). */
+  const lastHomeTick = new Map<number, number>();
 
   for (let i = 0; i < world.lineageEvents.length; i++) {
     const e = world.lineageEvents[i] as LineageEvent;
@@ -414,6 +428,11 @@ export function buildEventFeed(world: World): WorldEvent[] {
     const parts = e.event.split(":");
     const root = Number(parts[1]);
     if (!Number.isFinite(root)) continue;
+    // Coalesce a lineage's burst of home-founding into its first report. The log is
+    // tick-ordered, so the last kept tick per lineage is all the state this needs.
+    const lastKept = lastHomeTick.get(root);
+    if (lastKept !== undefined && e.tick - lastKept < HOME_COALESCE_TICKS) continue;
+    lastHomeTick.set(root, e.tick);
     const x = Number(parts[2]);
     const y = Number(parts[3]);
     const sited = Number.isFinite(x) && Number.isFinite(y);

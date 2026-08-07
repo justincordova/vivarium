@@ -175,9 +175,13 @@ export function Inspector(): React.ReactElement | null {
         <p className="text-[11px] leading-snug text-[var(--fg-dim)]">
           {describeBehavior(inspected)}
         </p>
+        {/* Ticks, not generations. `Creature.age` increments once per tick, so "10,580
+            generations old" — which is what calling this a generation produced — is
+            absurd for a single animal. The world's age is loosely called a generation
+            elsewhere; an individual's is not. */}
         <p className="text-[10px] uppercase tracking-wider text-[var(--fg-mute)]">
-          {inspected.parentId === null ? "a founder" : "born here"} · {num(inspected.age, 0)}{" "}
-          generations old
+          {inspected.parentId === null ? "a founder" : "born here"} · {num(inspected.age, 0)} ticks
+          old
         </p>
       </div>
 

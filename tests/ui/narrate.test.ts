@@ -88,7 +88,14 @@ describe("narrate", () => {
       "in the northern forest",
     );
     const unsited = narrate(event({ kind: "home", place: "" }));
-    expect(unsited).toBe("the amber bloodline built a home.");
+    expect(unsited).toBe("The amber bloodline built a home.");
+  });
+
+  it("writes sentences, not fragments — every line is capitalized", () => {
+    for (const kind of ALL_KINDS) {
+      const line = narrate(event({ kind, factor: 2 }));
+      expect(line[0]).toBe(line[0]?.toUpperCase());
+    }
   });
 });
 
@@ -110,6 +117,17 @@ describe("describeKind", () => {
     expect(describeKind(c)).toBe("An omnivore.");
     setGene(c, "speed", 0.95);
     expect(describeKind(c)).toContain("swift");
+  });
+
+  it("calls a creature toxic on the same threshold the renderer draws spots at", () => {
+    // `render/palette.ts` turns flank spots on at exactly half the gene's range, and the
+    // legend teaches the player to read them. Prose and picture must agree.
+    const c = aCreature();
+    for (const g of TRAIT_GENES as readonly TraitGene[]) setGene(c, g, 0.5);
+    setGene(c, "toxicity", 0.55);
+    expect(describeKind(c)).toContain("toxic");
+    setGene(c, "toxicity", 0.45);
+    expect(describeKind(c)).not.toContain("toxic");
   });
 
   it("agrees its article with the leading word", () => {

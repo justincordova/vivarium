@@ -362,3 +362,55 @@ describe("buildFlashes", () => {
     expect(transfers).toContain(frame.flashes.kind.buffer);
   });
 });
+
+describe("buildEventFeed — home coalescing", () => {
+  it("collapses a lineage's burst of home-founding into its first report", () => {
+    const world = createWorld(1, makeConfig({}));
+    world.eventLog.length = 0;
+    world.lineageEvents.length = 0;
+    // One lineage founding five homes in quick succession is one story.
+    for (const t of [100, 150, 200, 260, 300]) {
+      world.eventLog.push({ tick: t, event: `nest:9:50:50` });
+    }
+    const feed = buildEventFeed(world);
+    expect(feed.length).toBe(1);
+    expect(feed[0]?.tick).toBe(100);
+  });
+
+  it("still reports a later home once the lineage has been quiet", () => {
+    const world = createWorld(1, makeConfig({}));
+    world.eventLog.length = 0;
+    world.lineageEvents.length = 0;
+    world.eventLog.push(
+      { tick: 100, event: "nest:9:50:50" },
+      { tick: 5000, event: "nest:9:50:50" },
+    );
+    expect(buildEventFeed(world).map((e) => e.tick)).toEqual([100, 5000]);
+  });
+
+  it("coalesces per lineage, not globally", () => {
+    const world = createWorld(1, makeConfig({}));
+    world.eventLog.length = 0;
+    world.lineageEvents.length = 0;
+    world.eventLog.push(
+      { tick: 100, event: "nest:1:50:50" },
+      { tick: 101, event: "nest:2:50:50" },
+      { tick: 102, event: "nest:3:50:50" },
+    );
+    expect(buildEventFeed(world).map((e) => e.lineage)).toEqual([1, 2, 3]);
+  });
+
+  it("stops home spam from evicting rare lineage drama from the feed", () => {
+    const world = createWorld(1, makeConfig({}));
+    world.eventLog.length = 0;
+    world.lineageEvents.length = 0;
+    world.lineageEvents.push({ kind: "extinction", tick: 1, lineage: 77 });
+    // Far more home events than the feed can hold, all from one lineage.
+    for (let t = 2; t < 2 + MAX_FEED_EVENTS * 3; t++) {
+      world.eventLog.push({ tick: t, event: "nest:9:50:50" });
+    }
+    const feed = buildEventFeed(world);
+    // Without coalescing the extinction would be truncated away as the oldest entry.
+    expect(feed.some((e) => e.kind === "extinction")).toBe(true);
+  });
+});

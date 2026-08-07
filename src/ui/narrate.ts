@@ -47,19 +47,24 @@ export function hueName(hue: number): string {
 /** Turn one resolved world event into a sentence. */
 export function narrate(e: WorldEvent): string {
   const who = `the ${hueName(e.hue)} bloodline`;
-  switch (e.kind) {
-    case "silence":
-      return "The world fell silent — nothing is left alive.";
-    case "extinction":
-      return `${who} died out.`;
-    case "boom":
-      // The factor is the interesting part: "thriving" alone doesn't convey scale.
-      return `${who} is thriving — ${e.factor.toFixed(1)}× in a few generations.`;
-    case "dominant":
-      return `${who} now outnumbers every other.`;
-    case "home":
-      return e.place ? `${who} built a home in ${e.place}.` : `${who} built a home.`;
-  }
+  const body = ((): string => {
+    switch (e.kind) {
+      case "silence":
+        return "the world fell silent — nothing is left alive.";
+      case "extinction":
+        return `${who} died out.`;
+      case "boom":
+        // The factor is the interesting part: "thriving" alone doesn't convey scale.
+        return `${who} is thriving — ${e.factor.toFixed(1)}× in a few generations.`;
+      case "dominant":
+        return `${who} now outnumbers every other.`;
+      case "home":
+        return e.place ? `${who} built a home in ${e.place}.` : `${who} built a home.`;
+    }
+  })();
+  // Every line begins with "the <colour> bloodline", so capitalize once here rather than
+  // hand-casing each branch.
+  return body.charAt(0).toUpperCase() + body.slice(1);
 }
 
 // ── The creature card ────────────────────────────────────────────────────────
@@ -95,10 +100,18 @@ export function describeKind(c: Creature): string {
   if (size > 0.7) adjectives.push("massive");
   else if (size < 0.3) adjectives.push("tiny");
 
-  // Defences are the most legible thing on screen (back plates, flank spots), so they
-  // earn a word whenever they're pronounced.
+  // Defences are the most legible thing on screen, and the legend teaches the player to
+  // read them, so the prose must not contradict the picture.
+  //
+  // Toxicity is drawn as a hard on/off — flank spots appear at exactly half the gene's
+  // range (`render/palette.ts` `toxic`) — so the card uses the *same* threshold. At 0.6 a
+  // visibly spotted creature was being described as unremarkable.
+  //
+  // Armor deliberately does NOT match its render threshold: plates start growing at 0.12
+  // of range, so nearly every creature has some. "Armored" has to mean *notably* armored
+  // or the word carries no information.
   if (geneFrac(c, "armor") > 0.6) adjectives.push("armored");
-  if (geneFrac(c, "toxicity") > 0.6) adjectives.push("toxic");
+  if (geneFrac(c, "toxicity") > 0.5) adjectives.push("toxic");
 
   const head = adjectives[0] ?? noun;
   const article = /^[aeiou]/.test(head) ? "An" : "A";
