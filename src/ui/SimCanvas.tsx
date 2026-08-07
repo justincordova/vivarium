@@ -125,7 +125,10 @@ export function SimCanvas(): React.ReactElement {
             useSimStore.getState().setFollow(null);
           }
         }
-        draw(frame, ctx, cam);
+        // Read the selection non-reactively (this is a rAF loop, not a render pass):
+        // the follow lock wins, otherwise whatever the inspector has open.
+        const s = useSimStore.getState();
+        draw(frame, ctx, cam, s.followId ?? s.inspected?.id ?? null);
       }
       raf = requestAnimationFrame(loop);
     };

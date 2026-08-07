@@ -20,6 +20,7 @@ import type { Config, Creature, LineageEvent, World } from "@sim/types";
 import type {
   CorpseFrame,
   CreatureFrame,
+  FlashFrame,
   PlantFrame,
   RenderFrame,
   StatsPayload,
@@ -27,6 +28,7 @@ import type {
   TraitBins,
   WorldEvent,
 } from "./protocol";
+import { FLASH_TICKS } from "./protocol";
 
 /** Histogram buckets per gene for the trait-distribution charts (display-only). */
 export const TRAIT_BINS = 24;
@@ -184,6 +186,49 @@ export function buildRenderFrame(world: World): RenderFrame {
     plants,
     corpses,
     nests,
+    flashes: buildFlashes(world),
+  };
+}
+
+/** Hard ceiling on marks per frame, so a mass-death tick cannot stall the renderer. */
+const MAX_FLASHES = 64;
+
+/**
+ * Collect births/kills from the last `FLASH_TICKS` ticks so the renderer can mark them.
+ *
+ * Scans `world.eventLog` **backwards** and stops at the cutoff: the log is tick-ordered
+ * and bounded, so this is O(recent events), not O(ring). Entries predating the position
+ * suffix (`kill:<id>` with no coordinates) are skipped rather than drawn at the origin —
+ * a mark in the wrong place is worse than no mark.
+ */
+export function buildFlashes(world: World): FlashFrame {
+  const cutoff = world.tick - FLASH_TICKS;
+  const xs: number[] = [];
+  const ys: number[] = [];
+  const ages: number[] = [];
+  const kinds: number[] = [];
+
+  for (let i = world.eventLog.length - 1; i >= 0 && xs.length < MAX_FLASHES; i--) {
+    const e = world.eventLog[i] as { tick: number; event: string };
+    if (e.tick < cutoff) break;
+    const isKill = e.event.startsWith("kill:");
+    if (!isKill && !e.event.startsWith("birth:")) continue;
+    const parts = e.event.split(":");
+    const x = Number(parts[2]);
+    const y = Number(parts[3]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue; // pre-position saved entry
+    xs.push(x);
+    ys.push(y);
+    ages.push(world.tick - e.tick);
+    kinds.push(isKill ? 1 : 0);
+  }
+
+  return {
+    count: xs.length,
+    x: Float32Array.from(xs),
+    y: Float32Array.from(ys),
+    age: Float32Array.from(ages),
+    kind: Uint8Array.from(kinds),
   };
 }
 
@@ -228,6 +273,10 @@ export function frameTransferables(frame: RenderFrame): ArrayBuffer[] {
     frame.nests.y.buffer,
     frame.nests.strengthFrac.buffer,
     frame.nests.hue.buffer,
+    frame.flashes.x.buffer,
+    frame.flashes.y.buffer,
+    frame.flashes.age.buffer,
+    frame.flashes.kind.buffer,
   ] as ArrayBuffer[];
 }
 

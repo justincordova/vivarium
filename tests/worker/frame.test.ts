@@ -17,6 +17,7 @@ import { createWorld } from "@sim/world";
 import { describe, expect, it } from "vitest";
 import {
   buildEventFeed,
+  buildFlashes,
   buildRenderFrame,
   buildStats,
   buildTraitBins,
@@ -27,6 +28,7 @@ import {
   TRAIT_BINS,
 } from "../../src/worker/frame";
 import type { CreatureFrame } from "../../src/worker/protocol";
+import { FLASH_TICKS } from "../../src/worker/protocol";
 
 /**
  * The appearance channels the SPEC.md §Visual Design table derives, minus geometry
@@ -311,5 +313,52 @@ describe("buildEventFeed", () => {
     }
     const feed = buildEventFeed(world);
     expect(new Set(feed.map((e) => e.key)).size).toBe(feed.length);
+  });
+});
+
+describe("buildFlashes", () => {
+  it("carries only births/kills inside the flash window, with age since the event", () => {
+    const world = createWorld(1, makeConfig({}));
+    world.eventLog.length = 0;
+    world.tick = 100;
+    world.eventLog.push(
+      { tick: 100 - FLASH_TICKS - 1, event: "kill:1:10:10" }, // too old
+      { tick: 96, event: "kill:2:20:20" },
+      { tick: 99, event: "birth:3:30:30" },
+    );
+    const f = buildFlashes(world);
+    expect(f.count).toBe(2);
+    // Scanned newest-first, so the most recent event leads.
+    expect(Array.from(f.kind)).toEqual([0, 1]); // birth, then kill
+    expect(Array.from(f.age)).toEqual([1, 4]);
+    expect(Array.from(f.x)).toEqual([30, 20]);
+  });
+
+  it("ignores events that carry no position rather than marking the origin", () => {
+    const world = createWorld(1, makeConfig({}));
+    world.eventLog.length = 0;
+    world.tick = 10;
+    // The pre-position form, still present in saved logs. A mark at (0,0) would be a lie.
+    world.eventLog.push({ tick: 10, event: "kill:1" }, { tick: 10, event: "birth:2" });
+    expect(buildFlashes(world).count).toBe(0);
+  });
+
+  it("ignores non-birth/kill entries", () => {
+    const world = createWorld(1, makeConfig({}));
+    world.eventLog.length = 0;
+    world.tick = 10;
+    world.eventLog.push({ tick: 10, event: "nest:1:5:5" }, { tick: 10, event: "extinct" });
+    expect(buildFlashes(world).count).toBe(0);
+  });
+
+  it("is included in the render frame and its buffers are transferable", () => {
+    const world = createWorld(1, makeConfig({}));
+    for (let i = 0; i < 60; i++) tick(world);
+    const frame = buildRenderFrame(world);
+    expect(frame.flashes.count).toBeGreaterThanOrEqual(0);
+    expect(frame.flashes.x.length).toBe(frame.flashes.count);
+    const transfers = frameTransferables(frame);
+    expect(transfers).toContain(frame.flashes.x.buffer);
+    expect(transfers).toContain(frame.flashes.kind.buffer);
   });
 });

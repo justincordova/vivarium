@@ -109,6 +109,37 @@ export interface RenderFrame {
   corpses: CorpseFrame;
   /** Nests (Society) — emergent homes rendered as lineage-tinted markers. */
   nests: NestFrame;
+  /** Very recent births/kills, so something visibly *happens* when it happens. */
+  flashes: FlashFrame;
+}
+
+/**
+ * Momentary events worth a mark on screen — a birth or a kill in the last handful of
+ * ticks. Without these the world moves continuously but never *reacts*: predation, the
+ * most dramatic thing that happens, is invisible unless you happen to be watching the
+ * exact pixel. Positions are carried on the event itself because the creature is gone
+ * from the world by the time a frame is built.
+ *
+ * `age` is in ticks since the event, so the renderer can fade it out without keeping
+ * any state of its own — the frame stays a complete description of the moment.
+ */
+/**
+ * How long a birth/kill mark lives, in ticks (~0.6 s at `MS_PER_TICK`). Both sides must
+ * agree — the worker uses it to decide which events to carry, the renderer to decide how
+ * fast to fade them — so it lives here, in the contract, rather than as a pair of
+ * constants that can silently drift apart. (This is the one runtime value in an
+ * otherwise types-only module; every `sim/` import here is type-only and erases.)
+ */
+export const FLASH_TICKS = 12;
+
+export interface FlashFrame {
+  count: number;
+  x: Float32Array;
+  y: Float32Array;
+  /** Ticks elapsed since the event fired (0 = this tick). */
+  age: Float32Array;
+  /** 0 = birth, 1 = kill. */
+  kind: Uint8Array;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

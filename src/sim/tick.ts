@@ -838,7 +838,10 @@ function tryAttack(
     target.health -= toQuantum(power);
     if (target.health < 0) target.health = 0;
     if (target.health === 0) {
-      pushEvent(world, `kill:${target.id}`);
+      // Position rides along so the renderer can flash where the kill happened; by the
+      // time a frame is built the creature is gone and the site is unrecoverable. Same
+      // tolerated-older-form contract as the nest event (`eventLog` is serialized).
+      pushEvent(world, `kill:${target.id}:${Math.round(target.x)}:${Math.round(target.y)}`);
     }
     // Scavenge-to-gain: commit to the target so next tick seeks the corpse.
     attacker.ruleState.targetId = target.id;
@@ -964,7 +967,7 @@ function tryMate(
   byId.set(child.id, child);
   // Inherit the parent's founder-lineage root (Phase 5A.3) — the initiating parent `a`.
   registerLineage(world, child.id, a.id);
-  pushEvent(world, `birth:${child.id}`);
+  pushEvent(world, `birth:${child.id}:${Math.round(child.x)}:${Math.round(child.y)}`);
 }
 
 // ── 4.2 Removals (ascending id) ──────────────────────────────────────────────

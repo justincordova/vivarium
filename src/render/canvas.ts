@@ -13,7 +13,7 @@
  *  - Nothing eases or bounces — the only motion is the simulation advancing.
  */
 
-import type { RenderFrame } from "@worker/protocol";
+import { FLASH_TICKS, type RenderFrame } from "@worker/protocol";
 import { type Camera, worldToScreen, worldToScreenX, worldToScreenY } from "./camera";
 import { type Appearance, appearance } from "./palette";
 
@@ -277,10 +277,20 @@ function drawCreature(
 }
 
 /**
- * Draw the whole frame. Order: trail fade → bounds → plants → corpses → creatures →
- * day/night overlay. Culls anything off the viewport.
+ * Draw the whole frame. Order: trail fade → terrain → bounds → plants → corpses →
+ * nests → creatures → selection ring → event flashes → day/night overlay. Culls
+ * anything off the viewport.
+ *
+ * `selectedId` (the inspected or followed creature) gets a ring so clicking something
+ * actually points at it — without one, opening the inspector tells you about a creature
+ * you then have to find again by eye in a crowd.
  */
-export function draw(frame: RenderFrame, ctx: CanvasRenderingContext2D, cam: Camera): void {
+export function draw(
+  frame: RenderFrame,
+  ctx: CanvasRenderingContext2D,
+  cam: Camera,
+  selectedId: number | null = null,
+): void {
   fadeTrails(ctx, cam.viewW, cam.viewH);
   drawTerrain(ctx, frame, cam);
   drawBounds(ctx, frame, cam);
@@ -346,9 +356,59 @@ export function draw(frame: RenderFrame, ctx: CanvasRenderingContext2D, cam: Cam
     }
     // Rich detail only pays off when the creature is big enough on screen to see it.
     drawCreature(ctx, sx, sy, c.heading[i] as number, rPx, a, rich && rPx > 2.5);
+
+    if (selectedId !== null && (c.ids[i] as number) === selectedId) {
+      drawSelection(ctx, sx, sy, rPx);
+    }
   }
 
+  drawFlashes(ctx, frame, cam);
   drawDayNight(ctx, cam, frame.light);
+}
+
+/**
+ * The "you are looking at this one" ring: a bright dashed circle outside the creature's
+ * full drawn extent, so it frames the animal instead of covering it.
+ */
+function drawSelection(ctx: CanvasRenderingContext2D, sx: number, sy: number, rPx: number): void {
+  ctx.save();
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+  ctx.lineWidth = 1.25;
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  ctx.arc(sx, sy, Math.max(7, rPx * 2.2), 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/**
+ * Births and kills as expanding, fading rings. Drawn above creatures (the point is to
+ * catch the eye) but below the day/night tint so they stay part of the scene.
+ *
+ * A kill is warm and sharp; a birth is cool and soft. Both expand as they fade, which
+ * reads as an event rather than as a new object appearing in the world.
+ */
+function drawFlashes(ctx: CanvasRenderingContext2D, frame: RenderFrame, cam: Camera): void {
+  const f = frame.flashes;
+  if (f.count === 0) return;
+  ctx.save();
+  for (let i = 0; i < f.count; i++) {
+    const sx = worldToScreenX(cam, f.x[i] as number);
+    const sy = worldToScreenY(cam, f.y[i] as number);
+    if (sx < -30 || sy < -30 || sx > cam.viewW + 30 || sy > cam.viewH + 30) continue;
+    // 0 at birth of the mark → 1 when it should be gone.
+    const t = Math.min(1, Math.max(0, (f.age[i] as number) / FLASH_TICKS));
+    const alpha = (1 - t) * 0.9;
+    if (alpha <= 0.02) continue;
+    const r = 3 + t * 12;
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = f.kind[i] === 1 ? "rgb(255, 120, 96)" : "rgb(150, 240, 200)";
+    ctx.beginPath();
+    ctx.arc(sx, sy, r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 /**
