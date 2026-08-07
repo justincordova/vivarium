@@ -9,6 +9,7 @@ import { startWorker, useSimStore } from "@store/useSimStore";
 import { useEffect, useState } from "react";
 import { Charts } from "./Charts";
 import { ControlPanel } from "./ControlPanel";
+import { EventFeed } from "./EventFeed";
 import { HelpLegend } from "./HelpLegend";
 import { Inspector } from "./Inspector";
 import { Landing } from "./Landing";
@@ -56,6 +57,7 @@ function Stat({
 
 function Hud(): React.ReactElement {
   const stats = useSimStore((s) => s.stats);
+  const scienceMode = useSimStore((s) => s.scienceMode);
   const pop = stats ? Object.values(stats.population).reduce((a, b) => a + b, 0) : 0;
   return (
     // The panel stays click-through (canvas underneath); individual stat labels opt back
@@ -81,20 +83,27 @@ function Hud(): React.ReactElement {
           help="Distinct breeding groups. Two groups count as separate species once they've drifted too far apart to interbreed."
         />
         <Stat
-          label="diversity"
-          value={fmt(stats?.traitVariance ?? 0, 4)}
-          help="How varied the creatures are. High = many different body plans; low = everyone's converging on one design."
-        />
-        <Stat
-          label="new behavior"
-          value={fmt(stats?.behaviorNovelty ?? 0, 3)}
-          help="How much new behavior is appearing. Higher means creatures are still discovering new ways to live; near zero means the world has settled."
-        />
-        <Stat
           label="extinctions"
           value={fmt(stats?.extinctionEvents ?? 0)}
           help="How many lineages have died out completely over this world's whole history."
         />
+        {/* Research readouts. `traitVariance` to four decimals and a novelty score are
+            precise and unactionable to a newcomer — they are the instrument, not the
+            world, so they wait behind the toggle. */}
+        {scienceMode && (
+          <>
+            <Stat
+              label="diversity"
+              value={fmt(stats?.traitVariance ?? 0, 4)}
+              help="How varied the creatures are. High = many different body plans; low = everyone's converging on one design."
+            />
+            <Stat
+              label="new behavior"
+              value={fmt(stats?.behaviorNovelty ?? 0, 3)}
+              help="How much new behavior is appearing. Higher means creatures are still discovering new ways to live; near zero means the world has settled."
+            />
+          </>
+        )}
       </div>
     </div>
   );
@@ -350,6 +359,7 @@ function PersistErrorBadge(): React.ReactElement | null {
 export function App(): React.ReactElement {
   const seed = useSimStore((s) => s.seed);
   const phase = useSimStore((s) => s.phase);
+  const scienceMode = useSimStore((s) => s.scienceMode);
   // Boot the worker once. What happens next depends on entry policy: a shared-URL link
   // boots straight in; otherwise the Landing shows and the visitor picks a source.
   // Auto-play is driven by the worker's `ready` event (after any offline catch-up).
@@ -388,10 +398,13 @@ export function App(): React.ReactElement {
             <ControlPanel />
           </div>
 
-          {/* Right dock: inspector + charts. Starts below the help button (top-14). */}
+          {/* Right dock: inspector + the chronicle, with the analysis charts appended only
+              in science mode. The feed sits above the charts deliberately — it is what a
+              newcomer should read first, and in the default view it is the whole dock. */}
           <div className="pointer-events-none absolute right-0 top-14 bottom-16 flex w-[21rem] flex-col items-end gap-3 overflow-y-auto px-4 pb-4 [&>*]:pointer-events-auto">
             <Inspector />
-            <Charts />
+            <EventFeed />
+            {scienceMode && <Charts />}
           </div>
           <HelpLegend />
 

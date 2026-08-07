@@ -565,6 +565,11 @@ function updateActionWindow(c: Creature, intents: Intents, t: Config["tunables"]
   if (intents.attack) w[Action.Attack] = (w[Action.Attack] as number) + 1;
   if (intents.mate) w[Action.Mate] = (w[Action.Mate] as number) + 1;
   if (intents.emit) w[Action.EmitScent] = (w[Action.EmitScent] as number) + 1;
+  // Nest (Society, Phase 7A) was added to `Intents` and to `ACTIONS` but never recorded
+  // here, so the histogram had a permanently-zero slot: `behaviorNovelty` could not see
+  // nesting at all, and a lineage that discovered home-building scored as doing nothing
+  // new. Same decay/increment contract as every other slot.
+  if (intents.nest) w[Action.Nest] = (w[Action.Nest] as number) + 1;
 }
 
 // ── 4.1 helpers ──────────────────────────────────────────────────────────────
@@ -752,7 +757,12 @@ function tryNest(world: World, c: Creature, reservoir: Compartment, t: Config["t
       lineage: root,
       strength: t.NEST_REINFORCE,
     });
-    pushEvent(world, `nest:${root}`);
+    // Position rides along (rounded to whole world units) so the narrator can name
+    // *where* a home appeared without re-finding the nest, which may have decayed by the
+    // time the feed is built. Readers must tolerate the older 2-field `nest:<root>` form
+    // still present in saved logs — `eventLog` is serialized, and the string is the
+    // schema. Kept integer-rounded to bound the entry size in the `MAX_EVENT_LOG` ring.
+    pushEvent(world, `nest:${root}:${Math.round(c.x)}:${Math.round(c.y)}`);
   }
 }
 

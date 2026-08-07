@@ -80,6 +80,9 @@ export interface Report {
 /** localStorage key for the "replay while I was away" preference. */
 const CATCHUP_PREF_KEY = "vivarium:catchup";
 
+/** localStorage key for the science-mode preference. */
+const SCIENCE_PREF_KEY = "vivarium:science";
+
 /** Read the catch-up preference (default ON). Guarded for non-DOM/test contexts. */
 function readCatchupPref(): boolean {
   try {
@@ -92,6 +95,24 @@ function readCatchupPref(): boolean {
 function writeCatchupPref(enabled: boolean): void {
   try {
     localStorage.setItem(CATCHUP_PREF_KEY, enabled ? "on" : "off");
+  } catch {
+    // Non-DOM / storage-denied context — the pref is best-effort.
+  }
+}
+
+/** Read the science-mode preference. Default OFF — a newcomer must opt *in* to the
+ * instrument, which is the entire point of the split. */
+function readSciencePref(): boolean {
+  try {
+    return localStorage.getItem(SCIENCE_PREF_KEY) === "on";
+  } catch {
+    return false;
+  }
+}
+
+function writeSciencePref(enabled: boolean): void {
+  try {
+    localStorage.setItem(SCIENCE_PREF_KEY, enabled ? "on" : "off");
   } catch {
     // Non-DOM / storage-denied context — the pref is best-effort.
   }
@@ -140,6 +161,15 @@ interface SimState {
   phase: "landing" | "entering" | "live";
   /** Whether a saved world exists (async-checked on mount) → gates the "Continue" button. */
   hasSave: boolean;
+  /**
+   * Science mode (Living World): OFF by default, showing a newcomer the world itself —
+   * population, the event feed, a plain-language creature card. ON reveals the research
+   * instrument: trait-variance/novelty readouts, the distribution + lineage charts, raw
+   * lineage ids and the per-allele genome editors. Nothing is ever deleted by the toggle;
+   * it only decides who has to look at it. Persisted, because it is a standing
+   * preference about who the user is, not a per-session mode.
+   */
+  scienceMode: boolean;
 
   play(): void;
   pause(): void;
@@ -163,6 +193,7 @@ interface SimState {
   setTool(tool: Tool): void;
   setFollow(id: number | null): void;
   setCatchupEnabled(enabled: boolean): void;
+  setScienceMode(enabled: boolean): void;
   dismissReport(): void;
   /** Export the current world as a gzipped `.viv.gz` download (Phase 5A.4). */
   exportWorld(): void;
@@ -225,6 +256,7 @@ export const useSimStore = create<SimState>((set, get) => ({
   report: null,
   phase: "landing",
   hasSave: false,
+  scienceMode: readSciencePref(),
 
   play() {
     send({ t: "play" });
@@ -326,6 +358,10 @@ export const useSimStore = create<SimState>((set, get) => ({
     writeCatchupPref(enabled);
     send({ t: "setCatchup", enabled });
     set({ catchupEnabled: enabled });
+  },
+  setScienceMode(enabled) {
+    writeSciencePref(enabled);
+    set({ scienceMode: enabled });
   },
   dismissReport() {
     set({ report: null });

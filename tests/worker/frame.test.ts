@@ -16,11 +16,13 @@ import type { Creature } from "@sim/types";
 import { createWorld } from "@sim/world";
 import { describe, expect, it } from "vitest";
 import {
+  buildEventFeed,
   buildRenderFrame,
   buildStats,
   buildTraitBins,
   dayLight,
   frameTransferables,
+  MAX_FEED_EVENTS,
   populationByLineageRoot,
   TRAIT_BINS,
 } from "../../src/worker/frame";
@@ -229,5 +231,85 @@ describe("buildTimeline", () => {
       );
     }
     expect(Array.isArray(tl.extinctionTicks)).toBe(true);
+  });
+});
+
+describe("buildEventFeed", () => {
+  /** A world whose event log holds one of every shape the feed must handle. */
+  function seededWorld() {
+    const world = createWorld(1, makeConfig({}));
+    world.eventLog.length = 0;
+    world.lineageEvents.length = 0;
+    return world;
+  }
+
+  it("narrates only notable events — births and kills are filtered out", () => {
+    const world = seededWorld();
+    world.eventLog.push(
+      { tick: 10, event: "birth:5" },
+      { tick: 11, event: "kill:7" },
+      { tick: 12, event: "extinct" },
+    );
+    const feed = buildEventFeed(world);
+    expect(feed.map((e) => e.kind)).toEqual(["silence"]);
+  });
+
+  it("sites a home event with a plain-language place and a lineage hue", () => {
+    const world = seededWorld();
+    world.eventLog.push({ tick: 20, event: "nest:3:100:100" });
+    const [ev] = buildEventFeed(world);
+    expect(ev?.kind).toBe("home");
+    expect(ev?.lineage).toBe(3);
+    expect(ev?.hue).toBeGreaterThanOrEqual(0);
+    expect(ev?.hue).toBeLessThan(360);
+    // y=100 of a 1000-tall world is the northern third.
+    expect(ev?.place).toMatch(/^the northern /);
+  });
+
+  it("tolerates the pre-position `nest:<root>` form still present in saved logs", () => {
+    const world = seededWorld();
+    world.eventLog.push({ tick: 20, event: "nest:3" });
+    const [ev] = buildEventFeed(world);
+    expect(ev?.kind).toBe("home");
+    expect(ev?.lineage).toBe(3);
+    expect(ev?.place).toBe(""); // no site, but still narratable
+  });
+
+  it("merges typed lineage events and orders the whole feed by tick", () => {
+    const world = seededWorld();
+    world.eventLog.push({ tick: 30, event: "nest:1:10:10" });
+    world.lineageEvents.push(
+      { kind: "lineageBoom", tick: 10, lineage: 2, factor: 2.5 },
+      { kind: "extinction", tick: 20, lineage: 4 },
+      { kind: "newDominant", tick: 40, lineage: 2 },
+    );
+    const feed = buildEventFeed(world);
+    expect(feed.map((e) => e.tick)).toEqual([10, 20, 30, 40]);
+    expect(feed.map((e) => e.kind)).toEqual(["boom", "extinction", "home", "dominant"]);
+    expect(feed[0]?.factor).toBe(2.5);
+  });
+
+  it("keeps the most recent MAX_FEED_EVENTS and stays stable across rebuilds", () => {
+    const world = seededWorld();
+    for (let i = 0; i < MAX_FEED_EVENTS + 25; i++) {
+      world.eventLog.push({ tick: i, event: `nest:${i}:10:10` });
+    }
+    const feed = buildEventFeed(world);
+    expect(feed.length).toBe(MAX_FEED_EVENTS);
+    // Truncation drops the OLDEST, so the newest event must survive.
+    expect(feed[feed.length - 1]?.tick).toBe(MAX_FEED_EVENTS + 24);
+    // The feed is rebuilt from scratch each stats tick; a wobbling order would flicker
+    // the UI, so the same World must always produce the same keys in the same order.
+    expect(buildEventFeed(world).map((e) => e.key)).toEqual(feed.map((e) => e.key));
+  });
+
+  it("gives every event a key unique enough to use as a React key", () => {
+    const world = createWorld(1, makeConfig({}));
+    for (let i = 0; i < 400; i++) {
+      tick(world);
+      recordHistory(world);
+    }
+    const feed = buildEventFeed(world);
+    expect(new Set(feed.map((e) => e.key)).size).toBe(feed.length);
   });
 });

@@ -105,6 +105,8 @@ export function ControlPanel(): React.ReactElement {
   const reinit = useSimStore((s) => s.reinit);
   const catchupEnabled = useSimStore((s) => s.catchupEnabled);
   const setCatchupEnabled = useSimStore((s) => s.setCatchupEnabled);
+  const scienceMode = useSimStore((s) => s.scienceMode);
+  const setScienceMode = useSimStore((s) => s.setScienceMode);
   const params = useSimStore((s) => s.params);
   const exportWorld = useSimStore((s) => s.exportWorld);
   const importWorld = useSimStore((s) => s.importWorld);
@@ -217,6 +219,26 @@ export function ControlPanel(): React.ReactElement {
           onChange={(e) => setCatchupEnabled(e.target.checked)}
           className="h-3 w-3 cursor-pointer accent-[var(--accent)]"
           aria-label="catch up offline"
+        />
+      </label>
+
+      {/* Science mode: reveals the research instrument (distribution + lineage charts,
+          trait-variance/novelty readouts, raw lineage ids, per-allele genome editing).
+          Off by default so a newcomer meets the world before the measurements; nothing
+          is removed by leaving it off. */}
+      <label className="mt-2 flex items-center justify-between">
+        <span
+          className="cursor-help text-[10px] uppercase tracking-wide text-[var(--fg-mute)]"
+          title="Show the research instrument: distribution and lineage charts, diversity and novelty readouts, lineage ids, and per-allele genome editing."
+        >
+          science mode
+        </span>
+        <input
+          type="checkbox"
+          checked={scienceMode}
+          onChange={(e) => setScienceMode(e.target.checked)}
+          className="h-3 w-3 cursor-pointer accent-[var(--accent)]"
+          aria-label="science mode"
         />
       </label>
 

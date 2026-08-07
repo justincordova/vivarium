@@ -16,7 +16,7 @@
 import { expressTrait, TRAIT_GENES, TRAIT_RANGE } from "@sim/genetics";
 import { countExtinctionEvents, recentPopulationSeries } from "@sim/history";
 import { type HealthHistory, worldHealth } from "@sim/stats";
-import type { Config, Creature, World } from "@sim/types";
+import type { Config, Creature, LineageEvent, World } from "@sim/types";
 import type {
   CorpseFrame,
   CreatureFrame,
@@ -25,6 +25,7 @@ import type {
   StatsPayload,
   TimelinePayload,
   TraitBins,
+  WorldEvent,
 } from "./protocol";
 
 /** Histogram buckets per gene for the trait-distribution charts (display-only). */
@@ -288,6 +289,102 @@ export function buildTimeline(world: World): TimelinePayload {
   return { points, extinctionTicks, now: world.tick };
 }
 
+/** How many narratable events the feed carries. Small: this is a story, not a log. */
+export const MAX_FEED_EVENTS = 40;
+
+/** Biome enum → the noun the narrator uses for a place. Index is the `Biome` value. */
+const BIOME_NOUN = ["shallows", "grassland", "forest", "flats", "highlands"] as const;
+
+/**
+ * Name a world position in plain language — a vertical band plus the biome noun at that
+ * cell ("the northern forest"). Deliberately coarse: it exists so a player can *look*
+ * there, not to be a coordinate. Reads terrain only (immutable during ticks), so it is a
+ * pure function of the snapshot.
+ */
+function placeName(world: World, x: number, y: number): string {
+  const { worldWidth: ww, worldHeight: wh, gridCols: cols, gridRows: rows } = world.config;
+  const col = Math.min(cols - 1, Math.max(0, Math.floor((x / ww) * cols)));
+  const row = Math.min(rows - 1, Math.max(0, Math.floor((y / wh) * rows)));
+  const biome = world.terrain.biome[row * cols + col] ?? 1;
+  const noun = BIOME_NOUN[biome] ?? "wilds";
+  const band = y < wh / 3 ? "northern " : y > (wh * 2) / 3 ? "southern " : "";
+  return `the ${band}${noun}`;
+}
+
+/**
+ * Build the plain-language event feed: the *notable* subset of what happened, resolved
+ * into hue + place so the UI can phrase it without reaching back into the World.
+ *
+ * Two sources are merged and re-sorted by tick:
+ *   - `world.lineageEvents` — the typed drama (extinction / boom / dominance), already
+ *     detected deterministically on the history cadence.
+ *   - `world.eventLog` — scanned for the two entries worth telling a player about:
+ *     `extinct` (the whole world fell silent) and `nest:<root>[:x:y]` (a home appeared).
+ *     Births and kills are skipped on purpose; they fire nearly every tick and would
+ *     bury the signal.
+ *
+ * Both logs are bounded rings in `sim/`, so this scan is O(bounded) and safe to redo on
+ * every stats tick. The result is truncated to the most recent `MAX_FEED_EVENTS`, which
+ * makes the payload self-contained — the UI renders the latest list verbatim and needs
+ * no accumulation or dedupe of its own.
+ */
+export function buildEventFeed(world: World): WorldEvent[] {
+  const out: WorldEvent[] = [];
+
+  for (let i = 0; i < world.lineageEvents.length; i++) {
+    const e = world.lineageEvents[i] as LineageEvent;
+    const kind = e.kind === "lineageBoom" ? "boom" : e.kind === "newDominant" ? "dominant" : e.kind;
+    out.push({
+      key: `${kind}:${e.tick}:${e.lineage}`,
+      tick: e.tick,
+      kind,
+      lineage: e.lineage,
+      hue: lineageHue(e.lineage),
+      factor: e.kind === "lineageBoom" ? e.factor : 0,
+      place: "",
+    });
+  }
+
+  for (let i = 0; i < world.eventLog.length; i++) {
+    const e = world.eventLog[i] as { tick: number; event: string };
+    if (e.event === "extinct") {
+      out.push({
+        key: `silence:${e.tick}:-1`,
+        tick: e.tick,
+        kind: "silence",
+        lineage: -1,
+        hue: -1,
+        factor: 0,
+        place: "",
+      });
+      continue;
+    }
+    if (!e.event.startsWith("nest:")) continue;
+    // `nest:<root>` (older saved logs) or `nest:<root>:<x>:<y>` (current). Tolerate both:
+    // `eventLog` is serialized, so a loaded world can still hold the 2-field form.
+    const parts = e.event.split(":");
+    const root = Number(parts[1]);
+    if (!Number.isFinite(root)) continue;
+    const x = Number(parts[2]);
+    const y = Number(parts[3]);
+    const sited = Number.isFinite(x) && Number.isFinite(y);
+    out.push({
+      key: `home:${e.tick}:${root}`,
+      tick: e.tick,
+      kind: "home",
+      lineage: root,
+      hue: lineageHue(root),
+      factor: 0,
+      place: sited ? placeName(world, x, y) : "",
+    });
+  }
+
+  // Stable order: by tick, then by key so a same-tick pair never swaps between digests
+  // (the feed is rebuilt from scratch each time; a wobbling order would flicker the UI).
+  out.sort((a, b) => (a.tick !== b.tick ? a.tick - b.tick : a.key < b.key ? -1 : 1));
+  return out.length > MAX_FEED_EVENTS ? out.slice(out.length - MAX_FEED_EVENTS) : out;
+}
+
 /** Assemble the periodic `StatsPayload` (world-health + lineage populations + bins). */
 export function buildStats(world: World): StatsPayload {
   const history: HealthHistory = {
@@ -307,5 +404,6 @@ export function buildStats(world: World): StatsPayload {
     population: populationByLineageRoot(world),
     traits: buildTraitBins(world),
     timeline: buildTimeline(world),
+    events: buildEventFeed(world),
   };
 }

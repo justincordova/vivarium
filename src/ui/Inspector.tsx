@@ -17,6 +17,7 @@ import { TRAIT_GENES, TRAIT_RANGE, type TraitGene } from "@sim/genetics";
 import type { Creature } from "@sim/types";
 import { useSimStore } from "@store/useSimStore";
 import { useState } from "react";
+import { describeBehavior, describeCondition, describeKind } from "./narrate";
 
 function num(n: number, digits = 2): string {
   if (!Number.isFinite(n)) return "—";
@@ -141,7 +142,9 @@ export function Inspector(): React.ReactElement | null {
   const followId = useSimStore((s) => s.followId);
   const setFollow = useSimStore((s) => s.setFollow);
   const remove = useSimStore((s) => s.remove);
+  const scienceMode = useSimStore((s) => s.scienceMode);
   const [showAlleles, setShowAlleles] = useState(false);
+  const [showGenome, setShowGenome] = useState(false);
   if (inspected === null) return null;
 
   const following = followId === inspected.id;
@@ -149,8 +152,9 @@ export function Inspector(): React.ReactElement | null {
   return (
     <div className="panel w-72 shrink-0 p-3">
       <div className="mb-2 flex items-center justify-between">
-        <span className="tabular text-[11px] font-medium uppercase tracking-widest text-[var(--fg-dim)]">
-          creature #{inspected.id}
+        <span className="text-[11px] font-medium uppercase tracking-widest text-[var(--fg-dim)]">
+          {/* The raw id is a database key, not an identity — it leads only in science mode. */}
+          {scienceMode ? `creature #${inspected.id}` : "this creature"}
         </span>
         <button
           type="button"
@@ -162,18 +166,36 @@ export function Inspector(): React.ReactElement | null {
         </button>
       </div>
 
-      {/* vitals */}
-      <div className="mb-2 grid grid-cols-2 gap-x-4 gap-y-0.5">
-        <Vital label="age" value={num(inspected.age, 0)} />
-        <Vital label="energy" value={num(inspected.energy, 0)} />
-        <Vital label="hydration" value={num(inspected.hydration, 0)} />
-        <Vital label="health" value={num(inspected.health, 0)} />
-        <Vital
-          label="parent"
-          value={inspected.parentId === null ? "founder" : `#${inspected.parentId}`}
-        />
-        <Vital label="brain on" value={`${num(enableDensity(inspected) * 100, 0)}%`} />
+      {/* The card: what it is, how it's doing, what it does. */}
+      <div className="mb-2.5 space-y-0.5">
+        <p className="text-[13px] leading-snug text-[var(--fg)]">{describeKind(inspected)}</p>
+        <p className="text-[11px] leading-snug text-[var(--fg-dim)]">
+          {describeCondition(inspected)}
+        </p>
+        <p className="text-[11px] leading-snug text-[var(--fg-dim)]">
+          {describeBehavior(inspected)}
+        </p>
+        <p className="text-[10px] uppercase tracking-wider text-[var(--fg-mute)]">
+          {inspected.parentId === null ? "a founder" : "born here"} · {num(inspected.age, 0)}{" "}
+          generations old
+        </p>
       </div>
+
+      {/* Raw vitals: the same facts the card states in prose, for anyone who wants the
+          numbers. Lineage ids and brain enable-density are instrument readouts. */}
+      {scienceMode && (
+        <div className="mb-2 grid grid-cols-2 gap-x-4 gap-y-0.5">
+          <Vital label="age" value={num(inspected.age, 0)} />
+          <Vital label="energy" value={num(inspected.energy, 0)} />
+          <Vital label="hydration" value={num(inspected.hydration, 0)} />
+          <Vital label="health" value={num(inspected.health, 0)} />
+          <Vital
+            label="parent"
+            value={inspected.parentId === null ? "founder" : `#${inspected.parentId}`}
+          />
+          <Vital label="brain on" value={`${num(enableDensity(inspected) * 100, 0)}%`} />
+        </div>
+      )}
 
       <div className="mb-1 flex gap-1">
         <button
@@ -199,25 +221,44 @@ export function Inspector(): React.ReactElement | null {
         </button>
       </div>
 
-      {/* genome — one expressed slider per gene by default; alleles behind a toggle */}
+      {/* The genome. Collapsed by default: reading a genome is a headline promise of the
+          project (SPEC §Goals), so it stays one click away and is never removed — but
+          sixteen sliders should not be the first thing a newcomer meets. Science mode
+          opens it outright, since that is the whole reason to be in science mode. */}
       <div className="mt-2 border-t border-[rgb(var(--panel-border)/0.12)] pt-2">
         <div className="mb-1 flex items-baseline justify-between">
-          <span className="text-[10px] uppercase tracking-widest text-[var(--fg-mute)]">
-            genome{showAlleles ? " · two alleles per gene" : ""}
-          </span>
           <button
             type="button"
-            onClick={() => setShowAlleles((v) => !v)}
-            className="text-[10px] uppercase tracking-wide text-[var(--fg-mute)] hover:text-[var(--fg)]"
-            aria-pressed={showAlleles}
+            onClick={() => setShowGenome((v) => !v)}
+            className="text-[10px] uppercase tracking-widest text-[var(--fg-mute)] hover:text-[var(--fg)]"
+            aria-expanded={showGenome || scienceMode}
           >
-            {showAlleles ? "hide alleles" : "show alleles"}
+            {showGenome || scienceMode ? "▾ genome" : "▸ read its genome"}
           </button>
+          {(showGenome || scienceMode) && scienceMode && (
+            <button
+              type="button"
+              onClick={() => setShowAlleles((v) => !v)}
+              className="text-[10px] uppercase tracking-wide text-[var(--fg-mute)] hover:text-[var(--fg)]"
+              aria-pressed={showAlleles}
+            >
+              {showAlleles ? "hide alleles" : "show alleles"}
+            </button>
+          )}
         </div>
-        {(TRAIT_GENES as readonly TraitGene[]).map((g) => (
-          <GeneRow key={g} creature={inspected} gene={g} showAlleles={showAlleles} />
-        ))}
-        <GeneRow creature={inspected} gene="hue" showAlleles={showAlleles} />
+        {(showGenome || scienceMode) && (
+          <>
+            {(TRAIT_GENES as readonly TraitGene[]).map((g) => (
+              <GeneRow
+                key={g}
+                creature={inspected}
+                gene={g}
+                showAlleles={showAlleles && scienceMode}
+              />
+            ))}
+            <GeneRow creature={inspected} gene="hue" showAlleles={showAlleles && scienceMode} />
+          </>
+        )}
       </div>
     </div>
   );

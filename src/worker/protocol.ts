@@ -147,6 +147,42 @@ export interface StatsPayload {
    * is downsampled), so it is cheap to resend on the stats cadence.
    */
   timeline: TimelinePayload;
+  /**
+   * The plain-language event feed (most recent last), rebuilt on the stats cadence from
+   * the sim's `eventLog` + typed `lineageEvents`. Bounded to the most recent
+   * `MAX_FEED_EVENTS`, so resending it whole each time stays cheap and the UI needs no
+   * accumulation logic — it renders whatever the latest stats carry.
+   */
+  events: WorldEvent[];
+}
+
+/**
+ * One narratable world event, resolved worker-side into everything the UI needs to
+ * phrase it in plain language. The sim's raw `eventLog` is per-tick and mostly noise
+ * (a birth and a kill nearly every tick); this is the *notable* subset — the drama a
+ * newcomer should be told about.
+ *
+ * Lineages are identified to the player by **hue**, never by root id: the renderer
+ * already tints creatures and nests by lineage hue, so "the amber lineage" is both
+ * plain language and a thing the player can go find on screen. `lineage` is retained
+ * for keying and for science mode, which still shows raw ids.
+ *
+ * Tick-stamped, never wall-clock — `realTime` is not sim state, and a wall-clock
+ * stamp is meaningless across an offline catch-up boundary (AGENTS.md).
+ */
+export interface WorldEvent {
+  /** Stable identity for React keys and cross-digest dedupe: `${kind}:${tick}:${lineage}`. */
+  key: string;
+  tick: number;
+  kind: "silence" | "extinction" | "boom" | "dominant" | "home";
+  /** Founder-lineage-root id, or -1 for world-level events (`silence`). */
+  lineage: number;
+  /** Lineage hue in 0..360 for the feed's color dot, or -1 when unknown//world-level. */
+  hue: number;
+  /** Growth multiplier — only meaningful for `boom`. */
+  factor: number;
+  /** Plain-language place ("the northern forest"), or "" when the event has no site. */
+  place: string;
 }
 
 /** The whole-run overview backing the timeline scrubber (Phase 5B.1). */
