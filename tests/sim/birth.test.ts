@@ -186,7 +186,7 @@ describe("graduated density-dependent reproduction brake", () => {
       tick(w);
       expect(w.creatures.length).toBeLessThanOrEqual(cap);
     }
-  }, 90000);
+  }, 300_000);
 
   it("the brake is deterministic — two runs with the same seed match population exactly", () => {
     const run = (): number[] => {
@@ -199,7 +199,7 @@ describe("graduated density-dependent reproduction brake", () => {
       return series;
     };
     expect(run()).toEqual(run());
-  }, 90000);
+  }, 300_000);
 
   it("a lower soft fraction holds the population no higher than a late brake", () => {
     // With REPRO_SOFT_FRAC low, the stochastic brake bites earlier, so the population
@@ -225,7 +225,7 @@ describe("graduated density-dependent reproduction brake", () => {
       return mx;
     };
     expect(peak(0.3)).toBeLessThanOrEqual(peak(0.95));
-  }, 120000);
+  }, 300_000);
 });
 
 describe("Allee low-density starvation rescue", () => {
@@ -248,7 +248,7 @@ describe("Allee low-density starvation rescue", () => {
     // Survived the starvation removal (rescued) and energy is still conserved exactly.
     expect(w.creatures.length).toBe(1);
     expect(totalEnergy(w)).toBe(e0);
-  }, 90000);
+  }, 300_000);
 
   it("does NOT rescue when the population is at/above the threshold", () => {
     // At a healthy population the rescue is inactive, so a starving creature dies
@@ -268,5 +268,5 @@ describe("Allee low-density starvation rescue", () => {
     victim.health = 40;
     tick(w);
     expect(w.creatures.some((c) => c.id === victimId)).toBe(false);
-  }, 90000);
+  }, 300_000);
 });

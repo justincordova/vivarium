@@ -81,7 +81,7 @@ describe("offline catch-up — bit-identical invariant", () => {
       ),
       { numRuns: 8 },
     );
-  }, 120_000);
+  }, 300_000);
 
   it("holds for the patchbay brain too (real forward-pass dynamics)", () => {
     const cfg = () =>
@@ -97,7 +97,7 @@ describe("offline catch-up — bit-identical invariant", () => {
     const caught = createWorld(42, cfg());
     runCatchup(caught, 400, () => {}, 100);
     expect(fingerprint(caught)).toBe(fingerprint(live));
-  }, 60_000);
+  }, 180_000);
 
   it("progress callback fires monotonically and ends at (owed, owed)", () => {
     const w = createWorld(3, smallConfig());

@@ -80,5 +80,5 @@ describe("Phase 1 exit gate — default world oscillates and diversifies", () =>
     // (3) Diversifies: multiple emergent species coexist (a monoculture → ~1).
     const meanSpecies = speciesSum / Math.max(1, speciesSamples);
     expect(meanSpecies).toBeGreaterThan(3);
-  }, 240_000);
+  }, 420_000);
 });

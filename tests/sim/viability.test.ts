@@ -93,7 +93,7 @@ describe("viability smoke gate (bootstrap, not long-run)", () => {
   let outcomes: SeedOutcome[] = [];
   beforeAll(() => {
     outcomes = SEEDS.map(runSeed);
-  }, 300_000);
+  }, 480_000);
 
   it(`sustains a living population on at least ${QUORUM} of ${SEEDS.length} seeds`, () => {
     const alive = outcomes.filter((o) => o.survived).length;

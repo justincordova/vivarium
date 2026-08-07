@@ -76,7 +76,7 @@ describe("patchbay brain — determinism (the load-bearing gate)", () => {
       }),
       { numRuns: 3 },
     );
-  }, 120_000);
+  }, 300_000);
 });
 
 describe("patchbay brain — conservation (exact, every tick)", () => {
@@ -94,7 +94,7 @@ describe("patchbay brain — conservation (exact, every tick)", () => {
       }),
       { numRuns: 3 },
     );
-  }, 120_000);
+  }, 300_000);
 });
 
 describe("patchbay brain — enlargement geometry (HIDDEN=20 fresh world)", () => {

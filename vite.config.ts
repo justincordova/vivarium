@@ -30,6 +30,18 @@ export default defineConfig({
     // parallel starves them of cores and causes spurious timeouts, so cap concurrency
     // to half the machine — the long live-tick properties then get real CPU and finish
     // well inside their timeouts (determinism/gate are load-bearing, not flaky).
+    //
+    // **Why the per-test timeouts look generous (300–480 s).** On an asymmetric CPU
+    // (Apple silicon: performance + efficiency cores) "half the machine" still schedules
+    // some workers onto E-cores, where the same sim run takes roughly 3× longer. A budget
+    // calibrated on a P-core therefore fails at random depending on where the OS happened
+    // to place that worker — which reads as flakiness but is pure scheduling. The budgets
+    // below are sized for the E-core case.
+    //
+    // If one of these ever times out, the fix is NOT to shrink the tick counts or the
+    // fast-check `numRuns`: those are the gate. Either pin the test to the modest world
+    // (as `determinism.test.ts` `DET_WORLD` and its callers do — the invariants are
+    // world-scale-agnostic) or raise the budget.
     maxWorkers: "50%",
     // Fail loudly on a zero-test run: the suite is the primary bug detector (determinism,
     // conservation, catch-up bit-identity), so an accidentally-empty run — e.g. a typo in

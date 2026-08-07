@@ -241,7 +241,7 @@ describe("conservation — terrained live world", () => {
       }),
       { numRuns: 8 },
     );
-  }, 120000);
+  }, 300_000);
 });
 
 describe("energy — toQuantum", () => {

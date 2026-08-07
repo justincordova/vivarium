@@ -40,7 +40,7 @@ describe("determinism (the load-bearing gate)", () => {
       }),
       { numRuns: 3 },
     );
-  }, 120_000);
+  }, 300_000);
 });
 
 describe("conservation (exact, every tick)", () => {
@@ -58,5 +58,5 @@ describe("conservation (exact, every tick)", () => {
       }),
       { numRuns: 3 },
     );
-  }, 120_000);
+  }, 300_000);
 });
