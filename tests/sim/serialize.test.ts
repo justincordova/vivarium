@@ -121,13 +121,25 @@ describe("serialize — v1 → v2 migration (Phase 4 brainKind)", () => {
 });
 
 describe("serialize — the free determinism double-check", () => {
+  // Pinned to a modest world for the same reason `determinism.test.ts` pins `DET_WORLD`:
+  // this is a two-world × 1000-tick × N-run property, and on the enlarged 1000×1000
+  // default it exceeds its timeout under full-suite parallelism. The round trip
+  // (terrain, creatures, nests, fields, RNG streams) is exercised at any size — the
+  // invariant under test is bit-identity across a save boundary, not world scale.
+  const ROUNDTRIP_WORLD = {
+    worldWidth: 200,
+    worldHeight: 200,
+    gridCols: 64,
+    gridRows: 64,
+  } as const;
+
   it("500 → serialize → deserialize → 500 equals a straight 1000-tick run", () => {
     fc.assert(
       fc.property(fc.integer({ min: 1, max: 100000 }), (seed) => {
-        const straight = createWorld(seed, makeConfig({}));
+        const straight = createWorld(seed, makeConfig({ ...ROUNDTRIP_WORLD }));
         for (let i = 0; i < 1000; i++) tick(straight);
 
-        const split = createWorld(seed, makeConfig({}));
+        const split = createWorld(seed, makeConfig({ ...ROUNDTRIP_WORLD }));
         for (let i = 0; i < 500; i++) tick(split);
         const resumed = deserialize(serialize(split));
         for (let i = 0; i < 500; i++) tick(resumed);

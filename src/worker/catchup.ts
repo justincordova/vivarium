@@ -3,8 +3,9 @@
  *
  * On reopen, the world has NOT advanced (nothing runs while closed). Catch-up is
  * literally calling `tick()` N times as fast as possible, where N is the ticks owed
- * since the last save, capped at `MAX_OFFLINE_TICKS` (the Phase-4-re-derived worst-case
- * ceiling — keeps catch-up < ~20s). This module is the pure loop; the worker wires the
+ * since the last save, capped at `MAX_OFFLINE_TICKS` (re-derived against the measured
+ * worst-case tick rate on the current default world — keeps catch-up < ~20s; see the
+ * derivation on the constant). This module is the pure loop; the worker wires the
  * wall-clock, the load, and the progress messages.
  *
  * **The load-bearing invariant (tests/sim/catchup.test.ts):** the catch-up loop must

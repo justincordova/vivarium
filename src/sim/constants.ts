@@ -63,8 +63,32 @@ export const MS_PER_TICK = 50;
  * temperature-field write is negligible against per-creature sensing, so the seasonal
  * work did NOT move the worst case and the bound stays conservative. Serialized, so
  * re-deriving is safe. (bench, Phase 4 Task 4.3b + Phase 5C.1)
+ *
+ * ── RE-DERIVED for the Living World default (grid 128×128, world 1000×1000) ──
+ *
+ * The derivation above is for the **64×64** grid it names, and the rate is explicitly
+ * grid-resolution-specific. Phase 6 enlarged the default world to 1000×1000 / 128×128
+ * without re-deriving this constant, so the documented inequality has been describing a
+ * world that no longer exists — the stated ~5.5 ms/tick was ~3× optimistic and offline
+ * catch-up could run ~67 s against a <20 s promise.
+ *
+ * Re-measured on the current default (`pnpm bench`, same machine as the Phase 4 figures):
+ *   - rule steady-state:                          ~13.3 ms/tick
+ *   - patchbay steady-state:                      ~15.3 ms/tick
+ *   - evolved high-enable patchbay (worst case):  ~18.6 ms/tick  ← WORST CASE
+ *
+ * The Phase 4 *finding* still holds and explains the jump: cost is dominated by
+ * per-creature spatial-hash sensing and scales with **population**, not enable density.
+ * The bigger world sustains a bigger population, so the per-tick cost rose with it.
+ *
+ * Re-derived bound at the measured worst case:
+ * `MAX_OFFLINE_TICKS × ms/tick = 1000 × 18.6 ms ≈ 18.6 s < 20 s`.
+ *
+ * The practical cost is a shorter offline memory (~50 s of wall-clock at `MS_PER_TICK`
+ * rather than ~3 min). That is the honest trade: a visitor who has been away longer
+ * resumes from the cap instead of watching a minute-long freeze on reopen.
  */
-export const MAX_OFFLINE_TICKS = 3_600;
+export const MAX_OFFLINE_TICKS = 1_000;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Movement / kinematics  (SPEC.md §Actions — the mass/accel formula)

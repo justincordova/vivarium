@@ -171,11 +171,17 @@ describe("rendezvous produces a birth within bounded ticks", () => {
 });
 
 describe("graduated density-dependent reproduction brake", () => {
+  // The same small world the soft-fraction test below already pins, for the same reason:
+  // the brake is a density mechanism, so the population must actually reach the cap, and
+  // the (now much larger) default world only adds CPU time — enough of it that these
+  // long-horizon runs starve under full-suite parallelism.
+  const BRAKE_WORLD = { worldWidth: 200, worldHeight: 200, gridCols: 64, gridRows: 64 } as const;
+
   it("population never exceeds the hard CREATURE_CAP", () => {
     // The hard ceiling is absolute (memory/CPU bound). 1500 ticks reaches the cap on
     // the default seed; assert the invariant holds every tick.
     const cap = 90;
-    const w = createWorld(1, makeConfig({ tunables: { CREATURE_CAP: cap } }));
+    const w = createWorld(1, makeConfig({ ...BRAKE_WORLD, tunables: { CREATURE_CAP: cap } }));
     for (let i = 0; i < 1500; i++) {
       tick(w);
       expect(w.creatures.length).toBeLessThanOrEqual(cap);
@@ -184,7 +190,7 @@ describe("graduated density-dependent reproduction brake", () => {
 
   it("the brake is deterministic — two runs with the same seed match population exactly", () => {
     const run = (): number[] => {
-      const w = createWorld(3, makeConfig({ tunables: { CREATURE_CAP: 90 } }));
+      const w = createWorld(3, makeConfig({ ...BRAKE_WORLD, tunables: { CREATURE_CAP: 90 } }));
       const series: number[] = [];
       for (let i = 0; i < 1200; i++) {
         tick(w);

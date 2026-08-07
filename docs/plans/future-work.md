@@ -76,16 +76,20 @@ so catch-up completes within a ~20 s budget. It is a serialized tunable, so re-d
 is always safe. Baseline recorded here so a future change to per-tick cost has a number
 to compare against:
 
-- **Grid:** 64×64 (the rate is grid-resolution-specific — grid resolution is a
-  catch-up-speed knob per SPEC §Space & Fields).
 - **Worst realistic tick:** high-population world near `CREATURE_CAP`, dominated by
   per-creature spatial-hash sensing (both brains pay it; it scales with **population**,
   not enable density).
-- **Measured rate:** ≤ ~5.5 ms/tick (Phase 4 Task 4.3b); **~5.26 ms/tick with seasons
-  ON** (Phase 5C.1 — the O(cells) temperature-field write is negligible against
-  per-creature sensing, so seasonal work did not move the worst case).
-- **Documented inequality (kept conservative):**
-  `MAX_OFFLINE_TICKS × ms/tick = 3600 × 5.5 ms ≈ 19.8 s < 20 s`.
+
+| Era | Grid / world | Worst-case rate | Cap | Bound |
+|---|---|---|---|---|
+| Phase 4 / 5C.1 | 64×64 · 200×200 | ~5.26–5.5 ms/tick | 3600 | ≈ 19.8 s |
+| **Current** | **128×128 · 1000×1000** | **~18.6 ms/tick** | **1000** | **≈ 18.6 s** |
+
+**Note the trap this fell into once already:** Phase 6 enlarged the default world without
+re-deriving the constant, so for several phases the documented inequality described a
+world that no longer existed and real catch-up could run ~67 s against a <20 s promise.
+The rate is grid-resolution-specific (SPEC §Space & Fields — grid resolution is a
+catch-up-speed knob), so **enlarging the world is exactly the trigger to re-measure**.
 
 **Re-derive if** you change grid resolution, add per-tick work that scales with
 population, or target slower hardware. Re-measure with `pnpm bench` and update the

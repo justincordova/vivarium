@@ -14,6 +14,17 @@ import { createWorld } from "@sim/world";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
+/**
+ * Pinned to a modest world, matching `DET_WORLD` in `determinism.test.ts`. These are
+ * determinism and conservation *properties* — the forward pass, the derived-brain cache,
+ * the recurrent hidden vector and the closed ledgers are exercised identically at any
+ * size. Running them on the enlarged 1000×1000 default only buys CPU time, and enough of
+ * it that the heavy property files starve each other under full-suite parallelism.
+ * (The one case that genuinely needs the default world is the save-migration test at the
+ * bottom, which builds a rule world and flips it — it stays on `makeConfig`.)
+ */
+const PB_WORLD = { worldWidth: 200, worldHeight: 200, gridCols: 64, gridRows: 64 } as const;
+
 /** Structural fingerprint including hidden state (recurrence is determinism-critical). */
 function fingerprint(w: World): string {
   const parts: string[] = [String(w.tick), String(w.solarReservoir), String(w.nextId)];
@@ -28,7 +39,7 @@ function fingerprint(w: World): string {
 
 describe("patchbay brain — config switch runs a real world", () => {
   it("a brainKind:'patchbay' world advances and keeps a live population", () => {
-    const w = createWorld(1, makeConfig({ brainKind: "patchbay" }));
+    const w = createWorld(1, makeConfig({ ...PB_WORLD, brainKind: "patchbay" }));
     for (let i = 0; i < 500; i++) tick(w);
     expect(w.tick).toBe(500);
     // The seed wiring lets founders forage/mate, so the population does not immediately
@@ -37,7 +48,7 @@ describe("patchbay brain — config switch runs a real world", () => {
   });
 
   it("populates and reuses the derived-brain cache (recurrent hidden state moves)", () => {
-    const w = createWorld(2, makeConfig({ brainKind: "patchbay" }));
+    const w = createWorld(2, makeConfig({ ...PB_WORLD, brainKind: "patchbay" }));
     for (let i = 0; i < 20; i++) tick(w);
     const c = w.creatures[0];
     expect(c).toBeDefined();
@@ -55,8 +66,8 @@ describe("patchbay brain — determinism (the load-bearing gate)", () => {
   it("two 500-tick patchbay runs from the same seed are bit-identical", () => {
     fc.assert(
       fc.property(fc.integer({ min: 1, max: 100000 }), (seed) => {
-        const a = createWorld(seed, makeConfig({ brainKind: "patchbay" }));
-        const b = createWorld(seed, makeConfig({ brainKind: "patchbay" }));
+        const a = createWorld(seed, makeConfig({ ...PB_WORLD, brainKind: "patchbay" }));
+        const b = createWorld(seed, makeConfig({ ...PB_WORLD, brainKind: "patchbay" }));
         for (let i = 0; i < 500; i++) {
           tick(a);
           tick(b);
@@ -72,7 +83,7 @@ describe("patchbay brain — conservation (exact, every tick)", () => {
   it("totalEnergy and totalWater are invariant across 500 patchbay ticks", () => {
     fc.assert(
       fc.property(fc.integer({ min: 1, max: 100000 }), (seed) => {
-        const w = createWorld(seed, makeConfig({ brainKind: "patchbay" }));
+        const w = createWorld(seed, makeConfig({ ...PB_WORLD, brainKind: "patchbay" }));
         const e0 = totalEnergy(w);
         const wat0 = totalWater(w);
         for (let i = 0; i < 500; i++) {
@@ -88,7 +99,7 @@ describe("patchbay brain — conservation (exact, every tick)", () => {
 
 describe("patchbay brain — enlargement geometry (HIDDEN=20 fresh world)", () => {
   it("a HIDDEN=20 fresh world sizes brain arrays to 1040 arrows and a 20-vector", () => {
-    const w = createWorld(1, makeConfig({ brainKind: "patchbay", hidden: 20 }));
+    const w = createWorld(1, makeConfig({ ...PB_WORLD, brainKind: "patchbay", hidden: 20 }));
     const c = w.creatures[0];
     expect(c).toBeDefined();
     if (c) {
@@ -100,8 +111,8 @@ describe("patchbay brain — enlargement geometry (HIDDEN=20 fresh world)", () =
   });
 
   it("a HIDDEN=20 patchbay world stays deterministic + conservative for N ticks", () => {
-    const a = createWorld(3, makeConfig({ brainKind: "patchbay", hidden: 20 }));
-    const b = createWorld(3, makeConfig({ brainKind: "patchbay", hidden: 20 }));
+    const a = createWorld(3, makeConfig({ ...PB_WORLD, brainKind: "patchbay", hidden: 20 }));
+    const b = createWorld(3, makeConfig({ ...PB_WORLD, brainKind: "patchbay", hidden: 20 }));
     const e0 = totalEnergy(a);
     const wat0 = totalWater(a);
     for (let i = 0; i < 300; i++) {
@@ -120,7 +131,7 @@ describe("patchbay brain — inherited brain arrays run under the swap", () => {
     // then reload with brainKind flipped to patchbay — the first time real forward-pass
     // dynamics drive those inherited arrays. This needs explicit coverage, not just
     // "it loads" (plan Task 4.2 verify).
-    const ruleWorld = createWorld(11, makeConfig({ brainKind: "rule" }));
+    const ruleWorld = createWorld(11, makeConfig({ ...PB_WORLD, brainKind: "rule" }));
     for (let i = 0; i < 100; i++) tick(ruleWorld);
     const blob = serialize(ruleWorld);
     // Flip the persisted config to patchbay.
