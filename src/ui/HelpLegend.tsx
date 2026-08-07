@@ -131,6 +131,30 @@ export function HelpLegend(): React.ReactElement {
               label="Nests"
               meaning="Homes built by a lineage. Kin cluster around them and shelter to save energy — packs and territories emerge here."
             />
+            <LegendRow
+              marker={<span className="h-3.5 w-3.5 rounded-full border border-[rgb(255_120_96)]" />}
+              label="Expanding ring"
+              meaning="Something just happened there — warm red for a kill, cool green for a birth."
+            />
+            <LegendRow
+              marker={
+                <span className="h-3.5 w-3.5 rounded-full border border-dashed border-white/80" />
+              }
+              label="Dashed ring"
+              meaning="The creature you have selected, so you can find it again in a crowd."
+            />
+          </div>
+
+          <div className="mt-3 border-t border-[rgb(var(--panel-border)/0.12)] pt-2">
+            <div className="mb-1 text-[10px] uppercase tracking-widest text-[var(--fg-mute)]">
+              the chronicle
+            </div>
+            <p className="text-[11px] leading-relaxed text-[var(--fg-dim)]">
+              The panel on the right records the turning points — a bloodline booming, dying out, or
+              founding a home. Bloodlines are named by their colour, so you can look for them on the
+              map. Turn on <span className="text-[var(--fg)]">science mode</span> in the controls
+              for the charts, diversity readouts and raw lineage ids.
+            </p>
           </div>
 
           <div className="mt-3 border-t border-[rgb(var(--panel-border)/0.12)] pt-2">
@@ -139,9 +163,9 @@ export function HelpLegend(): React.ReactElement {
             </div>
             <ul className="space-y-1 text-[11px] text-[var(--fg-dim)]">
               <li>
-                <span className="text-[var(--fg)]">Click</span> a creature — read & edit its genome
-                (one slider per gene = its expressed value; “show alleles” reveals both inherited
-                copies)
+                <span className="text-[var(--fg)]">Click</span> a creature — see what it is, how
+                it's faring and what it spends its time on; “read its genome” opens the genes behind
+                that
               </li>
               <li>
                 <span className="text-[var(--fg)]">Drag</span> — pan the view
