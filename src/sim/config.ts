@@ -139,7 +139,15 @@ export function makeDefaultConfig(): Config {
     initialSolarReservoir: 8_000_000,
     founderCount: 60, // within SPEC.md §Initial Conditions 40–100
     hidden: C.HIDDEN,
-    brainKind: "rule",
+    // Evolved brains are the product. `'rule'` was the Phase 0–3 default (brains did not
+    // exist yet) and survived past Phase 4 as a stale default, which meant every path that
+    // built a config from scratch — a shared `#seed=` link, the seed field's re-init —
+    // silently handed the visitor the scripted policy while the landing screen promised
+    // "nobody scripts what happens next". Only the pre-evolved cold-open carried patchbay.
+    // `'rule'` is still reachable via an explicit override (the A/B compare script, the
+    // bench) and is still what a pre-Phase-4 `version: 1` blob migrates to — those worlds
+    // genuinely were rule worlds, so their fingerprints must not move.
+    brainKind: "patchbay",
     rngStreams: [...RNG_STREAM_NAMES],
     tunables: defaultTunables(),
   };

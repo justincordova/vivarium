@@ -107,6 +107,16 @@ function applySeedWiring(t: BrainTemplate, H: number): void {
   wire(arrowSensorHidden(0, 2, H), 1.0); // bias → hidden 2
   wire(arrowHiddenAction(2, 2, H), 2.0); // hidden 2 → eat
   wire(arrowHiddenAction(2, 5, H), 2.0); // hidden 2 → mate
+  // Attack shares hidden 2 with eat because for a carnivore attacking *is* eating:
+  // `classifyFood` marks weaker agents as food, so the food-angle→turn arrow above
+  // already steers a carnivore at prey, and `tryAttack` targets that same `plan.foodId`.
+  // Without this one arrow the `Attack` output is the only action no seed circuit can
+  // reach, so predation never occurs, carnivory cannot be selected on (a trait needs the
+  // behavior to exist before it can be scored), and predator–prey oscillation never
+  // starts. Cheap for non-predators: a herbivore's `foodId` is a plant, which misses the
+  // creature `byId` map, and an out-of-reach target returns — both *before* the attack
+  // cost is charged, so this is "strike when adjacent to prey", not a standing drain.
+  wire(arrowHiddenAction(2, 4, H), 2.0); // hidden 2 → attack
   // Nest intent from kin proximity via hidden 3 (Society, Phase 7A): when same-lineage
   // kin are nearby (KinDensity, sensor 23) the creature attempts to build/reinforce a
   // home. This makes nesting *reachable* from a cold start (like the forage/mate seed
@@ -115,6 +125,18 @@ function applySeedWiring(t: BrainTemplate, H: number): void {
   wire(arrowSensorHidden(23, 3, H), 1.6); // KinDensity → hidden 3
   wire(arrowSensorHidden(0, 3, H), 0.3); // bias → hidden 3 (small standing drive)
   wire(arrowHiddenAction(3, 7, H), 1.8); // hidden 3 → nest
+  // Drink intent from standing water via hidden 4 (Living World, Phase 6). Before
+  // terrain, water was a uniform field and an unwired cold start stayed hydrated by
+  // accident; terrain made water real geography, so a founder with no drink arrow
+  // dehydrates no matter where it wanders. `LocalWater` (sensor 14) is the same scalar
+  // the rule policy gates thirst on, and it is direction-free — unlike `WaterDirX/Y`
+  // (19/20), which are *world-frame* unit vectors and cannot steer a body-relative
+  // `turn` without a heading term. So the reachable circuit is "drink where it is wet",
+  // not "path to water": wandering crosses shorelines, drinking there pays, and
+  // evolution builds the pathing on top. Same contract as the forage/mate/nest seeds —
+  // a starting bias that makes the action *reachable*, not a scripted policy.
+  wire(arrowSensorHidden(14, 4, H), 2.0); // LocalWater → hidden 4
+  wire(arrowHiddenAction(4, 3, H), 2.0); // hidden 4 → drink
 }
 
 /**

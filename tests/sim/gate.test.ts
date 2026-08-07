@@ -28,9 +28,23 @@ describe("Phase 1 exit gate — default world oscillates and diversifies", () =>
   it("seed 1 survives, oscillates, and diversifies over a representative horizon", () => {
     // Pinned to the 200×200 world this gate's balance was validated against; the Living
     // World redesign's 1000×1000 default is rebalanced separately (see viability.test.ts).
+    // `brainKind` is pinned for the same reason and must stay pinned: this is the *Phase 1*
+    // exit gate, and Phase 1 ran rule-based agents (SPEC §Non-Goals — brains are Phase 4).
+    // The CV ≈ 0.6 / ~20-species figures in the docstring were measured on the rule policy,
+    // so reading them against the evolved patchbay compares a world to a balance that was
+    // never tuned for it. Once the default flipped to patchbay this inherited the wrong
+    // brain implicitly; naming it keeps the guard measuring the constants it was written
+    // to protect. Oscillation under patchbay on the 1000×1000 default is part of the
+    // deferred default-world rebalance (docs/designs/living-world.md), not this test.
     const world = createWorld(
       1,
-      makeConfig({ worldWidth: 200, worldHeight: 200, gridCols: 64, gridRows: 64 }),
+      makeConfig({
+        worldWidth: 200,
+        worldHeight: 200,
+        gridCols: 64,
+        gridRows: 64,
+        brainKind: "rule",
+      }),
     );
     const TICKS = 10_000;
     const WARMUP = 3_000; // let founders reach the sustained regime before measuring

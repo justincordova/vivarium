@@ -42,8 +42,10 @@ describe("config — defaultConfig completeness", () => {
     expect(defaultConfig.rngStreams).toHaveLength(8);
   });
 
-  it("Phase 0 defaults: rule brain, founder count in the SPEC 40–100 band", () => {
-    expect(defaultConfig.brainKind).toBe("rule");
+  it("defaults: evolved patchbay brain, founder count in the SPEC 40–100 band", () => {
+    // A fresh world must run evolved brains — every from-scratch entry path (shared link,
+    // re-init) reads this default, and the scripted rule policy is a Phase 0–3 artifact.
+    expect(defaultConfig.brainKind).toBe("patchbay");
     expect(defaultConfig.founderCount).toBeGreaterThanOrEqual(40);
     expect(defaultConfig.founderCount).toBeLessThanOrEqual(100);
   });

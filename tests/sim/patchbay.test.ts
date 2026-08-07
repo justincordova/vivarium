@@ -120,7 +120,7 @@ describe("patchbay brain — inherited brain arrays run under the swap", () => {
     // then reload with brainKind flipped to patchbay — the first time real forward-pass
     // dynamics drive those inherited arrays. This needs explicit coverage, not just
     // "it loads" (plan Task 4.2 verify).
-    const ruleWorld = createWorld(11, makeConfig({}));
+    const ruleWorld = createWorld(11, makeConfig({ brainKind: "rule" }));
     for (let i = 0; i < 100; i++) tick(ruleWorld);
     const blob = serialize(ruleWorld);
     // Flip the persisted config to patchbay.
