@@ -87,8 +87,35 @@ export const MS_PER_TICK = 50;
  * The practical cost is a shorter offline memory (~50 s of wall-clock at `MS_PER_TICK`
  * rather than ~3 min). That is the honest trade: a visitor who has been away longer
  * resumes from the cap instead of watching a minute-long freeze on reopen.
+ *
+ * ── RE-DERIVED for the rebalanced default (grid 128×128, world 400×400) ──
+ *
+ * `docs/findings/world-scale-oscillation.md` shrank the default world 1000→400 to restore
+ * encounter density. Density is exactly what this constant is sensitive to: the Phase 4
+ * finding above says cost is dominated by per-creature spatial-hash sensing, and sensing
+ * cost scales with the number of neighbours *returned*, not just population. Same cap,
+ * same grid, 6.25× the density → measurably slower ticks.
+ *
+ * Measured on the new default (seed 1, 4000-tick warmup, mean of 3000 timed ticks):
+ *   - 1000×1000 (old default): ~20.8 ms/tick at pop 110
+ *   - 400×400   (new default): ~34.0 ms/tick at pop 120  ← WORST CASE
+ *
+ * **`pnpm bench` under-reports this world and must not be used for this derivation
+ * as-is.** Its `warmWorld` helper warms only 600 ticks, documented as reaching "~100
+ * creatures" — adequate for the sparse 1000×1000 world (bench 18.6 vs 20.8 measured) but
+ * not here, where it reports ~17 ms/tick against a measured 34. Plant density and the
+ * neighbour counts that dominate the hot path have not saturated at 600 ticks in a world
+ * this dense, so the bench measures a transient, not steady state.
+ *
+ * Re-derived bound at the measured worst case:
+ * `MAX_OFFLINE_TICKS × ms/tick = 550 × 34.0 ms ≈ 18.7 s < 20 s`.
+ *
+ * Live pacing is unaffected: 34 ms fits inside the `MS_PER_TICK = 50` budget (68%
+ * utilization), so the world still runs real-time at 1×. The cost is fast-forward
+ * headroom, which falls from ~2.4× to ~1.5× real-time before the tick loop is the
+ * bottleneck, and a shorter offline memory (~28 s of wall-clock).
  */
-export const MAX_OFFLINE_TICKS = 1_000;
+export const MAX_OFFLINE_TICKS = 550;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Movement / kinematics  (SPEC.md §Actions — the mass/accel formula)

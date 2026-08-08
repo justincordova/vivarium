@@ -129,11 +129,29 @@ function defaultTunables(): Tunables {
  */
 export function makeDefaultConfig(): Config {
   return {
-    // Living World: a larger world so terrain forms real regions and creatures migrate
-    // between biomes. Grid scales with it; the solar reservoir scales with cell count so
-    // the per-cell energy budget (and starvation dynamics) stays comparable to the beta.
-    worldWidth: 1000,
-    worldHeight: 1000,
+    // Living World: terrain forms real regions and creatures migrate between biomes. The
+    // solar reservoir scales with cell count so the per-cell energy budget (and starvation
+    // dynamics) stays comparable to the beta.
+    //
+    // **400, not Phase 6's 1000** (docs/findings/world-scale-oscillation.md). Phase 6 grew
+    // the world 25× in area while `CREATURE_CAP` and `senseRadius` stayed put, dropping
+    // expected neighbours inside a creature's sense radius from 5.89 to 0.24. A creature
+    // that never meets another cannot hunt, compete or interbreed, and the measured result
+    // was a world that booms once, collapses to a 1–2 species monoculture, and dies
+    // outright on 1 seed in 3.
+    //
+    // Shrinking costs none of Phase 6's terrain: `generateTerrain` samples its noise in
+    // normalized UV (`col/(cols-1)`), so the biome map is a function of `gridCols/gridRows`
+    // ONLY and is bit-identical at any world size. Holding the grid at 128×128 and
+    // shrinking world units keeps every region and just moves them within reach.
+    //
+    // 400 is measured, not reasoned: a 5-point sweep (200/300/400/500/1000 at cap 120,
+    // 3 seeds × 50k ticks) found density is **non-monotonic**. Too sparse collapses; too
+    // dense saturates — 200×200 (the legacy density) pins flat against the cap with 0
+    // oscillation cycles on every seed. 400 was the only candidate to oscillate on all
+    // three seeds (5.0/2.5/4.5 cycles) while keeping population well off the cap.
+    worldWidth: 400,
+    worldHeight: 400,
     gridCols: 128,
     gridRows: 128,
     initialSolarReservoir: 8_000_000,

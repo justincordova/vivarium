@@ -54,8 +54,18 @@ export interface Appearance {
 
 // Body radius mapping from expressed `size` over its legal range. Bumped up so
 // creatures read as organisms, not specks.
-const MIN_RADIUS = 3.4;
-const MAX_RADIUS = 14;
+//
+// **These are WORLD units, so they are coupled to the default world size** — apparent
+// on-screen size is `radius × zoom`, and the default view is `fitCamera`, whose zoom is
+// `viewport / worldWidth`. Shrinking the world therefore magnifies creatures by exactly
+// the same factor. When `docs/findings/world-scale-oscillation.md` took the default from
+// 1000 to 400 (2.5×), the previous 3.4/14 rendered at 2.5× their tuned size: bodies ~35 px
+// at fit, overlapping each other and hiding the terrain. Divided by 2.5 to preserve the
+// appearance these values were originally tuned for.
+//
+// If the default world size changes again, rescale these by the same factor.
+const MIN_RADIUS = 1.4;
+const MAX_RADIUS = 5.6;
 
 /** Linear map of `v` from [inLo,inHi] into [outLo,outHi], clamped to the output. */
 function remap(v: number, inLo: number, inHi: number, outLo: number, outHi: number): number {

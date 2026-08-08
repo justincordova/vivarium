@@ -92,13 +92,84 @@ actually matter.
 
 ---
 
+## Resolution: 400×400 (measured, not reasoned)
+
+Picked with the same instrument in sweep mode — `--mode sweep`, 3 seeds × 50k ticks, all
+candidates holding grid (128×128, so terrain structure) and solar reservoir (total food)
+constant so encounter density is the only variable:
+
+| candidate | density | cycles (seed 1 / 7 / 42) | alive | species |
+|---|---|---|---|---|
+| shipped 1000×1000 | 0.24 | 0.5 / 0.5 / 0.5 | **2/3** | **1 / 0 / 2** |
+| s500 500×500 | 0.94 | 0.0 / 4.0 / 0.5 | 3/3 | 88 / 88 / 33 |
+| **s400 400×400** | **1.47** | **5.0 / 2.5 / 4.5** | **3/3** | 89 / 88 / 34 |
+| s300 300×300 | 2.62 | 0.0 / 0.0 / 7.0 | 3/3 | 71 / 77 / 54 |
+| s200 200×200 | 5.89 | 0.0 / 0.0 / 0.0 | 3/3 | 43 / 52 / 37 |
+
+**Any shrink fixes survival and diversity.** Every candidate goes 3/3 alive with 33–89
+species, against the shipped world's 2/3 and 0–2. That part is unambiguous and is the bulk
+of the win.
+
+**Density is non-monotonic, which refutes the obvious fix.** The prior going in was
+"restore legacy density (5.89)". That is wrong: 200×200 is the *only* candidate that never
+oscillates at all — 0.0 cycles on all three seeds, pinned flat against the cap (seed 7 sits
+at mean 118.9, min 110, CV 0.011). Too sparse collapses; too dense saturates. The legacy
+density is on the wrong side of the peak, and legacy's own seed 1 (0.0 cycles) agrees.
+
+Why saturation, when legacy at the same density cycled? Legacy ran a 64×64 grid; these
+candidates run 128×128. Food is per-cell, so these worlds carry **4× legacy's food** at the
+same population cap. Well-fed populations pin at the cap and stop cycling. Density sets
+encounter rate; cells set food. Both matter, and only the first was varied here.
+
+**400 is the pick:** the only candidate oscillating on all three seeds, 3/3 alive,
+population swinging 35→120, and free (no `CREATURE_CAP` raise).
+
+**Shrinking costs none of Phase 6's terrain**, which is why it was preferred over paying
+for a bigger cap. `generateTerrain` samples its noise in **normalized UV**
+(`col/(cols-1)`, `terrain.ts:72-77`) on a fixed lattice, so the biome map is a function of
+`gridCols/gridRows` *only* and does not depend on `worldWidth/worldHeight` at all. Holding
+the grid at 128×128 and shrinking world units yields a **bit-identical biome map** whose
+regions are merely smaller relative to sense radius and speed. Every region and biome
+Phase 6 added survives; only the distance between things changes.
+
+### Honest limits of this result
+
+- **n=3 cannot resolve a sharp optimum.** s300 and s500 each cycle strongly on exactly one
+  seed (7.0 and 4.0), so per-seed variance is large and 400's margin over its neighbours is
+  suggestive, not conclusive. What *is* robust is the ordering at the ends: 1000 collapses,
+  200 saturates. 400 is a good point in a broad basin, not a proven peak.
+- **Restoring density is not free after all.** Density is exactly what the per-tick cost is
+  sensitive to (sensing scales with neighbours returned), so 400×400 measures ~34.0 ms/tick
+  against 1000×1000's ~20.8. `MAX_OFFLINE_TICKS` drops 1000 → 550 to hold the <20 s bound.
+  Live pacing is unaffected (34 ms inside the 50 ms `MS_PER_TICK` budget); fast-forward
+  headroom falls from ~2.4× to ~1.5× real-time.
+- **`pnpm bench` under-reports this world** and was not used for the re-derivation: its
+  600-tick warmup does not reach steady state at the new density, reporting ~17 ms/tick
+  against a measured 34. Deepening that warmup is worthwhile follow-up work.
+- **The shipped world is still not gated in CI.** One seed at 50k ticks is ~30 minutes, far
+  beyond a test-suite budget, so `gate.test.ts` stays pinned to the legacy rule world and
+  this script remains the instrument. A cheap proxy gate is unsolved.
+- **Existing saved worlds keep the old size and stay broken.** World dimensions are
+  serialized per-world, so a returning visitor resumes their 1000×1000 world — correct
+  behaviour (silently resizing a running world would teleport every creature and break
+  continuity), but it means the fix reaches existing players only if they re-init. No
+  save-format bump is involved: the schema is unchanged, only the default values.
+- **Creature render radii are coupled to world size and had to be rescaled.** `MIN_RADIUS`
+  /`MAX_RADIUS` in `render/palette.ts` are world units, so at `fitCamera` zoom
+  (`viewport / worldWidth`) the 2.5× shrink magnified every creature 2.5×, overlapping them
+  and hiding the terrain. Divided by 2.5 to preserve the tuned appearance. This coupling is
+  the same class of staleness as the original bug — a world-size change silently
+  invalidating a constant derived from it.
+
 ## What this does not decide
 
-The fix is a real design decision with a performance trade-off, and is deliberately left
-open here:
+Options considered and *not* taken — all still open if 400×400 proves insufficient:
 
-- **Shrink the world** back toward 200–400 per side — cheapest, but gives up the terrain
-  regions and migration that Phase 6 was for.
+- **Lower the grid toward 64×64** — untested, and the most promising remaining lever. It
+  attacks the *other* half of the mechanism: cells set total food, and 128×128 carries 4×
+  legacy's food, which is the likeliest reason dense candidates saturate at the cap rather
+  than cycling. It would also cut per-tick cost. It does change terrain granularity, which
+  shrinking did not.
 - **Raise `CREATURE_CAP` and `senseRadius` together** toward legacy density — preserves
   the big world, but per-tick cost scales with population and the catch-up budget
   (`MAX_OFFLINE_TICKS`, already re-derived once) would need re-deriving again.

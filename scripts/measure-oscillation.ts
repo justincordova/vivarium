@@ -28,6 +28,32 @@
  *
  * Usage:
  *   tsx scripts/measure-oscillation.ts --seeds 1,7,11,42,99 --ticks 60000
+ *   tsx scripts/measure-oscillation.ts --mode sweep --candidate s200
+ *
+ * ## Sweep mode (`--mode sweep`)
+ *
+ * Baseline mode answered "does the shipped world oscillate" (no — see
+ * `docs/findings/world-scale-oscillation.md`). Sweep mode picks the rebalance, by running
+ * candidate worlds through the same instrument instead of arguing about them.
+ *
+ * The lever is **encounter density** — expected neighbours inside a creature's sense
+ * radius, `(cap / area) × π r²`. The shipped world sits at 0.24 against legacy's 5.89,
+ * which is why nothing meets anything. Two ways to raise it: shrink the area, or raise the
+ * cap.
+ *
+ * Shrinking is nearly free, for a non-obvious reason: `generateTerrain` samples its noise
+ * in **normalized UV** (`col/(cols-1)`) on a fixed lattice, so the biome map depends only
+ * on `gridCols/gridRows` — *not* on `worldWidth/worldHeight`. Holding the grid at 128×128
+ * and shrinking world units therefore yields a **bit-identical biome map** with regions
+ * that are physically smaller relative to sense radius and speed. Phase 6's terrain
+ * structure is fully preserved; only the distance between things changes. Raising the cap,
+ * by contrast, costs per-tick time roughly in proportion to population and forces
+ * `MAX_OFFLINE_TICKS` to be re-derived again.
+ *
+ * Candidates hold `gridCols/gridRows` (terrain structure) and `initialSolarReservoir`
+ * (total food, which is per-cell) constant, so density is the only variable. Matched-ish
+ * densities at different world sizes are included deliberately: if outcome tracks density
+ * and ignores absolute size, density is the whole story.
  */
 
 import type { ConfigOverrides } from "../src/sim/config";
@@ -42,10 +68,20 @@ interface Args {
   ticks: number;
   warmup: number;
   sampleEvery: number;
+  mode: "baseline" | "sweep";
+  /** Sweep mode only: run a single named candidate (so candidates can run in parallel). */
+  candidate: string | null;
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { seeds: [1, 7, 11, 42, 99], ticks: 60_000, warmup: 5_000, sampleEvery: 20 };
+  const args: Args = {
+    seeds: [1, 7, 11, 42, 99],
+    ticks: 60_000,
+    warmup: 5_000,
+    sampleEvery: 20,
+    mode: "baseline",
+    candidate: null,
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = (): string => {
@@ -58,6 +94,11 @@ function parseArgs(argv: string[]): Args {
     else if (a === "--ticks") args.ticks = Number(next());
     else if (a === "--warmup") args.warmup = Number(next());
     else if (a === "--sample-every") args.sampleEvery = Number(next());
+    else if (a === "--mode") {
+      const m = next();
+      if (m !== "baseline" && m !== "sweep") throw new Error(`--mode must be baseline|sweep`);
+      args.mode = m;
+    } else if (a === "--candidate") args.candidate = next();
     else throw new Error(`unknown argument: ${a}`);
   }
   if (args.seeds.some((s) => !Number.isFinite(s))) throw new Error("--seeds must be numbers");
@@ -160,12 +201,23 @@ function fmt(n: number, d = 3): string {
   return Number.isFinite(n) ? n.toFixed(d) : "—";
 }
 
-function report(label: string, rows: Outcome[]): void {
+/**
+ * Print a section, streaming **one row per seed as it completes**.
+ *
+ * Deliberately not "collect all, then print": at ~30 ms/tick a 50k-tick seed is ~30
+ * minutes, so buffering a whole section means hours with zero output and no way to tell
+ * progress from a hang. Rows land as they finish, so a run that is killed early still
+ * yields usable partial evidence.
+ */
+function report(label: string, seeds: number[], runOne: (seed: number) => Outcome): void {
   process.stdout.write(`\n## ${label}\n`);
   process.stdout.write(
     "seed  alive  meanPop     CV  cycles   min   max   kills  births  ext  spp\n",
   );
-  for (const r of rows) {
+  const rows: Outcome[] = [];
+  for (const seed of seeds) {
+    const r = runOne(seed);
+    rows.push(r);
     process.stdout.write(
       `${String(r.seed).padStart(4)}  ${r.survived ? " yes " : " NO  "}  ` +
         `${fmt(r.meanPop, 1).padStart(7)}  ${fmt(r.cv).padStart(5)}  ` +
@@ -186,6 +238,58 @@ function report(label: string, rows: Outcome[]): void {
   );
 }
 
+/** `world.ts` seeds every founder's `senseRadius` gene at 25; the density metric uses it. */
+const SEEDED_SENSE_RADIUS = 25;
+
+/**
+ * Expected neighbours inside one creature's sense radius at population `cap`:
+ * `(cap / area) × π r²`. Legacy 200×200 @ cap 120 = 5.89; the shipped 1000×1000 = 0.24.
+ */
+function encounterDensity(o: ConfigOverrides): number {
+  const w = o.worldWidth ?? 1000;
+  const h = o.worldHeight ?? 1000;
+  const cap = o.tunables?.CREATURE_CAP ?? 120;
+  return (cap / (w * h)) * Math.PI * SEEDED_SENSE_RADIUS ** 2;
+}
+
+interface Candidate {
+  name: string;
+  /** Why this point is on the frontier — cost, or what it isolates. */
+  note: string;
+  overrides: ConfigOverrides;
+}
+
+function candidate(name: string, side: number, cap: number, note: string): Candidate {
+  return {
+    name,
+    note,
+    // Grid and solar reservoir are held constant so terrain structure and total food do
+    // not move; `side` and `cap` are the only variables.
+    overrides: {
+      worldWidth: side,
+      worldHeight: side,
+      gridCols: 128,
+      gridRows: 128,
+      brainKind: "patchbay",
+      tunables: { CREATURE_CAP: cap },
+    },
+  };
+}
+
+/**
+ * The candidate frontier. Cap 120 costs what we already pay; raising it scales per-tick
+ * cost with population and re-opens the `MAX_OFFLINE_TICKS` budget, so the cheap
+ * shrink-only points come first and the paid ones must clearly beat them to be worth it.
+ */
+const CANDIDATES: Candidate[] = [
+  candidate("s200", 200, 120, "legacy density, Phase 6 terrain — free"),
+  candidate("s300", 300, 120, "mild shrink — free"),
+  candidate("s400", 400, 120, "gentle shrink — free"),
+  candidate("s500", 500, 120, "sparser than s400 — free; is the optimum past 400?"),
+  candidate("s400c300", 400, 300, "bigger world, paid: ~2.5x pop cost"),
+  candidate("s600c400", 600, 400, "biggest world, paid: ~3.3x pop cost"),
+];
+
 function main(): void {
   const a = parseArgs(process.argv.slice(2));
   process.stdout.write(
@@ -195,24 +299,43 @@ function main(): void {
       `# world recorded CV ~= 0.6 over 100k ticks.\n`,
   );
 
+  if (a.mode === "sweep") {
+    const chosen = a.candidate ? CANDIDATES.filter((c) => c.name === a.candidate) : CANDIDATES;
+    if (chosen.length === 0) {
+      throw new Error(
+        `unknown candidate: ${a.candidate} (have ${CANDIDATES.map((c) => c.name).join(", ")})`,
+      );
+    }
+    process.stdout.write(
+      `# SWEEP — verdict is cycles + survival + species. NOT CV: the highest CV measured\n` +
+        `# so far (0.599) was a dying monoculture, because collapse maximises variance.\n`,
+    );
+    for (const c of chosen) {
+      const side = c.overrides.worldWidth;
+      const cap = c.overrides.tunables?.CREATURE_CAP;
+      report(
+        `${c.name} — ${side}x${side}, cap ${cap}, density ` +
+          `${fmt(encounterDensity(c.overrides), 2)} (${c.note})`,
+        a.seeds,
+        (s) => run(s, c.overrides, a),
+      );
+    }
+    return;
+  }
+
   // The shipped world: whatever `makeConfig({})` currently is.
-  report(
-    "SHIPPED default (1000x1000, patchbay)",
-    a.seeds.map((s) => run(s, {}, a)),
-  );
+  report("SHIPPED default (1000x1000, patchbay)", a.seeds, (s) => run(s, {}, a));
 
   // The reference the oscillation gate was actually calibrated on. Included so the
   // shipped number is read against something rather than in a vacuum.
   const legacy = { worldWidth: 200, worldHeight: 200, gridCols: 64, gridRows: 64 } as const;
-  report(
-    "LEGACY reference (200x200, rule) — what gate.test.ts measures",
-    a.seeds.map((s) => run(s, { ...legacy, brainKind: "rule" }, a)),
+  report("LEGACY reference (200x200, rule) — what gate.test.ts measures", a.seeds, (s) =>
+    run(s, { ...legacy, brainKind: "rule" }, a),
   );
 
   // Isolates the two changes: is any gap the world size, or the brain?
-  report(
-    "CONTROL (200x200, patchbay) — isolates world size from brain",
-    a.seeds.map((s) => run(s, { ...legacy, brainKind: "patchbay" }, a)),
+  report("CONTROL (200x200, patchbay) — isolates world size from brain", a.seeds, (s) =>
+    run(s, { ...legacy, brainKind: "patchbay" }, a),
   );
 }
 
