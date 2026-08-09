@@ -584,6 +584,12 @@ export function startWorker(): Worker {
     useSimStore.setState({ phase: "entering" });
     void (async () => {
       send({ t: "boot", seed, config, catchupEnabled, source: "fresh" });
+      // The worker starts every session with Terrarium OFF, so the persisted preference
+      // must be re-asserted here exactly as `bootWorld` does. Without it a steward who
+      // enters by shared link gets an unrestricted sandbox while the UI renders the
+      // influence meter, the per-tool cost badges and the score — the budget never moves
+      // and no button ever dims, because `spend()` short-circuits on `!terrarium`.
+      if (useSimStore.getState().terrarium) send({ t: "terrarium", on: true });
     })().catch(() => {
       // Last resort for an unexpected `send`/postMessage throw — leave no unhandled
       // rejection; the worker cold-starts from founders on its own.
