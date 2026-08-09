@@ -300,6 +300,11 @@ export const useSimStore = create<SimState>((set, get) => ({
   terrarium: readTerrariumPref(),
 
   play() {
+    // The worker owns world time. Once it has crashed, `send` goes nowhere and no frame or
+    // stat will ever arrive again — but `set({running:true})` would still flip the button
+    // to "pause" over a frozen HUD, restoring the exact "stopped world that looks alive"
+    // state `worker.onerror` exists to eliminate. Refuse rather than lie.
+    if (get().workerCrashed) return;
     send({ t: "play" });
     set({ running: true });
   },
@@ -315,8 +320,9 @@ export const useSimStore = create<SimState>((set, get) => ({
     set({ speed });
   },
   step(ticks) {
-    // Stepping only makes sense while paused (the loop advances time otherwise).
-    if (get().running) return;
+    // Stepping only makes sense while paused (the loop advances time otherwise), and never
+    // against a dead worker.
+    if (get().running || get().workerCrashed) return;
     send({ t: "step", ticks });
   },
   inspect(id) {

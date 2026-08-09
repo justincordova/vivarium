@@ -110,6 +110,8 @@ export function ControlPanel(): React.ReactElement {
   const terrarium = useSimStore((s) => s.terrarium);
   const setTerrarium = useSimStore((s) => s.setTerrarium);
   const params = useSimStore((s) => s.params);
+  // The worker owns world time; once it is dead the transport cannot do anything.
+  const workerCrashed = useSimStore((s) => s.workerCrashed);
   const exportWorld = useSimStore((s) => s.exportWorld);
   const importWorld = useSimStore((s) => s.importWorld);
   const [open, setOpen] = useState(true);
@@ -161,13 +163,20 @@ export function ControlPanel(): React.ReactElement {
       </div>
 
       <div className="flex gap-1.5">
-        <button type="button" onClick={toggle} className="ctl tabular flex-1 px-2 py-1.5 text-sm">
+        <button
+          type="button"
+          onClick={toggle}
+          disabled={workerCrashed}
+          className="ctl tabular flex-1 px-2 py-1.5 text-sm disabled:opacity-40"
+          title={workerCrashed ? "the simulation stopped — reload to recover" : undefined}
+        >
           {running ? "pause" : "play"}
         </button>
         <button
           type="button"
           onClick={() => doStep(1)}
-          className="ctl tabular px-2 py-1.5 text-sm"
+          disabled={workerCrashed}
+          className="ctl tabular px-2 py-1.5 text-sm disabled:opacity-40"
           title="step 1 tick"
         >
           +1
@@ -175,7 +184,8 @@ export function ControlPanel(): React.ReactElement {
         <button
           type="button"
           onClick={() => doStep(100)}
-          className="ctl tabular px-2 py-1.5 text-sm"
+          disabled={workerCrashed}
+          className="ctl tabular px-2 py-1.5 text-sm disabled:opacity-40"
           title="step 100 ticks"
         >
           +100
