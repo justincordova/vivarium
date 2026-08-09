@@ -76,10 +76,50 @@ async function gzip(text: string): Promise<Uint8Array> {
   return new Uint8Array(buf);
 }
 
-/** Gunzip bytes via `DecompressionStream` → UTF-8 string. */
+/**
+ * Largest decompressed save we will hold in memory. A real world save is far under this
+ * (a few MB at the default 400×400 world), so the cap only ever trips on something that
+ * is not a save.
+ */
+const MAX_DECOMPRESSED_BYTES = 64 * 1024 * 1024;
+
+/**
+ * Thrown when a gzip stream expands past `MAX_DECOMPRESSED_BYTES`. Distinct from a plain
+ * gunzip failure because the callers retry those as raw JSON — retrying a bomb would
+ * report it as a merely-malformed file and hide why it was actually rejected.
+ */
+class DecompressionLimitError extends Error {}
+
+/**
+ * Gunzip bytes via `DecompressionStream` → UTF-8 string, bounded.
+ *
+ * A `.viv.gz` is the documented way to hand someone else an evolved world, so its content
+ * is untrusted. Buffering the whole stream (`new Response(stream).text()`) would let a
+ * ~1 MB decompression bomb expand to several GB and OOM-crash the tab before any
+ * validation could run, losing everything since the last autosave. Read incrementally and
+ * abort once the decoded output exceeds the cap.
+ */
 async function gunzip(bytes: Uint8Array): Promise<string> {
   const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
-  return new Response(stream).text();
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let out = "";
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_DECOMPRESSED_BYTES) {
+        throw new DecompressionLimitError("save file is too large to read");
+      }
+      out += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    // Releases the underlying source whether we finished or bailed out early.
+    void reader.cancel().catch(() => undefined);
+  }
+  return out + decoder.decode();
 }
 
 /**
@@ -125,7 +165,11 @@ export async function importWorld(file: File): Promise<SaveBlob> {
   let text: string;
   try {
     text = await gunzip(bytes);
-  } catch {
+  } catch (e) {
+    // The raw fallback is for "this file was never gzipped". A size-cap abort is a
+    // different answer — retrying it as raw JSON would report a decompression bomb as a
+    // merely malformed save and lose the real reason.
+    if (e instanceof DecompressionLimitError) throw e;
     text = new TextDecoder().decode(bytes);
   }
   let parsed: unknown;

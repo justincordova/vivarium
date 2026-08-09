@@ -89,4 +89,16 @@ describe("gzip file import", () => {
     expect(imported.version).toBe(blob.version);
     expect(imported.creatures.length).toBe(blob.creatures.length);
   });
+
+  // A `.viv.gz` is the documented way to hand someone else an evolved world, so its
+  // content is untrusted. Buffering the whole stream would let a small decompression bomb
+  // expand without bound and OOM the tab before any validation ran, losing everything
+  // since the last autosave. 65 MB of one repeated byte gzips to a few tens of KB.
+  it("aborts a decompression bomb instead of buffering it", async () => {
+    const bomb = "a".repeat(65 * 1024 * 1024);
+    const file = await gzippedFile(bomb, "bomb.viv.gz");
+    // Comfortably smaller than what it expands to — that asymmetry is the attack.
+    expect(file.size).toBeLessThan(1024 * 1024);
+    await expect(importWorld(file)).rejects.toThrow(/too large/);
+  }, 120_000);
 });
