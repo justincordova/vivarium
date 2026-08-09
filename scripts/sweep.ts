@@ -143,6 +143,22 @@ function runShard(shard: number[], args: Args): void {
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 
+/**
+ * Every shard child that has not yet closed. `Promise.all` rejects on the FIRST failure
+ * and `main`'s catch exits, but Node does not kill spawned children when the parent exits
+ * — the survivors would run to completion with a destroyed stdout pipe, each pinning a
+ * core for the remaining hours of a 100k-tick sweep, invisible in a shell that appeared to
+ * exit. A sweep deliberately samples extreme configs, so a shard failing while others are
+ * still simulating is a realistic outcome, not a hypothetical one.
+ */
+const liveChildren = new Set<ReturnType<typeof spawn>>();
+
+/** SIGTERM every shard child still running (called when the sweep gives up). */
+function killLiveChildren(): void {
+  for (const child of liveChildren) child.kill("SIGTERM");
+  liveChildren.clear();
+}
+
 function spawnShard(shard: number[], args: Args): Promise<SweepResult[]> {
   return new Promise((resolve, reject) => {
     const child = spawn(
@@ -162,12 +178,17 @@ function spawnShard(shard: number[], args: Args): Promise<SweepResult[]> {
       ],
       { stdio: ["ignore", "pipe", "inherit"] },
     );
+    liveChildren.add(child);
     let buf = "";
     child.stdout.on("data", (chunk: Buffer) => {
       buf += chunk.toString();
     });
-    child.on("error", reject);
+    child.on("error", (e) => {
+      liveChildren.delete(child);
+      reject(e);
+    });
     child.on("close", (code) => {
+      liveChildren.delete(child);
       if (code !== 0) {
         reject(new Error(`shard process exited with code ${code}`));
         return;
@@ -244,6 +265,8 @@ if (cliArgs.shard !== null) {
 } else {
   main(cliArgs).catch((err) => {
     process.stderr.write(`${err instanceof Error ? err.stack : String(err)}\n`);
+    // Take the surviving shards down before exiting, or they outlive this process.
+    killLiveChildren();
     process.exit(1);
   });
 }
