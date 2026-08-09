@@ -15,6 +15,7 @@ import { useSimStore } from "@store/useSimStore";
 export function Landing(): React.ReactElement | null {
   const phase = useSimStore((s) => s.phase);
   const hasSave = useSimStore((s) => s.hasSave);
+  const saveIsStale = useSimStore((s) => s.saveIsStale);
   const bootWorld = useSimStore((s) => s.bootWorld);
   if (phase !== "landing") return null;
 
@@ -77,6 +78,16 @@ export function Landing(): React.ReactElement | null {
             >
               Resume your world
             </button>
+          )}
+          {/* A saved world keeps the size it was created at (resizing a live world would
+              teleport every creature), and worlds from before the rebalance are the ones
+              measured to stall and collapse. Say so plainly and let them choose — do not
+              silently serve a broken world, and do not silently delete their save. */}
+          {hasSave && saveIsStale && (
+            <p className="mt-1 max-w-[19rem] text-[12px] leading-relaxed text-[var(--fg-mute)]">
+              Your saved world is from an older, unbalanced version — life there tends to stall. A
+              new world is livelier.
+            </p>
           )}
         </div>
 

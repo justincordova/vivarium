@@ -218,7 +218,7 @@ function makeFounderGenome(spawn: RNG, template: BrainTemplate, carnivore: boole
   // are herbivores. Both evolve freely from here.
   seedGene("diet", carnivore ? 0.9 : 0.1);
   seedGene("aggression", carnivore ? 4 : 1);
-  seedGene("senseRadius", 25);
+  seedGene("senseRadius", FOUNDER_SENSE_RADIUS);
   seedGene("matingThreshold", 140); // fed enough to mate (throttles breeding)
   seedGene("offspringInvestment", 90); // costly but lets survivors rebuild after a trough
   seedGene("maxLifespan", 2000);
@@ -269,6 +269,17 @@ const PLANT_START_ENERGY = 60;
 const PLANTS_PER_FOUNDER = 5;
 /** Initial fertility placed per grid cell so plants can photosynthesize from tick 0. */
 const INITIAL_FERTILITY_PER_CELL = 50;
+/**
+ * The `senseRadius` every founder is seeded at, world units.
+ *
+ * Exported because it is half of the world's **encounter density** —
+ * `(CREATURE_CAP / area) × π × FOUNDER_SENSE_RADIUS²`, the quantity that decides whether
+ * creatures ever meet. Phase 6 changed the world area without it and nothing noticed, so
+ * `tests/sim/world-scale.test.ts` now asserts the resulting density directly rather than
+ * letting the two drift apart again.
+ */
+export const FOUNDER_SENSE_RADIUS = 25;
+
 /** Number of spatial demes founders cluster into (SPEC.md §Initial Conditions). */
 const DEME_COUNT = 4;
 /** Radius of a deme cluster, world units. */

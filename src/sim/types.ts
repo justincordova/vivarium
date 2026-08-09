@@ -429,6 +429,7 @@ export interface Tunables {
   REACH_PER_SIZE: number;
   K_SPEED: number;
   K_ANGLE: number;
+  ATTACK_DAMAGE_COEF: number;
   // scent
   EMIT_INTENSITY: number;
   // Phase 1 — world-health metrics (read by stats.ts only, never by tick()).

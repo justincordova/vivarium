@@ -17,6 +17,7 @@
  * by `idb-keyval`.
  */
 
+import { defaultConfig } from "@sim/config";
 import { deserialize, type SaveBlob, serialize } from "@sim/serialize";
 import type { World } from "@sim/types";
 import { get as idbGet, set as idbSet } from "idb-keyval";
@@ -40,6 +41,16 @@ export interface Meta {
   lastSavedRealTime: number;
   /** The world tick at save time (for progress display / diagnostics). */
   savedTick: number;
+  /**
+   * World size at save time. Stamped into `meta` (not read from the slot) so the landing
+   * screen can tell a pre-rebalance world from a current one without deserializing a
+   * multi-megabyte blob — the whole point of `hasSavedWorld` reading only this pointer.
+   *
+   * Optional because saves written before this field existed do not have it. That absence
+   * is itself the signal: every such save predates the 400×400 rebalance
+   * (`docs/findings/world-scale-oscillation.md`), so a missing value means "stale".
+   */
+  worldWidth?: number;
 }
 
 /** The default store, backed by `idb-keyval` (used in the browser worker). */
@@ -111,6 +122,35 @@ export async function hasSavedWorld(store: KeyValStore = idbStore): Promise<bool
 }
 
 /**
+ * Whether a saved world exists, and whether it was built at a world size the current
+ * default no longer uses.
+ *
+ * World dimensions are serialized *per world*, so resuming an old save correctly keeps its
+ * own size — silently resizing a running world would teleport every creature and break
+ * continuity. The consequence is that a returning visitor stays in a pre-rebalance world
+ * forever unless told, and the pre-rebalance world is the one that booms once, collapses
+ * to a monoculture and can die outright (`docs/findings/world-scale-oscillation.md`). So
+ * the landing screen says so and lets them choose, rather than silently serving a world we
+ * know is broken or silently destroying their save.
+ *
+ * Reads only the `meta` pointer — never a world slot (see `hasSavedWorld`).
+ */
+export async function savedWorldStatus(
+  store: KeyValStore = idbStore,
+  currentWorldWidth: number = defaultConfig.worldWidth,
+): Promise<{ exists: boolean; stale: boolean }> {
+  try {
+    const meta = await store.get<Meta>(META_KEY);
+    if (meta === undefined) return { exists: false, stale: false };
+    // A save with no stamped width predates the field, and therefore predates the
+    // rebalance that introduced it.
+    return { exists: true, stale: meta.worldWidth !== currentWorldWidth };
+  } catch {
+    return { exists: false, stale: false };
+  }
+}
+
+/**
  * Autosave `world` crash-safely: write the OLDER slot, then flip `meta`. Stamps
  * `world.lastSavedRealTime` with `now` (the worker's wall-clock) — this is the one
  * place that value is written, and it never enters `tick()`. Returns the new `Meta`
@@ -133,7 +173,12 @@ export async function autosave(
   const blob = serialize(world);
   const savedTick = world.tick;
   await store.set(slotKey(older), blob);
-  const meta: Meta = { newest: older, lastSavedRealTime: now, savedTick };
+  const meta: Meta = {
+    newest: older,
+    lastSavedRealTime: now,
+    savedTick,
+    worldWidth: world.config.worldWidth,
+  };
   await store.set(META_KEY, meta);
   return meta;
 }

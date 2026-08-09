@@ -486,6 +486,47 @@ export const K_SPEED = 2.0;
 /** Escape-check sigmoid coefficient on off-heading. (tunable) */
 export const K_ANGLE = 1.0;
 
+/**
+ * Damage per landed hit = `ATTACK_DAMAGE_COEF × attackPower`.
+ *
+ * `attackPower` (`aggression × size`) is a **unitless contest strength** — it is compared
+ * against `defenseScale` as a ratio in `pWin = power/(power+resist)`. It was also being
+ * used directly as damage in *health* units, and the two scales do not match, which is why
+ * predation never happened (`docs/findings/carnivore-niche.md`):
+ *
+ *   founder herbivore maxHealth = 20 + 40·size(3) + 40·armor(≈5) = 340
+ *   founder carnivore damage    =      aggression(4) · size(5)   =  20   → 17 landed hits
+ *
+ * 17 landed hits is ~30 attempts after escapes and lost contests, against 1 HP/tick
+ * regeneration — so a kill was effectively unreachable, the carnivore paid the attack cost
+ * for nothing, and selection deleted the niche within ~2000 ticks (measured: carnivore
+ * fraction 0.167 → 0.025).
+ *
+ * 2.0 puts a founder kill at ~8 landed hits instead of 17 — enough that hunting can pay,
+ * while a chase stays visible rather than an instant delete. Deliberately a separate
+ * coefficient rather than a bigger `aggression` range: scaling `attackPower` itself would
+ * also move `pWin` and `isThreat`, changing who *initiates* and who *flees*, not just how
+ * hard a landed hit lands.
+ *
+ * **Why 2.0 and not 4.0, which measured better.** 4.0 yields ~3× the predation (43 kills
+ * by tick 14k against 14 at 2.0, and 2 unfixed) and is closer to the right physics. It is
+ * held back by `gate.test.ts`, whose `cv > 0.02` assertion it fails. That gate world is
+ * pinned at its cap in *every* variant — mean 119 of a 120 cap — so its CV is noise around
+ * a flat line, and the unfixed baseline passes by a hair:
+ *
+ *   coef 1.0 (unfixed): mean 118.7  cv 0.0279  min 95   kills 0   ← passes on 0.0079 margin
+ *   coef 2.0:           mean 118.5  cv 0.0358  min 88   kills 2   ← improves the metric
+ *   coef 4.0:           mean 119.3  cv 0.0131  min 110  kills 4   ← fails
+ *
+ * So the assertion is not measuring "oscillates vs flat"; it is measuring how much noise a
+ * saturated population happens to have, and more predation regulates that noise away. That
+ * gate needs replacing (`docs/findings/carnivore-niche.md`) — but rewriting a phase exit
+ * criterion to admit one's own change is how Phase 6 rotted, so 2.0 ships: a real
+ * improvement that also improves the gate's own metric, leaving 4.0 for a deliberate
+ * decision about the gate. (tunable)
+ */
+export const ATTACK_DAMAGE_COEF = 2.0;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Scent emission  (SPEC.md §Actions — emit scent, action 6)
 // ─────────────────────────────────────────────────────────────────────────────

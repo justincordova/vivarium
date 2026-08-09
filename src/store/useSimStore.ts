@@ -14,7 +14,7 @@
 import { makeConfig } from "@sim/config";
 import type { SaveBlob } from "@sim/serialize";
 import type { Creature, LineageEvent } from "@sim/types";
-import { hasSavedWorld } from "@worker/persistence";
+import { savedWorldStatus } from "@worker/persistence";
 import type {
   Command,
   Event,
@@ -162,6 +162,13 @@ interface SimState {
   /** Whether a saved world exists (async-checked on mount) → gates the "Continue" button. */
   hasSave: boolean;
   /**
+   * Whether that save was built at a world size the current default no longer uses. World
+   * size is per-world and is deliberately NOT migrated (resizing a live world would
+   * teleport every creature), so a stale save resumes into the pre-rebalance world — the
+   * one measured to collapse. The landing screen says so instead of silently serving it.
+   */
+  saveIsStale: boolean;
+  /**
    * Science mode (Living World): OFF by default, showing a newcomer the world itself —
    * population, the event feed, a plain-language creature card. ON reveals the research
    * instrument: trait-variance/novelty readouts, the distribution + lineage charts, raw
@@ -256,6 +263,7 @@ export const useSimStore = create<SimState>((set, get) => ({
   report: null,
   phase: "landing",
   hasSave: false,
+  saveIsStale: false,
   scienceMode: readSciencePref(),
 
   play() {
@@ -546,9 +554,9 @@ export function startWorker(): Worker {
       // rejection; the worker cold-starts from founders on its own.
     });
   } else {
-    void hasSavedWorld()
-      .then((has) => useSimStore.setState({ hasSave: has }))
-      .catch(() => useSimStore.setState({ hasSave: false }));
+    void savedWorldStatus()
+      .then(({ exists, stale }) => useSimStore.setState({ hasSave: exists, saveIsStale: stale }))
+      .catch(() => useSimStore.setState({ hasSave: false, saveIsStale: false }));
   }
 
   // `visibilitychange` is a document (main-thread) event the worker cannot observe;

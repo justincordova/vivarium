@@ -834,8 +834,10 @@ function tryAttack(
   // Contest.
   const pWin = power / (power + resist);
   if (world.rng.resolve.next() < pWin) {
-    // Attacker wins: deal damage (may be lethal → corpse path at removals).
-    target.health -= toQuantum(power);
+    // Attacker wins: deal damage (may be lethal → corpse path at removals). `power` is a
+    // unitless contest strength (it sets `pWin` above); `ATTACK_DAMAGE_COEF` converts it
+    // into health units — see the constant for why the two must not be the same number.
+    target.health -= toQuantum(power * t.ATTACK_DAMAGE_COEF);
     if (target.health < 0) target.health = 0;
     if (target.health === 0) {
       // Position rides along so the renderer can flash where the kill happened; by the

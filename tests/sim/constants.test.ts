@@ -152,6 +152,7 @@ describe("constants — presence check (every name a later Phase 0 task referenc
       "REACH_PER_SIZE",
       "K_SPEED",
       "K_ANGLE",
+      "ATTACK_DAMAGE_COEF",
       // scent
       "EMIT_INTENSITY",
       // Phase 1 — world-health metrics

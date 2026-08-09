@@ -111,6 +111,7 @@ function defaultTunables(): Tunables {
     REACH_PER_SIZE: C.REACH_PER_SIZE,
     K_SPEED: C.K_SPEED,
     K_ANGLE: C.K_ANGLE,
+    ATTACK_DAMAGE_COEF: C.ATTACK_DAMAGE_COEF,
     // scent
     EMIT_INTENSITY: C.EMIT_INTENSITY,
     // Phase 1 — world-health metrics
