@@ -601,6 +601,13 @@ export function startWorker(): Worker {
   const shared = typeof location !== "undefined" ? parseHash(location.hash) : null;
   const seed = shared?.seed ?? useSimStore.getState().seed;
   if (shared !== null) useSimStore.setState({ seed });
+  // Mirror the link's tunables into `params`, not just into the worker's config. `params`
+  // is what the control panel DISPLAYS (`s.params[key] ?? def.def`) and what `copyShare`
+  // rebuilds the link from. Left empty, a `#seed=7&mut=5` world runs at mutation rate 5
+  // while the slider reads the 1.0 default, and re-sharing that link emits a bare
+  // `#seed=7` with the override stripped — handing the next person a materially different
+  // world, which is exactly the reproducibility the hash exists to provide.
+  if (shared?.tunables !== undefined) useSimStore.setState({ params: { ...shared.tunables } });
   const config = makeConfig(shared?.tunables ? { tunables: shared.tunables } : {});
   const { catchupEnabled } = useSimStore.getState();
 
