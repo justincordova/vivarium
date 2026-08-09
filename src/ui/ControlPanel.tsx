@@ -107,6 +107,8 @@ export function ControlPanel(): React.ReactElement {
   const setCatchupEnabled = useSimStore((s) => s.setCatchupEnabled);
   const scienceMode = useSimStore((s) => s.scienceMode);
   const setScienceMode = useSimStore((s) => s.setScienceMode);
+  const terrarium = useSimStore((s) => s.terrarium);
+  const setTerrarium = useSimStore((s) => s.setTerrarium);
   const params = useSimStore((s) => s.params);
   const exportWorld = useSimStore((s) => s.exportWorld);
   const importWorld = useSimStore((s) => s.importWorld);
@@ -239,6 +241,25 @@ export function ControlPanel(): React.ReactElement {
           onChange={(e) => setScienceMode(e.target.checked)}
           className="h-3 w-3 cursor-pointer accent-[var(--accent)]"
           aria-label="science mode"
+        />
+      </label>
+
+      {/* Terrarium mode: the god-powers stop being free and start costing a refilling
+          influence budget, and the world gets scored on how interesting it is. Off by
+          default — the unlimited sandbox is an existing feature this must not remove. */}
+      <label className="mt-2 flex items-center justify-between">
+        <span
+          className="cursor-help text-[10px] uppercase tracking-wide text-[var(--fg-mute)]"
+          title="Stewardship: god-powers cost a refilling influence budget, and your world is scored on how interesting it is (oscillation and diversity good, stagnation bad)."
+        >
+          terrarium mode
+        </span>
+        <input
+          type="checkbox"
+          checked={terrarium}
+          onChange={(e) => setTerrarium(e.target.checked)}
+          className="h-3 w-3 cursor-pointer accent-[var(--accent)]"
+          aria-label="terrarium mode"
         />
       </label>
 

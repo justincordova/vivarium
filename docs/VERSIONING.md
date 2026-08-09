@@ -37,7 +37,7 @@ Post-beta work (Terrarium/Laboratory modes, LLM naturalist, etc. — SPEC.md
 ## 3. Save-format version — the serialized integer
 
 A monotonic integer inside every serialized world (started at `version: 1`; **now
-`5`** after Phase 7A, per SPEC.md §Persistence — the authoritative value is
+`6`** after Terrarium mode, per SPEC.md §Persistence — the authoritative value is
 `SAVE_VERSION` in `src/sim/serialize.ts`). **Independent of git tags and the
 SemVer above.**
 
@@ -54,6 +54,9 @@ SemVer above.**
   the defaults — absent `nests` → `[]`, absent `sociality` → neutral. This release also
   reshaped brain geometry (SENSORS 21→24, ACTIONS 7→8, ARROWS 380→420), so a 380-length
   brain re-seeds inert at 420 rather than migrating weight-for-weight.
+- **`5 → 6` (Terrarium stewardship budget):** `migrateV5toV6` bumps the version;
+  `deserialize` defaults an absent `influence` to a full budget, so a pre-Terrarium world
+  loads with its stewardship allowance intact rather than empty.
 - The save integer moves for its own reasons — never tie it to a git tag.
 - Seed reproducibility is guaranteed *within* a save version, not necessarily
   across (SPEC.md §Determinism / RNG Discipline).

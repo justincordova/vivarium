@@ -22,6 +22,7 @@ import {
   type Meta,
   SLOT_A,
   SLOT_B,
+  savedWorldStatus,
 } from "../../src/worker/persistence";
 
 /** A trivial in-memory key-value store standing in for `idb-keyval`. */
@@ -250,5 +251,50 @@ describe("hasSavedWorld (landing 'Continue' gate)", () => {
       set: async () => {},
     };
     expect(await hasSavedWorld(throwingStore)).toBe(false);
+  });
+});
+
+describe("savedWorldStatus (landing 'your world is from an older version' notice)", () => {
+  it("is not stale when the save was written at the current world size", async () => {
+    const store = memStore();
+    const w = createWorld(9, makeConfig({}));
+    await autosave(store, w, null, 1000);
+    expect(await savedWorldStatus(store, w.config.worldWidth)).toEqual({
+      exists: true,
+      stale: false,
+    });
+  });
+
+  it("is stale when the save was written at a different world size", async () => {
+    const store = memStore();
+    // A world from before the 400×400 rebalance (docs/findings/world-scale-oscillation.md).
+    const old = createWorld(9, makeConfig({ worldWidth: 1000, worldHeight: 1000 }));
+    await autosave(store, old, null, 1000);
+    expect(await savedWorldStatus(store, 400)).toEqual({ exists: true, stale: true });
+  });
+
+  /**
+   * The signal that matters most in practice: every save written before `worldWidth`
+   * existed in `meta` predates the rebalance that introduced it, so a missing value must
+   * read as stale rather than as "fine".
+   */
+  it("treats a meta with no recorded width as stale", async () => {
+    const store = memStore();
+    await autosave(store, createWorld(9, makeConfig({})), null, 1000);
+    const meta = (await store.get<Meta>(META_KEY)) as Meta;
+    delete meta.worldWidth;
+    await store.set(META_KEY, meta);
+    expect(await savedWorldStatus(store, 400)).toEqual({ exists: true, stale: true });
+  });
+
+  it("reports no save on an empty store, and never throws when the read fails", async () => {
+    expect(await savedWorldStatus(memStore(), 400)).toEqual({ exists: false, stale: false });
+    const throwingStore: KeyValStore = {
+      get: async () => {
+        throw new Error("idb unavailable");
+      },
+      set: async () => {},
+    };
+    expect(await savedWorldStatus(throwingStore, 400)).toEqual({ exists: false, stale: false });
   });
 });

@@ -15,6 +15,7 @@
 
 import { expressTrait, TRAIT_GENES, TRAIT_RANGE } from "@sim/genetics";
 import { countExtinctionEvents, recentPopulationSeries } from "@sim/history";
+import { rankScore } from "@sim/score";
 import { type HealthHistory, worldHealth } from "@sim/stats";
 import type { Config, Creature, LineageEvent, World } from "@sim/types";
 import type {
@@ -473,5 +474,10 @@ export function buildStats(world: World): StatsPayload {
     traits: buildTraitBins(world),
     timeline: buildTimeline(world),
     events: buildEventFeed(world),
+    influence: world.influence,
+    // `survivalTicks` as the horizon: the world has, by definition, survived to now, so
+    // this asks "is what you have right now interesting" rather than grading against a
+    // fixed finish line the player has not reached yet.
+    score: rankScore(h, h.survivalTicks),
   };
 }

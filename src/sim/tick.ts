@@ -19,7 +19,7 @@ import { derive, patchbayThinkCached, ruleThink, tanhApprox } from "./brain";
 // Fixed brain-skeleton dimension (NOT a tunable — the umwelt length is permanent per
 // SPEC.md §Sensors; a change is a version bump, so it is read from constants directly
 // like world.ts does, not from world.config.tunables).
-import { SENSORS } from "./constants";
+import { INFLUENCE_MAX, INFLUENCE_REFILL_TICKS, SENSORS } from "./constants";
 import {
   type Compartment,
   cellCompartment,
@@ -523,6 +523,15 @@ export function tick(world: World): void {
   resolveNests(world, t);
 
   world.tick++;
+
+  // 4.6 Terrarium influence accrual (docs/designs/terrarium.md). Keyed off the tick
+  // counter rather than a per-tick fraction so the budget is an exact integer at every
+  // tick — a float accumulator would make the value depend on how the ticks were batched,
+  // and offline catch-up batches them differently from live play. Nothing else in the sim
+  // reads `influence`; the worker spends it.
+  if (world.influence < INFLUENCE_MAX && world.tick % INFLUENCE_REFILL_TICKS === 0) {
+    world.influence++;
+  }
 }
 
 /**

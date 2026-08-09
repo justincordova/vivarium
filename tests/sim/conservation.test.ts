@@ -91,6 +91,7 @@ function makeWorld(opts: {
     dominant: null,
     rootPopSnapshots: [],
     lastSavedRealTime: 0,
+    influence: 0,
   };
 }
 

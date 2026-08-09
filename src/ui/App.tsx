@@ -58,6 +58,7 @@ function Stat({
 function Hud(): React.ReactElement {
   const stats = useSimStore((s) => s.stats);
   const scienceMode = useSimStore((s) => s.scienceMode);
+  const terrarium = useSimStore((s) => s.terrarium);
   const pop = stats ? Object.values(stats.population).reduce((a, b) => a + b, 0) : 0;
   return (
     // The panel stays click-through (canvas underneath); individual stat labels opt back
@@ -87,6 +88,15 @@ function Hud(): React.ReactElement {
           value={fmt(stats?.extinctionEvents ?? 0)}
           help="How many lineages have died out completely over this world's whole history."
         />
+        {/* Terrarium: the world's score. Only shown in the mode that is actually playing
+            for it — otherwise it is a number with no stakes attached. */}
+        {terrarium && (
+          <Stat
+            label="score"
+            value={fmt(Math.round(stats?.score ?? 0))}
+            help="How interesting your world is: swinging populations, genetic variety and many coexisting species all raise it; a flat, stagnant or collapsed world lowers it. Same measure the balance sweep ranks worlds by."
+          />
+        )}
         {/* Research readouts. `traitVariance` to four decimals and a novelty score are
             precise and unactionable to a newcomer — they are the instrument, not the
             world, so they wait behind the toggle. */}

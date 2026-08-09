@@ -8,7 +8,8 @@
  *     over the (tunable) ranges, seeded from a master seed so the sweep is reproducible.
  *   - `runConfig(seed, overrides, ticks, sampleEvery)` — run one config headless and
  *     return its final `WorldHealth`.
- *   - `rankScore(health, ticks)` — the pinned-shape scalarization the sweep ranks by.
+ *   - `rankScore` — re-exported from `src/sim/score.ts`, which owns it now that
+ *     Terrarium mode scores the player's world with the same function.
  *
  * The parallel driver lives in `sweep.ts`; keeping the core pure makes the ranking
  * curve unit-testable (plan verification: a stagnant config must rank near the bottom).
@@ -18,9 +19,9 @@
 
 import type { ConfigOverrides } from "../src/sim/config";
 import { makeConfig } from "../src/sim/config";
-import * as C from "../src/sim/constants";
 import { countExtinctionEvents, recentPopulationSeries, recordHistory } from "../src/sim/history";
 import { mulberry32 } from "../src/sim/rng";
+import { rankScore } from "../src/sim/score";
 import { type HealthHistory, type WorldHealth, worldHealth } from "../src/sim/stats";
 import { tick } from "../src/sim/tick";
 import { createWorld } from "../src/sim/world";
@@ -119,69 +120,6 @@ export function runConfig(seed: number, overrides: ConfigOverrides, ticks: numbe
   return worldHealth(world, history);
 }
 
-/**
- * The pinned-shape ranking scalarization (plan Task 1.5). Rewards oscillation,
- * genetic + behavioral diversity, and species count; penalizes stagnation (high
- * survival + near-zero variance); scores `extinctionEvents` as a tent peaking at
- * `EXTINCT_SWEET`; and discounts a chained mega-cluster via `maxDiameter` so
- * single-linkage chaining cannot game the diversity reward. Higher = better.
- */
-export function rankScore(health: WorldHealth, ticks: number): number {
-  const {
-    populationVariance,
-    traitVariance,
-    speciesCount,
-    behaviorNovelty,
-    extinctionEvents,
-    maxDiameter,
-    meanPopulation,
-    survivalTicks,
-  } = health;
-
-  // Reaching the horizon is a PRECONDITION for the diversity/oscillation rewards.
-  // Without this gate the sweep optimizes into the broken corner: a world that booms
-  // to carrying capacity then crashes to zero has *huge* populationVariance and would
-  // rank #1 — but it is dead, with speciesCount/novelty = 0 (measured on the empty
-  // final frame). A crash is not oscillation. So a config that did not survive to
-  // `ticks` earns ONLY survival-progress credit and none of the variance/diversity
-  // reward (SPEC.md: a collapsed world must score bad).
-  const reachedHorizon = ticks <= 0 || survivalTicks >= ticks;
-  if (!reachedHorizon) {
-    // Partial credit ∝ how far it got, so the search still gradient-follows toward
-    // longer-lived configs, but always ranks below any horizon-reaching world.
-    return -C.RANK_W_STAGNATION * (1 - survivalTicks / ticks);
-  }
-
-  // A survivor that is actually empty/near-empty at the horizon is not alive in any
-  // meaningful sense — guard against a technicality where survivalTicks == ticks but
-  // the population is ~0.
-  if (meanPopulation < 1) return -C.RANK_W_STAGNATION;
-
-  // Extinction tent: rises 0→EXTINCT_SWEET then falls (symmetric triangular peak 1).
-  const sweet = C.EXTINCT_SWEET;
-  const extinctTent = sweet <= 0 ? 0 : Math.max(0, 1 - Math.abs(extinctionEvents - sweet) / sweet);
-
-  // Chaining discount: if the widest cluster's diameter far exceeds the compat
-  // threshold, the "species" are a cline — scale the species reward down toward 0.
-  const thr = makeConfig({}).tunables.SPECIES_COMPAT_THRESHOLD;
-  const chainFactor = maxDiameter > thr ? thr / maxDiameter : 1;
-  const speciesReward = speciesCount * (1 - C.RANK_W_CHAIN_DISCOUNT * (1 - chainFactor));
-
-  // Stagnation penalty: a horizon-reaching world that barely oscillated is boring.
-  // Penalty ∝ flatness of the recent population window.
-  const flatness = 1 / (1 + populationVariance); // ~1 when variance ≈ 0, →0 as it grows
-  const stagnation = flatness;
-
-  return (
-    C.RANK_W_POP_VARIANCE * populationVariance +
-    C.RANK_W_TRAIT_VARIANCE * traitVariance +
-    C.RANK_W_SPECIES * Math.max(0, speciesReward) +
-    C.RANK_W_NOVELTY * behaviorNovelty +
-    C.RANK_W_EXTINCT * extinctTent -
-    C.RANK_W_STAGNATION * stagnation
-  );
-}
-
 /** One sweep result row: the sampled config index/overrides + its health + score. */
 export interface SweepResult {
   index: number;
@@ -202,3 +140,7 @@ export function evaluate(
   const health = runConfig(runSeed, overrides, ticks);
   return { index, seed: runSeed, overrides, health, score: rankScore(health, ticks) };
 }
+
+// Re-exported so the sweep and its tests keep one import site while `sim/score.ts`
+// remains the single definition of "interesting" (see docs/designs/terrarium.md).
+export { rankScore };

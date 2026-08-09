@@ -44,7 +44,9 @@ describe("serialize — roundtrip identity", () => {
     const w = createWorld(1, makeConfig({}));
     const blob = serialize(w);
     expect(blob.version).toBe(SAVE_VERSION);
-    expect(blob.version).toBe(5); // v2 brainKind, v3 lineage, v4 terrain, v5 society (nests/sociality)
+    // v2 brainKind, v3 lineage, v4 terrain, v5 society (nests/sociality), v6 terrarium
+    // (influence). Pinned as a literal so bumping the save format stays a conscious act.
+    expect(blob.version).toBe(6);
     // Derived cache is absent from the blob; deserialized creatures have no `derived`.
     const round = deserialize(blob);
     for (const c of round.creatures) expect(c.derived).toBeUndefined();

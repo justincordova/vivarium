@@ -13,7 +13,7 @@
  * Pure — no DOM/IndexedDB (those are worker/Phase 5 concerns). Part of `sim/`.
  */
 
-import { ACTIONS, ARROWS } from "./constants";
+import { ACTIONS, ARROWS, INFLUENCE_MAX } from "./constants";
 import { deserializeRng, serializeRng } from "./rng";
 import {
   Biome,
@@ -46,7 +46,7 @@ import {
  * reload. No historical events are fabricated (we cannot invent a past we did not
  * record); the report only narrates events fired from here forward.
  */
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 /** The serialized snapshot shape (all JSON-able; typed arrays become number[]). */
 export interface SaveBlob {
@@ -72,6 +72,8 @@ export interface SaveBlob {
   /** Society (v5): nests (emergent homes). Absent in a pre-v5 blob. */
   nests?: Nest[];
   lastSavedRealTime: number;
+  /** Terrarium stewardship budget (v6). Optional: a pre-v6 blob loads with a full one. */
+  influence?: number;
 }
 
 interface SerCreature {
@@ -226,6 +228,7 @@ export function serialize(world: World): SaveBlob {
       elevation: Array.from(world.terrain.elevation),
     },
     lastSavedRealTime: world.lastSavedRealTime,
+    influence: world.influence,
   };
 }
 
@@ -329,6 +332,15 @@ function migrateV4toV5(b: SaveBlob): SaveBlob {
   return { ...b, version: 5 };
 }
 
+/**
+ * v5 → v6 (Terrarium): `influence`, the stewardship budget, became world state. An older
+ * world has never spent any, so it loads with a full budget — `deserialize` supplies that
+ * default; here we only bump the version.
+ */
+function migrateV5toV6(b: SaveBlob): SaveBlob {
+  return { ...b, version: 6 };
+}
+
 /** v1 → v2: default `config.brainKind` to `'rule'` if the blob predates the field. */
 function migrateV1toV2(b: SaveBlob): SaveBlob {
   const config = { ...b.config, brainKind: b.config?.brainKind ?? "rule" };
@@ -356,6 +368,7 @@ function migrate(blob: SaveBlob): SaveBlob {
   if (b.version < 3) b = migrateV2toV3(b);
   if (b.version < 4) b = migrateV3toV4(b);
   if (b.version < 5) b = migrateV4toV5(b);
+  if (b.version < 6) b = migrateV5toV6(b);
   return b;
 }
 
@@ -466,5 +479,7 @@ export function deserialize(data: SaveBlob): World {
       counts: { ...s.counts },
     })),
     lastSavedRealTime: blob.lastSavedRealTime ?? 0,
+    // Absent in a pre-v6 blob → a full budget (migrateV5toV6 only bumps the version).
+    influence: blob.influence ?? INFLUENCE_MAX,
   };
 }

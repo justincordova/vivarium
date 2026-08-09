@@ -100,6 +100,27 @@ function writeCatchupPref(enabled: boolean): void {
   }
 }
 
+/** localStorage key for the Terrarium-mode preference. */
+const TERRARIUM_PREF_KEY = "vivarium:terrarium";
+
+/** Read the Terrarium preference. Default OFF — the free sandbox god-powers are an
+ * existing feature, so budgeting them must be opted into (docs/designs/terrarium.md). */
+function readTerrariumPref(): boolean {
+  try {
+    return localStorage.getItem(TERRARIUM_PREF_KEY) === "on";
+  } catch {
+    return false;
+  }
+}
+
+function writeTerrariumPref(enabled: boolean): void {
+  try {
+    localStorage.setItem(TERRARIUM_PREF_KEY, enabled ? "on" : "off");
+  } catch {
+    // Non-DOM / storage-denied context — the pref is best-effort.
+  }
+}
+
 /** Read the science-mode preference. Default OFF — a newcomer must opt *in* to the
  * instrument, which is the entire point of the split. */
 function readSciencePref(): boolean {
@@ -177,6 +198,8 @@ interface SimState {
    * preference about who the user is, not a per-session mode.
    */
   scienceMode: boolean;
+  /** Terrarium mode: god-powers cost influence and the world is scored. Default OFF. */
+  terrarium: boolean;
 
   play(): void;
   pause(): void;
@@ -201,6 +224,7 @@ interface SimState {
   setFollow(id: number | null): void;
   setCatchupEnabled(enabled: boolean): void;
   setScienceMode(enabled: boolean): void;
+  setTerrarium(enabled: boolean): void;
   dismissReport(): void;
   /** Export the current world as a gzipped `.viv.gz` download (Phase 5A.4). */
   exportWorld(): void;
@@ -265,6 +289,7 @@ export const useSimStore = create<SimState>((set, get) => ({
   hasSave: false,
   saveIsStale: false,
   scienceMode: readSciencePref(),
+  terrarium: readTerrariumPref(),
 
   play() {
     send({ t: "play" });
@@ -331,9 +356,13 @@ export const useSimStore = create<SimState>((set, get) => ({
     void (async () => {
       const coldOpen = source === "cold-open" ? ((await fetchColdOpen()) ?? undefined) : undefined;
       send({ t: "boot", seed, config, catchupEnabled, coldOpen, source });
+      // The worker starts every world with Terrarium off; re-assert the persisted
+      // preference after boot, or a returning steward silently gets free god-powers.
+      if (get().terrarium) send({ t: "terrarium", on: true });
     })().catch(() => {
       // Last resort for an unexpected postMessage throw — release to founders.
       send({ t: "boot", seed, config, catchupEnabled, source: "fresh" });
+      if (get().terrarium) send({ t: "terrarium", on: true });
     });
   },
   setParam(key, value) {
@@ -370,6 +399,12 @@ export const useSimStore = create<SimState>((set, get) => ({
   setScienceMode(enabled) {
     writeSciencePref(enabled);
     set({ scienceMode: enabled });
+  },
+  setTerrarium(enabled) {
+    writeTerrariumPref(enabled);
+    // The worker is the authority on spending; the store only mirrors the preference.
+    send({ t: "terrarium", on: enabled });
+    set({ terrarium: enabled });
   },
   dismissReport() {
     set({ report: null });

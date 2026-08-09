@@ -185,6 +185,14 @@ export interface StatsPayload {
    * accumulation logic — it renders whatever the latest stats carry.
    */
   events: WorldEvent[];
+  /** Terrarium: the stewardship budget remaining (docs/designs/terrarium.md). */
+  influence: number;
+  /**
+   * Terrarium: how interesting this world is, from the same `rankScore` the Phase 1 sweep
+   * ranks configs by — rewards oscillation/diversity, punishes stagnation, and refuses to
+   * reward a collapse. One owner (`sim/score.ts`) so the game and the sweep cannot drift.
+   */
+  score: number;
 }
 
 /**
@@ -304,7 +312,9 @@ export type Command =
   | { t: "delete"; id: number }
   | { t: "editGenome"; id: number; patch: GenomePatch }
   | { t: "paint"; field: PaintField; cell: number; delta: number; brush?: number }
-  | { t: "setParam"; key: string; value: number };
+  | { t: "setParam"; key: string; value: number }
+  /** Terrarium mode on/off (docs/designs/terrarium.md) — gates god-powers on `influence`. */
+  | { t: "terrarium"; on: boolean };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Events (worker → main)

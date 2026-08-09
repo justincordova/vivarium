@@ -523,6 +523,16 @@ export interface World {
   rootPopSnapshots: { tick: number; counts: Record<number, number> }[];
   /** Wall-clock of last save; attached outside sim/ for catch-up. Not read by tick(). */
   lastSavedRealTime: number;
+  /**
+   * Terrarium mode's stewardship budget (`docs/designs/terrarium.md`). Accrues per tick up
+   * to `INFLUENCE_MAX` and is spent by the god-powers, which the worker gates on it.
+   *
+   * In the World (and serialized) rather than worker-runtime state because it must survive
+   * reload and accrue while the visitor is away — and because a per-tick accrual rule gets
+   * offline catch-up right for free, with no separate path. `tick()` only ever *adds* to
+   * it; spending happens in `worker/commands.ts`, which owns the god-powers.
+   */
+  influence: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

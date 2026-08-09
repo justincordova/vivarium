@@ -10,6 +10,7 @@
  * file is only message plumbing + the loop.
  */
 
+import * as C from "@sim/constants";
 import { recordHistory } from "@sim/history";
 import { deserialize, type SaveBlob, serialize } from "@sim/serialize";
 import { tick } from "@sim/tick";
@@ -316,6 +317,27 @@ function repaintIfPaused(): void {
   }
 }
 
+/** Terrarium mode: whether god-powers are budgeted. Off → the Phase 3 sandbox, unchanged. */
+let terrarium = false;
+
+/**
+ * Charge `cost` influence, returning whether the power may proceed.
+ *
+ * The check and the debit happen together, here, because the worker owns the World and is
+ * the only place that can do both atomically at a tick boundary. The UI also disables an
+ * unaffordable button, but that is a hint — this is the rule, so a command that arrives
+ * anyway (a stale frame, a hand-crafted `postMessage`) cannot half-apply.
+ *
+ * With Terrarium off this is a pass-through: the sandbox god-powers stay free, which is a
+ * documented feature and not something the new mode is allowed to take away.
+ */
+function spend(world: World, cost: number): boolean {
+  if (!terrarium) return true;
+  if (world.influence < cost) return false;
+  world.influence -= cost;
+  return true;
+}
+
 // Correctness note: god-power mutations are applied here, at a tick boundary, never
 // mid-tick. That holds ONLY because `step`/`stepTicks` are fully synchronous and JS is
 // single-threaded — a command can be dequeued between scheduled steps, never during a
@@ -386,7 +408,7 @@ self.onmessage = (ev: MessageEvent<Command>): void => {
       stepTicks(cmd.ticks);
       break;
     case "spawn":
-      if (world !== null) {
+      if (world !== null && spend(world, C.INFLUENCE_COST_SPAWN)) {
         const id = applySpawn(world, cmd.spec);
         // Reply with the new creature so the UI can auto-inspect it — otherwise a fresh
         // spawn can die before the visitor manages to click it (UI overhaul spawn fix).
@@ -396,7 +418,9 @@ self.onmessage = (ev: MessageEvent<Command>): void => {
       }
       break;
     case "delete":
-      if (world !== null && applyDelete(world, cmd.id)) repaintIfPaused();
+      if (world !== null && spend(world, C.INFLUENCE_COST_DELETE) && applyDelete(world, cmd.id)) {
+        repaintIfPaused();
+      }
       break;
     case "editGenome":
       if (world !== null && applyEditGenome(world, cmd.id, cmd.patch)) {
@@ -407,10 +431,14 @@ self.onmessage = (ev: MessageEvent<Command>): void => {
       }
       break;
     case "paint":
-      if (world !== null) {
+      if (world !== null && spend(world, C.INFLUENCE_COST_PAINT)) {
         applyPaint(world, cmd.field, cmd.cell, cmd.delta, cmd.brush);
         repaintIfPaused();
       }
+      break;
+    case "terrarium":
+      terrarium = cmd.on;
+      repaintIfPaused();
       break;
     case "setParam":
       if (world !== null && applySetParam(world, cmd.key, cmd.value)) repaintIfPaused();

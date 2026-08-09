@@ -375,6 +375,8 @@ export function createWorld(seed: number, config: Config): World {
     dominant: null,
     rootPopSnapshots: [],
     lastSavedRealTime: 0,
+    // Terrarium: a new world starts with a full stewardship budget.
+    influence: C.INFLUENCE_MAX,
   };
 
   const reservoir = fieldCompartment(world, "solarReservoir");

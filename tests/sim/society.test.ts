@@ -71,11 +71,11 @@ describe("society — serialize v5", () => {
     expect(totalWater(round)).toBe(totalWater(w));
   });
 
-  it("serialize writes version 5 and includes nests", () => {
+  it("serialize writes the current version and includes nests", () => {
     const w = createWorld(9, makeConfig({}));
     w.nests = [{ id: 1, x: 1, y: 1, lineage: 0, strength: 30 }];
     const blob = serialize(w);
-    expect(blob.version).toBe(5);
+    expect(blob.version).toBe(6); // bumped by v6 terrarium; nests still ride along
     expect(blob.nests).toHaveLength(1);
   });
 });

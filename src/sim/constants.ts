@@ -527,6 +527,26 @@ export const K_ANGLE = 1.0;
  */
 export const ATTACK_DAMAGE_COEF = 2.0;
 
+// ── Terrarium mode — the stewardship budget (docs/designs/terrarium.md) ──────
+//
+// Influence is what makes a god-power a *decision* rather than a debug button. It
+// accrues per TICK, never per wall-clock second: wall-clock must not enter `sim/`, and a
+// per-tick rule means offline catch-up refills the budget correctly for free instead of
+// needing its own code path.
+
+/** Maximum influence a steward can bank. Caps how much can be spent in one burst. */
+export const INFLUENCE_MAX = 100;
+/** Ticks per point of influence regained — the pacing knob (100 → full in ~50 s at 1×). */
+export const INFLUENCE_REFILL_TICKS = 25;
+/**
+ * Costs, ordered by how much the power perturbs a world that is supposed to be evolving
+ * on its own: injecting a genome nobody evolved is the strongest intervention, a
+ * world-wide field shock is the "meteor" tier, and removing one creature is the mildest.
+ */
+export const INFLUENCE_COST_SPAWN = 25;
+export const INFLUENCE_COST_DELETE = 10;
+export const INFLUENCE_COST_PAINT = 40;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Scent emission  (SPEC.md §Actions — emit scent, action 6)
 // ─────────────────────────────────────────────────────────────────────────────
