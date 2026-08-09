@@ -106,6 +106,16 @@ function parseArgs(argv: string[]): Args {
   if (!Number.isInteger(args.sampleEvery) || args.sampleEvery <= 0) {
     throw new Error("--sample-every must be > 0");
   }
+  // Unvalidated, `--warmup 5k` parses to NaN and `world.tick >= NaN` is never true, so the
+  // series stays empty and every metric below is computed over nothing.
+  if (!Number.isInteger(args.warmup) || args.warmup < 0) {
+    throw new Error("--warmup must be an integer >= 0");
+  }
+  if (args.warmup >= args.ticks) {
+    throw new Error(
+      `--warmup (${args.warmup}) must be < --ticks (${args.ticks}) or nothing is sampled`,
+    );
+  }
   return args;
 }
 
@@ -179,21 +189,55 @@ function run(seed: number, overrides: ConfigOverrides, a: Args): Outcome {
     if (world.creatures.length === 0) break;
   }
 
-  const n = Math.max(1, series.length);
+  const species = world.creatures.length > 0 ? speciesClusters(world).count : 0;
+  // No samples means this seed measured NOTHING — the world went extinct before warmup.
+  // The old `Math.max(1, series.length)` turned that into 0/1, so every metric printed as
+  // a real number: "meanPop 0.000, CV 0.000, 0 cycles" beside "survived yes". That is a
+  // hard, quotable "flat line" verdict for a run that never sampled, from the very
+  // instrument whose job is to answer whether the world oscillates — and it is the sort of
+  // number that gets copied into docs/findings. Report non-finite so `fmt` prints "—".
+  if (series.length === 0) {
+    return {
+      seed,
+      survived: world.creatures.length > 0,
+      meanPop: Number.NaN,
+      cv: Number.NaN,
+      cycles: Number.NaN,
+      minPop: Number.NaN,
+      maxPop: Number.NaN,
+      kills,
+      births,
+      extinctions,
+      species,
+    };
+  }
+
+  const n = series.length;
   const meanPop = series.reduce((s, p) => s + p, 0) / n;
   const variance = series.reduce((s, p) => s + (p - meanPop) ** 2, 0) / n;
+  // Fold rather than spread: `Math.min(...series)` overflows the argument limit and throws
+  // `RangeError: Maximum call stack size exceeded` past ~125k samples (reachable with
+  // `--sample-every 1` on a long horizon). `main` has no catch, so that would kill the
+  // process before `report` had printed even the first seed's row — losing hours of
+  // simulation on a run whose whole point is that it takes hours.
+  let minPop = Number.POSITIVE_INFINITY;
+  let maxPop = Number.NEGATIVE_INFINITY;
+  for (const v of series) {
+    if (v < minPop) minPop = v;
+    if (v > maxPop) maxPop = v;
+  }
   return {
     seed,
     survived: world.creatures.length > 0,
     meanPop,
     cv: meanPop > 0 ? Math.sqrt(variance) / meanPop : 0,
     cycles: countCycles(series, meanPop),
-    minPop: series.length > 0 ? Math.min(...series) : 0,
-    maxPop: series.length > 0 ? Math.max(...series) : 0,
+    minPop,
+    maxPop,
     kills,
     births,
     extinctions,
-    species: world.creatures.length > 0 ? speciesClusters(world).count : 0,
+    species,
   };
 }
 
@@ -228,13 +272,19 @@ function report(label: string, seeds: number[], runOne: (seed: number) => Outcom
     );
   }
   const alive = rows.filter((r) => r.survived);
+  // Median over MEASURED CVs only. A seed that sampled nothing reports a non-finite CV, and
+  // feeding NaN to a numeric sort gives an undefined ordering — the median would then be an
+  // arbitrary element rather than the middle one.
+  const measured = alive.map((r) => r.cv).filter((cv) => Number.isFinite(cv));
   const medianCv =
-    alive.length > 0
-      ? [...alive.map((r) => r.cv)].sort((x, y) => x - y)[Math.floor(alive.length / 2)]
-      : 0;
+    measured.length > 0
+      ? measured.sort((x, y) => x - y)[Math.floor(measured.length / 2)]
+      : Number.NaN;
+  const unmeasured = rows.length - measured.length;
   process.stdout.write(
-    `  → ${alive.length}/${rows.length} alive; median CV ${fmt(medianCv ?? 0)}; ` +
-      `total kills ${rows.reduce((s, r) => s + r.kills, 0)}\n`,
+    `  → ${alive.length}/${rows.length} alive; median CV ${fmt(medianCv ?? Number.NaN)}` +
+      (unmeasured > 0 ? ` (over ${measured.length} measured; ${unmeasured} sampled nothing)` : "") +
+      `; total kills ${rows.reduce((s, r) => s + r.kills, 0)}\n`,
   );
 }
 
