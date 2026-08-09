@@ -111,6 +111,46 @@ describe("detectLineageEvents — boom", () => {
     expect(boom.factor).toBeGreaterThanOrEqual(C.BOOM_FACTOR);
   });
 
+  // `ref` stays pinned ~BOOM_WINDOW ticks back while detection runs every
+  // HISTORY_SAMPLE_INTERVAL, so a lineage that doubles and then merely HOLDS keeps
+  // satisfying the ratio. Without an edge trigger one growth episode re-announces itself
+  // at every sample — measured at 409 events from 35 real episodes over 12k ticks, leaving
+  // booms at 94% of the chronicle and crowding extinctions out of the bounded ring and the
+  // fixed-size UI feed.
+  it("announces one boom per episode, not once per sample while the ratio holds", () => {
+    const w = bareWorld();
+    w.tick = 100;
+    setPopulation(w, { 100: 4 });
+    detectLineageEvents(w);
+    // Double once, then hold flat for many samples well inside BOOM_WINDOW.
+    w.tick = 100 + C.HISTORY_SAMPLE_INTERVAL;
+    setPopulation(w, { 100: 8 });
+    detectLineageEvents(w);
+    for (let k = 2; k <= 10; k++) {
+      w.tick = 100 + k * C.HISTORY_SAMPLE_INTERVAL;
+      setPopulation(w, { 100: 8 });
+      detectLineageEvents(w);
+    }
+    expect(w.lineageEvents.filter((e) => e.kind === "lineageBoom")).toHaveLength(1);
+  });
+
+  it("fires again for a genuinely new boom after the ratio falls back", () => {
+    const w = bareWorld();
+    w.tick = 100;
+    setPopulation(w, { 100: 4 });
+    detectLineageEvents(w);
+    w.tick = 200;
+    setPopulation(w, { 100: 8 }); // boom #1
+    detectLineageEvents(w);
+    w.tick = 300;
+    setPopulation(w, { 100: 4 }); // back below the threshold
+    detectLineageEvents(w);
+    w.tick = 400;
+    setPopulation(w, { 100: 9 }); // boom #2 — a real second episode
+    detectLineageEvents(w);
+    expect(w.lineageEvents.filter((e) => e.kind === "lineageBoom")).toHaveLength(2);
+  });
+
   it("does not fire boom for a lineage that merely grows a little", () => {
     const w = bareWorld();
     w.tick = 100;

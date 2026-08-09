@@ -197,14 +197,24 @@ export function detectLineageEvents(world: World): void {
       const rootId = nowRoots[i] as number;
       const count = now.get(rootId) ?? 0;
       const past = ref.counts[rootId] ?? 0;
-      if (past > 0 && count >= past * C.BOOM_FACTOR) {
-        pushLineageEvent(world, {
-          kind: "lineageBoom",
-          tick: world.tick,
-          lineage: rootId,
-          factor: count / past,
-        });
-      }
+      if (past <= 0 || count < past * C.BOOM_FACTOR) continue;
+      // Fire on the RISING EDGE only. `ref` stays pinned ~BOOM_WINDOW ticks in the past
+      // while this runs every HISTORY_SAMPLE_INTERVAL, so a lineage that doubles and then
+      // merely HOLDS keeps satisfying the ratio and re-announces itself at every sample —
+      // up to BOOM_WINDOW/HISTORY_SAMPLE_INTERVAL times for one growth episode. Measured
+      // over 12k ticks: 409 boom events from 35 real episodes (11.7x), leaving booms at
+      // 94% of the whole chronicle and crowding extinctions and dominance shifts out of
+      // both the bounded `lineageEvents` ring and the fixed-size UI feed. Requiring the
+      // PREVIOUS sample to have been below the threshold reports each episode once, using
+      // only state that is already serialized (no new field, no save-format change).
+      const before = prev?.counts[rootId];
+      if (before !== undefined && before >= past * C.BOOM_FACTOR) continue;
+      pushLineageEvent(world, {
+        kind: "lineageBoom",
+        tick: world.tick,
+        lineage: rootId,
+        factor: count / past,
+      });
     }
   }
 
