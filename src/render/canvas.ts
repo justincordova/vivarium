@@ -448,7 +448,13 @@ export function drawNests(ctx: CanvasRenderingContext2D, frame: RenderFrame, cam
  * no gradient stops animated — the tint just tracks the sim's clock.
  */
 export function drawDayNight(ctx: CanvasRenderingContext2D, cam: Camera, light: number): void {
-  const darkness = 1 - Math.max(0, Math.min(1, light));
+  // A non-finite `light` must not reach the fill string. `Math.max/min` do NOT clamp NaN
+  // (every NaN comparison is false), so it would pass the early-out below and produce
+  // `rgba(20, 34, 52, NaN)` — an invalid colour, which the canvas spec says to IGNORE.
+  // `fillStyle` would then keep whatever the last draw left set and the `fillRect` would
+  // paint the whole viewport opaque, hiding the entire world with no error. Same hazard
+  // `palette.ts` guards for `hue`/`energyFrac`.
+  const darkness = 1 - Math.max(0, Math.min(1, Number.isFinite(light) ? light : 1));
   if (darkness <= 0.001) return;
   ctx.save();
   ctx.globalCompositeOperation = "source-over";

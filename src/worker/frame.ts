@@ -50,6 +50,14 @@ function clamp01(v: number): number {
  * cosine is fine here (never in `sim/`).
  */
 export function dayLight(tick: number, ticksPerDay: number): number {
+  // `config.tunables` is caller-controlled: `parseHash` accepts any FINITE `t.KEY=value`
+  // from a share URL — including 0 — and the poisoned config is autosaved, so it persists.
+  // `tick % 0` is NaN, and NaN light survives every clamp downstream (all NaN comparisons
+  // are false), reaching `drawDayNight` where an `rgba(...,NaN)` fill string is invalid and
+  // therefore IGNORED by the canvas — leaving the previous fillStyle set and painting the
+  // entire viewport opaque. The world simply vanishes, with no error. Fall back to full
+  // daylight rather than emitting a value that cannot be rendered.
+  if (!Number.isFinite(ticksPerDay) || ticksPerDay <= 0) return 1;
   const phase = ((tick % ticksPerDay) + ticksPerDay) % ticksPerDay;
   // Peak (1) at phase 0 (noon-ish), trough (0) at half-day (midnight).
   return 0.5 + 0.5 * Math.cos((phase / ticksPerDay) * 2 * Math.PI);

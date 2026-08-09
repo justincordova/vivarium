@@ -153,6 +153,20 @@ describe("dayLight", () => {
       expect(l).toBeLessThanOrEqual(1);
     }
   });
+
+  // `parseHash` accepts any finite `t.TICKS_PER_DAY=` from a share URL (0 included) and
+  // the config is autosaved, so a poisoned value persists. `tick % 0` is NaN, and NaN
+  // survives every downstream clamp to reach the canvas as an invalid `rgba(...,NaN)`
+  // fill — which the spec says to ignore, leaving the previous fillStyle and painting the
+  // whole viewport opaque. The frame must never carry a light level that cannot be drawn.
+  it("never emits a non-finite level for a degenerate TICKS_PER_DAY", () => {
+    for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const l = dayLight(1234, bad);
+      expect(Number.isFinite(l)).toBe(true);
+      expect(l).toBeGreaterThanOrEqual(0);
+      expect(l).toBeLessThanOrEqual(1);
+    }
+  });
 });
 
 describe("frameTransferables", () => {
