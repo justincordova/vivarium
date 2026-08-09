@@ -121,8 +121,9 @@ function init(seed: number, config: Config): void {
 
 /**
  * Load an imported save (Phase 5A.4): replace the live world with the deserialized
- * blob, repaint. Pure `deserialize` — a malformed blob throws; the main thread
- * validates the file before sending, so a bad import never reaches here.
+ * blob, repaint. `deserialize` throws on a malformed blob and the main thread's check is
+ * only a shallow shape test, so this owns that failure: it deserializes first and keeps
+ * the live world when the blob is unreadable (see the body).
  *
  * Mirrors `init`'s persistence reset: a fresh `Autosaver` (seeded null → the first save
  * writes slot A and flips meta cleanly) and a restarted autosave timer. Without this the
@@ -131,10 +132,32 @@ function init(seed: number, config: Config): void {
  * divergence), and the imported world might never be autosaved at all.
  */
 function loadSave(blob: SaveBlob): void {
+  // Deserialize BEFORE tearing anything down. The main thread's `isSaveBlob` is a shallow
+  // shape check (numeric `version` + defined `config`), so a structurally incomplete blob
+  // — a hand-edited or truncated `.viv`, or one from a foreign build — reaches here and
+  // makes `deserialize` throw. If that throw lands AFTER `stop()`/`stopAutosave()`, the
+  // session is left with the autosave timer cleared and the autosaver retired but never
+  // replaced: `saveNow` then hits the retired instance's `stopped` guard, which returns
+  // "skipped" and is deliberately not surfaced as an error. Autosave would be silently
+  // dead for the rest of the session and every tick since the last save lost on reopen.
+  // Nothing is torn down until we hold a good world.
+  let next: World;
+  try {
+    next = deserialize(blob);
+  } catch (e) {
+    // The live world, its history and its autosaver are untouched. Pause it so the
+    // store's optimistic `running: false` (set when the import was dispatched) matches
+    // the worker, and repaint so the blanked charts refill from the surviving world.
+    stop();
+    post({ t: "persistError", reason: e instanceof Error ? e.message : "unreadable save" });
+    emitFrame();
+    emitStats();
+    return;
+  }
   bootGen++; // supersede any in-flight async boot
   stop();
   stopAutosave();
-  world = deserialize(blob);
+  world = next;
   // NOTE: deliberately do NOT call `recordHistory` here. `deserialize` restores
   // `world.history` verbatim from the blob — it already contains every sample up to
   // `blob.tick`, INCLUDING one AT blob.tick if it lands on a sample boundary. Calling
