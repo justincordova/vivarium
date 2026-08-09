@@ -190,6 +190,23 @@ export function detectLineageEvents(world: World): void {
       break;
     }
   }
+  // The reference the PREVIOUS sample measured against. `ref` advances one snapshot per
+  // sample, so today's `past` is NOT the threshold the previous sample faced — asking
+  // "was it already booming?" against today's reference misreads an ordinary dip in the
+  // reference population as "already announced" and drops the event entirely. The prune
+  // below deliberately keeps one snapshot older than `windowStart`, which is exactly
+  // `prev.tick - BOOM_WINDOW`, so this lookup is always satisfiable.
+  let prevRef: { tick: number; counts: Record<number, number> } | undefined;
+  if (prev !== undefined) {
+    const prevWindowStart = prev.tick - C.BOOM_WINDOW;
+    for (let i = 0; i < snaps.length; i++) {
+      const s = snaps[i] as { tick: number; counts: Record<number, number> };
+      if (s.tick >= prevWindowStart) {
+        prevRef = s;
+        break;
+      }
+    }
+  }
   if (ref !== undefined) {
     // Ascending-root order (deterministic + cross-engine stable) for the event push.
     const nowRoots = Array.from(now.keys()).sort((a, b) => a - b);
@@ -205,10 +222,11 @@ export function detectLineageEvents(world: World): void {
       // over 12k ticks: 409 boom events from 35 real episodes (11.7x), leaving booms at
       // 94% of the whole chronicle and crowding extinctions and dominance shifts out of
       // both the bounded `lineageEvents` ring and the fixed-size UI feed. Requiring the
-      // PREVIOUS sample to have been below the threshold reports each episode once, using
-      // only state that is already serialized (no new field, no save-format change).
+      // PREVIOUS sample to have been below ITS OWN threshold reports each episode once,
+      // using only state that is already serialized (no new field, no save-format change).
       const before = prev?.counts[rootId];
-      if (before !== undefined && before >= past * C.BOOM_FACTOR) continue;
+      const prevPast = prevRef?.counts[rootId] ?? 0;
+      if (before !== undefined && prevPast > 0 && before >= prevPast * C.BOOM_FACTOR) continue;
       pushLineageEvent(world, {
         kind: "lineageBoom",
         tick: world.tick,

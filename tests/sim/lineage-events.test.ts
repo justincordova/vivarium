@@ -134,6 +134,23 @@ describe("detectLineageEvents — boom", () => {
     expect(w.lineageEvents.filter((e) => e.kind === "lineageBoom")).toHaveLength(1);
   });
 
+  // `ref` advances one snapshot per sample, so the threshold a lineage faces MOVES between
+  // samples. Asking "was it already booming?" against TODAY's reference reads true whenever
+  // the reference population merely dipped as the window slid — even though no boom fired
+  // last sample — and silently swallows the real event. Here the reference walks from 12
+  // down to 10 while the lineage climbs 10 -> 32 (3.2x); that boom must still be announced.
+  it("still announces a boom when the reference population dipped as the window slid", () => {
+    const w = bareWorld();
+    const climb = Array.from({ length: 11 }, (_, i) => 22 + i);
+    const series = [...Array<number>(10).fill(12), ...Array<number>(19).fill(10), ...climb];
+    series.forEach((n, k) => {
+      w.tick = (k + 1) * C.HISTORY_SAMPLE_INTERVAL;
+      setPopulation(w, { 100: n });
+      detectLineageEvents(w);
+    });
+    expect(w.lineageEvents.filter((e) => e.kind === "lineageBoom")).toHaveLength(1);
+  });
+
   it("fires again for a genuinely new boom after the ratio falls back", () => {
     const w = bareWorld();
     w.tick = 100;
