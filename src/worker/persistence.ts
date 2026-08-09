@@ -91,13 +91,30 @@ function tryLoadBlob(blob: SaveBlob | undefined): World | null {
  * returns null (the caller does a cold `createWorld`) — never throws.
  */
 export async function loadNewest(store: KeyValStore = idbStore): Promise<Loaded | null> {
-  const meta = await store.get<Meta>(META_KEY);
+  let meta: Meta | undefined;
+  try {
+    meta = await store.get<Meta>(META_KEY);
+  } catch {
+    return null;
+  }
   if (meta === undefined) return null;
 
   const primary = meta.newest;
   const fallback: "a" | "b" = primary === "a" ? "b" : "a";
   for (const which of [primary, fallback]) {
-    const blob = await store.get<SaveBlob>(slotKey(which));
+    // Isolate each slot READ. `store.get` can reject rather than resolve undefined — an
+    // IndexedDB read error under disk pressure, an aborted transaction, or a
+    // structured-clone failure on a multi-megabyte slot. Letting that rejection escape the
+    // loop skips the fallback slot entirely and throws out of a function documented to
+    // never throw; `boot` then cold-starts founders over a world that was only
+    // TRANSIENTLY unreadable, and the next two autosaves overwrite both slots. The
+    // fallback exists for exactly this case, so a failed read must fall through to it.
+    let blob: SaveBlob | undefined;
+    try {
+      blob = await store.get<SaveBlob>(slotKey(which));
+    } catch {
+      continue;
+    }
     const world = tryLoadBlob(blob);
     if (world !== null) {
       // Report the meta as if `which` is newest, so the Autosaver rotates to the OTHER

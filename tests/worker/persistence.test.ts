@@ -161,6 +161,37 @@ describe("persistence — crash safety (write-older-then-flip)", () => {
     const loaded = await loadNewest(store);
     expect(loaded).toBeNull();
   });
+
+  // A slot READ can reject, not merely resolve undefined (IndexedDB read error under disk
+  // pressure, an aborted transaction, a structured-clone failure on a large slot). That
+  // must fall through to the fallback slot rather than escape the loop — otherwise a
+  // transiently unreadable newest slot cold-starts the user over a world that was still
+  // recoverable, and the next two autosaves overwrite both copies.
+  it("newest slot READ rejects → still falls back to the other slot", async () => {
+    const store = memStore();
+    const w = createWorld(9, makeConfig({}));
+    const m1 = await autosave(store, w, null, 1000); // A valid
+    for (let i = 0; i < 5; i++) tick(w);
+    await autosave(store, w, m1, 2000); // B valid, meta → b
+
+    const base = store.get.bind(store);
+    const failing: KeyValStore = {
+      get: <T>(key: string): Promise<T | undefined> =>
+        key === SLOT_B ? Promise.reject(new Error("IDB read failed")) : base<T>(key),
+      set: store.set,
+    };
+    const loaded = await loadNewest(failing);
+    expect(loaded).not.toBeNull();
+    expect(loaded?.world.creatures.length).toBeGreaterThan(0);
+  });
+
+  it("every read rejecting → cold start (null), never throws", async () => {
+    const failing: KeyValStore = {
+      get: <T>(): Promise<T | undefined> => Promise.reject(new Error("IDB unavailable")),
+      set: async (): Promise<void> => undefined,
+    };
+    await expect(loadNewest(failing)).resolves.toBeNull();
+  });
 });
 
 describe("Autosaver — in-flight guard + non-throwing", () => {
