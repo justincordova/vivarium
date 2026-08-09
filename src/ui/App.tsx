@@ -355,13 +355,19 @@ function OnboardingCaptions(): React.ReactElement | null {
   );
 }
 
-/** A subtle, auto-dismissing indicator that an autosave failed (non-fatal). */
+/**
+ * A subtle indicator that something failed. An autosave failure is non-fatal and says so;
+ * a worker crash is NOT — the worker owns the World and the tick loop, so world time has
+ * stopped for good and only a reload recovers. Reporting the second as the first would
+ * tell the user their world is merely unsaved when it is actually dead.
+ */
 function PersistErrorBadge(): React.ReactElement | null {
   const persistError = useSimStore((s) => s.persistError);
+  const workerCrashed = useSimStore((s) => s.workerCrashed);
   if (persistError === null) return null;
   return (
     <div className="panel pointer-events-none absolute bottom-11 left-4 px-2 py-1 text-[10px] uppercase tracking-widest text-[var(--warn)]">
-      autosave failed
+      {workerCrashed ? "simulation stopped · reload to recover" : "autosave failed"}
     </div>
   );
 }

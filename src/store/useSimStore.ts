@@ -172,6 +172,13 @@ interface SimState {
   catchupEnabled: boolean;
   /** Last non-fatal persistence error (e.g. autosave failed), or null. Surfaced subtly. */
   persistError: string | null;
+  /**
+   * Set when the worker itself died (an uncaught throw escaping its message handler).
+   * Unlike `persistError` this is FATAL: the worker owns the World and the tick loop, so
+   * world time has stopped for good and only a reload recovers. Tracked separately so the
+   * badge does not misreport a dead simulation as a failed autosave.
+   */
+  workerCrashed: boolean;
   /** The "while you were away" report, shown after a catch-up with drama; null to dismiss. */
   report: Report | null;
   /**
@@ -284,6 +291,7 @@ export const useSimStore = create<SimState>((set, get) => ({
   catchup: null,
   catchupEnabled: readCatchupPref(),
   persistError: null,
+  workerCrashed: false,
   report: null,
   phase: "landing",
   hasSave: false,
@@ -559,6 +567,28 @@ export function startWorker(): Worker {
         break;
     }
   };
+  // A throw that escapes the worker's message handler has no other channel: nothing logs
+  // it, and if it escaped `step()` it did so BEFORE the loop rescheduled itself, so world
+  // time has stopped permanently. Without this the store would keep `running: true` and
+  // the UI would show a "pause" button over a frozen HUD while `SimCanvas` redrew the same
+  // dead frame at 60fps — a stopped world that looks alive, with no signal to reload.
+  // Also release the boot overlay, so a crash during boot cannot hang it forever.
+  worker.onerror = (e: ErrorEvent) => {
+    useSimStore.setState({
+      workerCrashed: true,
+      persistError: e.message !== "" ? e.message : "the simulation worker stopped",
+      running: false,
+      catchup: null,
+      ready: true,
+      phase: "live",
+    });
+  };
+  // A message that cannot be structured-cloned back out of the worker — the world keeps
+  // running, but this frame/stat is lost, so surface it rather than dropping it silently.
+  worker.onmessageerror = () => {
+    useSimStore.setState({ persistError: "the simulation worker sent an unreadable message" });
+  };
+
   // Persistence-aware boot: load-or-create + optional offline catch-up. `ready` (not
   // this call) flips the store ready and starts play, so the UI shows the catch-up
   // overlay first when there are owed ticks.
