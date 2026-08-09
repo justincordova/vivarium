@@ -225,6 +225,39 @@ describe("applyPaint", () => {
     applyPaint(world, "temperature", cell, 2.6, 0);
     expect(world.fields.temperature[cell] as number).toBeCloseTo(before + 3, 5);
   });
+
+  // Terrarium debits influence only when the paint actually moved something, so a no-op
+  // must be distinguishable from a real edit. Repeatedly droughting an already-dry cell is
+  // the natural way to "make a desert" and must not burn the budget for nothing.
+  describe("reports whether the world actually changed", () => {
+    it("a real edit returns true", () => {
+      const world = createWorld(1, makeConfig({}));
+      const cell = cellIndexOf(world, 100, 100);
+      expect(applyPaint(world, "water", cell, -150, 1)).toBe(true);
+      expect(applyPaint(world, "fertility", cell, +40, 0)).toBe(true);
+      expect(applyPaint(world, "temperature", cell, +5, 0)).toBe(true);
+    });
+
+    it("droughting an already-dry cell returns false", () => {
+      const world = createWorld(1, makeConfig({}));
+      const cell = cellIndexOf(world, 100, 100);
+      // Drain the centre completely, then drought it again.
+      while (applyPaint(world, "water", cell, -1000, 1)) {
+        /* drain */
+      }
+      expect(world.fields.water[cell] as number).toBe(0);
+      expect(applyPaint(world, "water", cell, -1000, 1)).toBe(false);
+    });
+
+    it("a zero delta and an out-of-range cell return false", () => {
+      const world = createWorld(1, makeConfig({}));
+      const cell = cellIndexOf(world, 100, 100);
+      expect(applyPaint(world, "temperature", cell, 0, 0)).toBe(false);
+      expect(applyPaint(world, "fertility", cell, 0, 0)).toBe(false);
+      expect(applyPaint(world, "water", -1, -50, 1)).toBe(false);
+      expect(applyPaint(world, "water", cell, Number.NaN, 1)).toBe(false);
+    });
+  });
 });
 
 describe("applySetParam", () => {

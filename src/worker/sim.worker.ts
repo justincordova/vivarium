@@ -344,21 +344,32 @@ function repaintIfPaused(): void {
 let terrarium = false;
 
 /**
- * Charge `cost` influence, returning whether the power may proceed.
+ * Whether Terrarium would permit `cost` right now.
  *
- * The check and the debit happen together, here, because the worker owns the World and is
- * the only place that can do both atomically at a tick boundary. The UI also disables an
- * unaffordable button, but that is a hint — this is the rule, so a command that arrives
- * anyway (a stale frame, a hand-crafted `postMessage`) cannot half-apply.
- *
- * With Terrarium off this is a pass-through: the sandbox god-powers stay free, which is a
+ * With Terrarium off this is always true: the sandbox god-powers stay free, which is a
  * documented feature and not something the new mode is allowed to take away.
  */
-function spend(world: World, cost: number): boolean {
-  if (!terrarium) return true;
-  if (world.influence < cost) return false;
+function canAfford(world: World, cost: number): boolean {
+  return !terrarium || world.influence >= cost;
+}
+
+/**
+ * Debit `cost` influence. Call ONLY once the power has actually taken effect.
+ *
+ * God-powers can legitimately do nothing — a delete aimed at a creature that died since
+ * the frame the click was hit-tested against, a drought on an already-dry cell, a flood
+ * with a dry brush ring. Charging for those drains the steward's budget with no world
+ * change and no feedback, so every call site checks `canAfford`, applies the power, and
+ * debits only on success.
+ *
+ * Still atomic: the whole message handler is synchronous and the tick loop never yields,
+ * so nothing can interleave between the check and the debit. The UI also disables an
+ * unaffordable button, but that is a hint — this is the rule, so a command that arrives
+ * anyway (a stale frame, a hand-crafted `postMessage`) cannot half-apply.
+ */
+function spend(world: World, cost: number): void {
+  if (!terrarium) return;
   world.influence -= cost;
-  return true;
 }
 
 // Correctness note: god-power mutations are applied here, at a tick boundary, never
@@ -430,18 +441,24 @@ self.onmessage = (ev: MessageEvent<Command>): void => {
     case "step":
       stepTicks(cmd.ticks);
       break;
-    case "spawn":
-      if (world !== null && spend(world, C.INFLUENCE_COST_SPAWN)) {
-        const id = applySpawn(world, cmd.spec);
-        // Reply with the new creature so the UI can auto-inspect it — otherwise a fresh
-        // spawn can die before the visitor manages to click it (UI overhaul spawn fix).
-        const c = world.creatures.find((cr) => cr.id === id);
-        if (c !== undefined) post({ t: "creature", data: c });
-        repaintIfPaused();
-      }
+    case "spawn": {
+      if (world === null || !canAfford(world, C.INFLUENCE_COST_SPAWN)) break;
+      const id = applySpawn(world, cmd.spec);
+      if (id < 0) break; // rejected spec (non-finite field) — nothing spawned, no charge
+      spend(world, C.INFLUENCE_COST_SPAWN);
+      // Reply with the new creature so the UI can auto-inspect it — otherwise a fresh
+      // spawn can die before the visitor manages to click it (UI overhaul spawn fix).
+      const c = world.creatures.find((cr) => cr.id === id);
+      if (c !== undefined) post({ t: "creature", data: c });
+      repaintIfPaused();
       break;
+    }
     case "delete":
-      if (world !== null && spend(world, C.INFLUENCE_COST_DELETE) && applyDelete(world, cmd.id)) {
+      if (world === null || !canAfford(world, C.INFLUENCE_COST_DELETE)) break;
+      // Charge only if a creature was actually removed: the click is hit-tested against a
+      // frame up to `ticksPerFrame` ticks stale, and deaths fire nearly every tick.
+      if (applyDelete(world, cmd.id)) {
+        spend(world, C.INFLUENCE_COST_DELETE);
         repaintIfPaused();
       }
       break;
@@ -454,8 +471,11 @@ self.onmessage = (ev: MessageEvent<Command>): void => {
       }
       break;
     case "paint":
-      if (world !== null && spend(world, C.INFLUENCE_COST_PAINT)) {
-        applyPaint(world, cmd.field, cmd.cell, cmd.delta, cmd.brush);
+      if (world === null || !canAfford(world, C.INFLUENCE_COST_PAINT)) break;
+      // Charge only if the field actually moved: a drought on an already-dry cell or a
+      // flood with a dry ring moves nothing, and 40 influence is ~1000 ticks of refill.
+      if (applyPaint(world, cmd.field, cmd.cell, cmd.delta, cmd.brush)) {
+        spend(world, C.INFLUENCE_COST_PAINT);
         repaintIfPaused();
       }
       break;

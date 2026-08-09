@@ -247,6 +247,11 @@ function brushCells(world: World, center: number, brush: number): number[] {
  *    exactly and the water visibly moves within the field. Net removal isn't
  *    representable (no atmosphere) — the UI labels this "move water," not "remove."
  *  - **temperature / scent** — non-ledgered modulators; set/added directly.
+ *
+ * Returns whether the world actually CHANGED. A paint can legitimately be a no-op — a
+ * drought on an already-dry cell, a flood with a dry brush ring, a zero delta, an
+ * out-of-range cell — and Terrarium must not debit influence for one, so the caller needs
+ * to be able to tell a real edit from a no-op.
  */
 export function applyPaint(
   world: World,
@@ -254,9 +259,9 @@ export function applyPaint(
   cell: number,
   delta: number,
   brush = 1,
-): void {
+): boolean {
   const cells = world.config.gridCols * world.config.gridRows;
-  if (cell < 0 || cell >= cells) return;
+  if (cell < 0 || cell >= cells) return false;
   // A non-finite `delta` poisons sim-read fields: `Math.round(NaN)` is NaN, which
   // persists in the Float32Array temperature/scent modulators (read by the deterministic
   // brain) → NaN sensors → NaN actions → irreversible determinism corruption, and throws
@@ -264,7 +269,7 @@ export function applyPaint(
   // mirroring the `Number.isFinite` guards in `applyEditGenome`/`applySetParam` — the
   // worker validates, never trusts the sender (a hand-crafted postMessage carries any
   // float).
-  if (!Number.isFinite(delta)) return;
+  if (!Number.isFinite(delta)) return false;
   const d = Math.round(delta);
   // Clamp `brush` to the grid: an unbounded value makes `brushCells` iterate
   // (2·brush+1)² cells (the in-bounds `continue` filters OUTPUT, not iteration), hanging
@@ -277,32 +282,33 @@ export function applyPaint(
     // Use the rounded `d`, not the raw float: these modulators are read by sensors
     // that feed the deterministic tick, so a fractional delta would inject a
     // non-integer into a sim-read field (the quantize-on-entry rule applies here too).
+    if (d === 0) return false;
     const arr = world.fields[field];
     for (const idx of brushCells(world, cell, brush)) {
       arr[idx] = (arr[idx] as number) + d;
     }
-    return;
+    return true;
   }
 
   if (field === "fertility" || field === "light") {
     const arr = world.fields[field];
     const reservoir = fieldCompartment(world, "solarReservoir");
     const target = cellCompartment(arr, cell);
-    if (d > 0) transferUpTo(reservoir, target, d);
-    else if (d < 0) transferUpTo(target, reservoir, -d);
-    return;
+    if (d > 0) return transferUpTo(reservoir, target, d) > 0;
+    if (d < 0) return transferUpTo(target, reservoir, -d) > 0;
+    return false;
   }
 
   // water — local redistribution between center and the brush ring.
   const water = world.fields.water;
   const center = cellCompartment(water, cell);
   const ring = brushCells(world, cell, brush).filter((idx) => idx !== cell);
-  if (ring.length === 0) return;
+  if (ring.length === 0) return false;
 
   if (d < 0) {
     // Drought at center: move up to |d| out of the center, spread across the ring.
     const moveTotal = Math.min(-d, center.get());
-    if (moveTotal <= 0) return;
+    if (moveTotal <= 0) return false; // the centre is already dry — nothing to move
     const per = Math.floor(moveTotal / ring.length);
     let remainder = moveTotal - per * ring.length;
     for (const idx of ring) {
@@ -313,17 +319,23 @@ export function applyPaint(
       }
       if (q > 0) transfer(center, cellCompartment(water, idx), q);
     }
-  } else if (d > 0) {
+    return true;
+  }
+  if (d > 0) {
     // Flood center: pull up to d total from the ring (saturating per cell) into center.
     let need = d;
+    let movedTotal = 0;
     for (const idx of ring) {
       if (need <= 0) break;
       const src = cellCompartment(water, idx);
       // transferUpTo already saturates at src.get(); pass `need` directly.
       const moved = transferUpTo(src, center, need);
       need -= moved;
+      movedTotal += moved;
     }
+    return movedTotal > 0; // a dry ring has nothing to give
   }
+  return false;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
