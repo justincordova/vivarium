@@ -372,6 +372,27 @@ function migrate(blob: SaveBlob): SaveBlob {
   return b;
 }
 
+/**
+ * Restore the `behaviorNovelty` fire histogram at the CURRENT `ACTIONS` width.
+ *
+ * A pre-v5 blob was written when `ACTIONS` was 7 — v4→v5 (Society) widened it to 8 for the
+ * nest action. `Float32Array.from` alone would restore a 7-slot window on such a blob, and
+ * nothing else normalizes it, so the migrated cohort would carry the wrong width for the
+ * rest of its life: `updateActionWindow`'s write to `w[Action.Nest]` is index 7 and would
+ * be silently discarded as an out-of-bounds typed-array store (nesting invisible to the
+ * metric), and `normalizeHistogram` would build a 7-bin distribution whose empty-window
+ * uniform is 1/7 against 1/8 for every creature born after the load — so `jensenShannon`
+ * would report a nonzero divergence between two creatures that have fired nothing at all.
+ *
+ * Copy whatever was saved into a correctly-sized window; a wider future blob truncates
+ * rather than overflowing.
+ */
+function deActionWindow(saved: number[] | undefined): Float32Array {
+  const w = new Float32Array(ACTIONS);
+  if (saved !== undefined) w.set(saved.slice(0, ACTIONS));
+  return w;
+}
+
 export function deserialize(data: SaveBlob): World {
   const blob = migrate(data);
   // Deep-copy `config` so two `deserialize` calls on one blob never alias it. Nested
@@ -409,8 +430,7 @@ export function deserialize(data: SaveBlob): World {
         },
     // Serialized behaviorNovelty accumulator; default to a zero histogram if a
     // pre-Phase-1 blob lacks it (optional/defaulted → no migration needed).
-    actionWindow:
-      c.actionWindow !== undefined ? Float32Array.from(c.actionWindow) : new Float32Array(ACTIONS),
+    actionWindow: deActionWindow(c.actionWindow),
     // derived cache intentionally NOT restored — re-derived on first use.
   }));
 

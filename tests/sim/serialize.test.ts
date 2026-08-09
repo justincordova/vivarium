@@ -1,4 +1,5 @@
 import { makeConfig } from "@sim/config";
+import { ACTIONS } from "@sim/constants";
 import { deserialize, SAVE_VERSION, serialize } from "@sim/serialize";
 import { totalEnergy, totalWater } from "@sim/stats";
 import { tick } from "@sim/tick";
@@ -185,6 +186,26 @@ describe("serialize — forward-compatible defaulting", () => {
     const round = deserialize(serialize(w));
     expect(Array.from(round.terrain.biome)).toEqual(Array.from(w.terrain.biome));
     expect(Array.from(round.terrain.elevation)).toEqual(Array.from(w.terrain.elevation));
+  });
+
+  // v4→v5 (Society) widened ACTIONS 7→8 for the nest action. A pre-v5 blob therefore
+  // carries 7-slot action windows, and nothing else renormalizes them — so an unnormalized
+  // load would leave the migrated cohort permanently the wrong width: the nest slot write
+  // is an out-of-bounds typed-array store (silently discarded), and the empty-window
+  // uniform is 1/7 against 1/8 for every creature born after the load, which makes
+  // `jensenShannon` report divergence between two creatures that have fired nothing.
+  it("a pre-v5 blob's 7-slot actionWindow is restored at the current ACTIONS width", () => {
+    const w = createWorld(5, makeConfig({}));
+    // biome-ignore lint/suspicious/noExplicitAny: simulate a pre-Society v4 blob
+    const blob = { ...serialize(w) } as any;
+    blob.version = 4;
+    for (const c of blob.creatures) c.actionWindow = [1, 2, 3, 4, 5, 6, 7];
+    const round = deserialize(blob);
+    for (const c of round.creatures) {
+      expect(c.actionWindow).toHaveLength(ACTIONS);
+      // The saved slots survive; the new nest slot starts empty.
+      expect(Array.from(c.actionWindow)).toEqual([1, 2, 3, 4, 5, 6, 7, 0]);
+    }
   });
 
   it("a v3 blob (no terrain) migrates to v4 with flat grassland terrain", () => {
