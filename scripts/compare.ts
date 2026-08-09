@@ -95,6 +95,8 @@ interface Summary {
   behaviorNovelty: number;
   meanEnabled: number;
   heritabilityRatio: number;
+  /** Parent↔child pairs the heritability ratio was measured over. 0 ⇒ nothing measured. */
+  heritabilityPairs: number;
   survived: boolean;
 }
 
@@ -159,6 +161,7 @@ function run(
     behaviorNovelty: h.behaviorNovelty,
     meanEnabled: meanEnabled(world.creatures),
     heritabilityRatio: her.ratio,
+    heritabilityPairs: her.pairs,
     survived: world.creatures.length > 0,
   };
   return { csv, summary };
@@ -196,15 +199,21 @@ function main(): void {
   // threshold — the patchbay is the brain that actually runs the forward pass, so its
   // inheritance noise is the one that matters for "behavior accumulates".
   const ratio = patch.summary.heritabilityRatio;
-  // Gate on survival FIRST: `heritability()` returns ratio 0 for an extinct (or
-  // pair-less) world, and `0 <= HERITABILITY_MAX` would otherwise print a misleading
-  // "PASS" for a collapsed run — the most favorable-looking verdict for the worst outcome.
-  // A dead world has undefined heritability, so report N/A rather than PASS.
+  // Gate on having MEASURED something first: `heritability()` returns ratio 0 both for an
+  // extinct world and for a surviving one with no living-child↔living-parent pair (a lone
+  // survivor, or a bottleneck where every `parentId` points at a creature that has since
+  // died). `0 <= HERITABILITY_MAX` would print the most favorable-looking verdict for the
+  // worst outcome — a PASS derived from zero samples. Survival alone is not enough, which
+  // is why `heritability()` returns `pairs`; a run one creature away from extinction would
+  // otherwise slip past the existing extinction guard and record a PASS for the Phase-4
+  // gate that decides whether per-locus linkage moves in-scope.
   const gate = !patch.summary.survived
     ? `N/A (patchbay went extinct at tick ${patch.summary.finalTick} — heritability undefined)`
-    : ratio <= HERITABILITY_MAX
-      ? `PASS (patchbay heritability ${fmt(ratio)} <= ${HERITABILITY_MAX})`
-      : `FAIL (patchbay heritability ${fmt(ratio)} > ${HERITABILITY_MAX} — per-locus linkage moves in-scope)`;
+    : patch.summary.heritabilityPairs === 0
+      ? `N/A (patchbay survived with ${patch.summary.finalPop} but no parent↔child pairs — heritability undefined)`
+      : ratio <= HERITABILITY_MAX
+        ? `PASS (patchbay heritability ${fmt(ratio)} <= ${HERITABILITY_MAX})`
+        : `FAIL (patchbay heritability ${fmt(ratio)} > ${HERITABILITY_MAX} — per-locus linkage moves in-scope)`;
   process.stdout.write(`# heritability gate: ${gate}\n`);
 
   if (csvPrefix !== null) {

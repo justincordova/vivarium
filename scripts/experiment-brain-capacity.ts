@@ -84,6 +84,10 @@ function runWithEnableTrack(
     if ((i + 1) % sampleEvery === 0) {
       enableTrack.push([world.tick, meanEnabled(world.creatures)]);
     }
+    // Stop at extinction, as every other instrument in scripts/ does. Ticking an empty
+    // world only appends `meanEnabled([]) === 0` samples, which then read as a real
+    // measured plateau rather than as "there is nobody left to measure".
+    if (world.creatures.length === 0) break;
   }
   return { world, enableTrack };
 }
@@ -100,12 +104,20 @@ function main(): void {
     process.stdout.write(`enable  tick=${t}  meanEnabled=${fmt(m)}\n`);
   }
   const finalEnable = base.enableTrack[base.enableTrack.length - 1]?.[1] ?? 0;
+  // Enable density is undefined with nobody left to measure. `meanEnabled([])` returns 0
+  // by contract, so an extinct run would otherwise land in the `<= 0.5` branch and print
+  // the most decisive-sounding verdict in the file — "arrows unused" — computed over an
+  // empty population, while instrument 2 below correctly reports UNDEFINED for the same
+  // run. This readout is the primary evidence behind the recorded keep-patchbay decision,
+  // so it must not assert anything about a dead world.
   const enableVerdict =
-    finalEnable >= 0.9
-      ? "CEILING BINDS (mean(enabled) climbed to 0.9+ and pins — evolution wants every arrow)"
-      : finalEnable <= 0.5
-        ? "CAPACITY NOT THE CONSTRAINT (mean(enabled) plateaus below ~0.5 — arrows unused)"
-        : "INCONCLUSIVE (mean(enabled) between 0.5 and 0.9 — run longer or more seeds)";
+    base.world.creatures.length === 0
+      ? `UNDEFINED (HIDDEN=10 went extinct at tick ${base.world.tick} — enable density not meaningful; pick another seed)`
+      : finalEnable >= 0.9
+        ? "CEILING BINDS (mean(enabled) climbed to 0.9+ and pins — evolution wants every arrow)"
+        : finalEnable <= 0.5
+          ? "CAPACITY NOT THE CONSTRAINT (mean(enabled) plateaus below ~0.5 — arrows unused)"
+          : "INCONCLUSIVE (mean(enabled) between 0.5 and 0.9 — run longer or more seeds)";
   process.stdout.write(`# enable-density verdict: ${enableVerdict}\n`);
 
   // ── Instrument 2: enlargement experiment (HIDDEN=10 vs 20, fresh worlds) ──
