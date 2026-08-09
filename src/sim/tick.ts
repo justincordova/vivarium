@@ -94,6 +94,13 @@ interface Snapshot {
   hash: SpatialHash;
   plantHash: SpatialHash;
   plantById: Map<number, Plant>;
+  /**
+   * Corpses, indexed like plants. Meat is a food source, so it must be PERCEIVABLE:
+   * `tryEat`'s corpse branch can only fire if `plan.foodId` can name a corpse, and
+   * `foodId` comes solely from the food percept built off these hashes.
+   */
+  corpseHash: SpatialHash;
+  corpseById: Map<number, Corpse>;
   /** committed mate-target per creature id, from the prior tick (for rendezvous). */
   committedTargetById: Map<number, number>;
 }
@@ -116,12 +123,20 @@ function snapshot(world: World): Snapshot {
     const p = world.plants[i] as Plant;
     plantById.set(p.id, p);
   }
+  const corpsePts: SpatialPoint[] = world.corpses.map((c) => ({ id: c.id, x: c.x, y: c.y }));
+  const corpseById = new Map<number, Corpse>();
+  for (let i = 0; i < world.corpses.length; i++) {
+    const c = world.corpses[i] as Corpse;
+    corpseById.set(c.id, c);
+  }
   return {
     creatures: world.creatures.slice(),
     byId,
     hash: new SpatialHash(pts, HASH_CELL),
     plantHash: new SpatialHash(plantPts, HASH_CELL),
     plantById,
+    corpseHash: new SpatialHash(corpsePts, HASH_CELL),
+    corpseById,
     committedTargetById: committed,
   };
 }
@@ -162,7 +177,7 @@ function senseContext(
   const senseRadius = expressTrait(self.genome.senseRadius);
 
   const nearest = (predicate: (o: Creature) => boolean, allowPlants: boolean): Percept | null => {
-    let best: Creature | Plant | null = null;
+    let best: Creature | Plant | Corpse | null = null;
     let bestD = Number.POSITIVE_INFINITY;
     let bestIsAgent = false;
     // Creatures — bounded query over the spatial hash (O(neighbors), not O(N)).
@@ -189,6 +204,25 @@ function senseContext(
         if (d > senseRadius) continue;
         if (d < bestD || (d === bestD && best !== null && p.id < best.id)) {
           best = p;
+          bestD = d;
+          bestIsAgent = false;
+        }
+      }
+    }
+    // Corpses (for food only) — the meat half of the diet axis. Without this scan the
+    // food percept can never name a corpse, `tryEat`'s corpse branch is unreachable, and
+    // a successful kill pays the killer NOTHING: 100% of the prey's energy routes
+    // corpse→fertility→plants. A meat-eater (`diet > 0`) must be able to sense carrion,
+    // exactly as a plant-eater (`diet < 1`) senses plants above.
+    if (allowPlants && expressTrait(self.genome.diet) > 0) {
+      const corpseNeighbors = snap.corpseHash.queryWithin(self.x, self.y, senseRadius);
+      for (let i = 0; i < corpseNeighbors.length; i++) {
+        const co = snap.corpseById.get(corpseNeighbors[i] as number);
+        if (co === undefined) continue;
+        const d = dist(self.x, self.y, co.x, co.y);
+        if (d > senseRadius) continue;
+        if (d < bestD || (d === bestD && best !== null && co.id < best.id)) {
+          best = co;
           bestD = d;
           bestIsAgent = false;
         }
