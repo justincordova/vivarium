@@ -19,6 +19,7 @@
  * Imports only `sim/`. No DOM, no `realTime` inside the replay.
  */
 
+import { MAX_OFFLINE_TICKS } from "@sim/constants";
 import { recordHistory } from "@sim/history";
 import { tick } from "@sim/tick";
 import type { LineageEvent, World } from "@sim/types";
@@ -29,7 +30,15 @@ export function ticksOwed(world: World, lastSavedRealTime: number, now: number):
   const elapsed = now - lastSavedRealTime;
   if (!(elapsed > 0) || !(msPerTick > 0)) return 0; // clock skew / bad config → 0, never negative
   const raw = Math.floor(elapsed / msPerTick);
-  return Math.min(raw, world.config.tunables.MAX_OFFLINE_TICKS);
+  // Clamp against the MODULE constant as well as the world's own tunable, so a config can
+  // only ever LOWER the ceiling. `config.tunables` is caller-controlled: `parseHash`
+  // accepts any `t.KEY=value` from a share URL, `makeConfig` merges it, and 30s later the
+  // world is autosaved with it — so `t.MAX_OFFLINE_TICKS=100000000` would make the very
+  // cap that bounds this loop attacker-supplied. `runCatchup` is synchronous and never
+  // yields, so an unbounded `owed` hangs the worker behind the boot overlay for hours on
+  // every subsequent visit, and the poisoned config lives in IndexedDB, so the world can
+  // never be reached again. Same threat the `MS_PER_TICK` floor in `step()` guards.
+  return Math.min(raw, world.config.tunables.MAX_OFFLINE_TICKS, MAX_OFFLINE_TICKS);
 }
 
 /**

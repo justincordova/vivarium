@@ -13,6 +13,7 @@
  */
 
 import { makeConfig } from "@sim/config";
+import { MAX_OFFLINE_TICKS } from "@sim/constants";
 import { recordHistory } from "@sim/history";
 import { tick } from "@sim/tick";
 import type { World } from "@sim/types";
@@ -145,5 +146,23 @@ describe("ticksOwed — cap + clock-skew safety", () => {
     const w = createWorld(1, smallConfig());
     expect(ticksOwed(w, 5000, 1000)).toBe(0);
     expect(ticksOwed(w, 5000, 5000)).toBe(0);
+  });
+
+  // `config.tunables` is caller-controlled — `parseHash` accepts any `t.KEY=value` from a
+  // share URL and the world is autosaved carrying it. A config may only ever LOWER the
+  // ceiling, never raise it, or the cap that bounds this synchronous replay would be
+  // supplied by whoever wrote the link.
+  it("a raised MAX_OFFLINE_TICKS tunable cannot lift the module ceiling", () => {
+    const w = createWorld(1, smallConfig());
+    w.config.tunables.MAX_OFFLINE_TICKS = 100_000_000;
+    const ms = w.config.tunables.MS_PER_TICK;
+    expect(ticksOwed(w, 1000, 1000 + ms * 50_000_000)).toBe(MAX_OFFLINE_TICKS);
+  });
+
+  it("a lowered MAX_OFFLINE_TICKS tunable still applies", () => {
+    const w = createWorld(1, smallConfig());
+    w.config.tunables.MAX_OFFLINE_TICKS = 7;
+    const ms = w.config.tunables.MS_PER_TICK;
+    expect(ticksOwed(w, 1000, 1000 + ms * 5000)).toBe(7);
   });
 });
