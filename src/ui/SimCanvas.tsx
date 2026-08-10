@@ -22,12 +22,17 @@ import {
   zoomAt,
 } from "@render/camera";
 import { draw } from "@render/canvas";
+import { appearance } from "@render/palette";
 import { latestFrame, useSimStore } from "@store/useSimStore";
 import { useEffect, useRef, useState } from "react";
 
 /** Pixels the pointer must move before a press counts as a drag (not a click). A little
  * generous so a quick tap with minor jitter still spawns/inspects on the first try. */
 const DRAG_THRESHOLD = 8;
+
+/** How far the drawn organism reaches past its body radius (legs/glow) — matches the
+ * renderer's own cull factor in `render/canvas.ts`, so clicks agree with what is drawn. */
+const DRAWN_EXTENT = 2.8;
 /** A press shorter than this (ms) always counts as a click, even if it wandered a bit —
  * so a quick tap is never swallowed as a pan. */
 const TAP_MS = 250;
@@ -166,18 +171,31 @@ export function SimCanvas(): React.ReactElement {
     d.y = e.clientY;
   };
 
-  /** Index of the creature nearest a world point, or -1 if none within `hitRadius`. */
-  const nearestCreature = (wx: number, wy: number, hitRadius: number): number => {
+  /**
+   * Index of the creature whose DRAWN body contains a world point, or -1 if none.
+   *
+   * Hit-testing must match what the renderer actually draws. A flat radius picks by centre
+   * distance against a constant, so clicks on a big creature's head, tail or legs miss
+   * entirely (the organism reaches ~2.8× its body radius — the same figure `canvas.ts`
+   * culls by — which is ~15 world units for a max-size creature against a flat ~7), and a
+   * small creature whose centre happens to be nearer wins over a large one whose body is
+   * genuinely under the cursor. Clicking a creature is the primary interaction in the app,
+   * so score each candidate against its own drawn extent and use centre distance only to
+   * break ties between overlapping bodies.
+   */
+  const nearestCreature = (wx: number, wy: number, slack: number): number => {
     const frame = latestFrame.current;
     if (frame === null) return -1;
     const c = frame.creatures;
     let best = -1;
-    let bestD2 = hitRadius * hitRadius;
+    let bestD2 = Number.POSITIVE_INFINITY;
     for (let i = 0; i < c.count; i++) {
       const ddx = (c.x[i] as number) - wx;
       const ddy = (c.y[i] as number) - wy;
       const d2 = ddx * ddx + ddy * ddy;
-      if (d2 <= bestD2) {
+      const reach = appearance(c, i).radius * DRAWN_EXTENT + slack;
+      if (d2 > reach * reach) continue;
+      if (d2 < bestD2) {
         bestD2 = d2;
         best = i;
       }
@@ -199,7 +217,10 @@ export function SimCanvas(): React.ReactElement {
     const rect = e.currentTarget.getBoundingClientRect();
     const [wx, wy] = screenToWorld(cam, e.clientX - rect.left, e.clientY - rect.top);
     const store = useSimStore.getState();
-    const hitRadius = 6 / cam.zoom + 4;
+    // Slack in world units so a near-miss still lands, on top of each creature's own
+    // drawn extent (see `nearestCreature`). Scales with zoom so it stays a constant
+    // number of screen pixels.
+    const hitRadius = 6 / cam.zoom;
 
     switch (store.tool) {
       case "inspect": {
