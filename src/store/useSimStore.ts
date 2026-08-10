@@ -173,6 +173,12 @@ interface SimState {
   /** Last non-fatal persistence error (e.g. autosave failed), or null. Surfaced subtly. */
   persistError: string | null;
   /**
+   * Which subsystem produced `persistError`, so the badge names the right one. Telling a
+   * user "autosave failed" when their import was unreadable sends them to look at their
+   * storage instead of their file.
+   */
+  persistErrorKind: "autosave" | "import";
+  /**
    * Set when the worker itself died (an uncaught throw escaping its message handler).
    * Unlike `persistError` this is FATAL: the worker owns the World and the tick loop, so
    * world time has stopped for good and only a reload recovers. Tracked separately so the
@@ -291,6 +297,7 @@ export const useSimStore = create<SimState>((set, get) => ({
   catchup: null,
   catchupEnabled: readCatchupPref(),
   persistError: null,
+  persistErrorKind: "autosave",
   workerCrashed: false,
   report: null,
   phase: "landing",
@@ -439,7 +446,10 @@ export const useSimStore = create<SimState>((set, get) => ({
       blob = await importWorldFile(file);
     } catch (e: unknown) {
       // A corrupt or wrong-type file → surface a non-fatal error, leave the world as-is.
-      set({ persistError: e instanceof Error ? e.message : "import failed" });
+      set({
+        persistError: e instanceof Error ? e.message : "import failed",
+        persistErrorKind: "import",
+      });
       return;
     }
     send({ t: "loadSave", blob });
@@ -564,7 +574,10 @@ export function startWorker(): Worker {
         useSimStore.getState().play();
         break;
       case "persistError":
-        useSimStore.setState({ persistError: msg.reason });
+        useSimStore.setState({
+          persistError: msg.reason,
+          persistErrorKind: msg.kind ?? "autosave",
+        });
         break;
       case "report":
         useSimStore.setState({

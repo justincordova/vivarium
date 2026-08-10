@@ -328,10 +328,13 @@ export type Event =
   // ── Phase 5A: persistence lifecycle ──────────────────────────────────────────
   // `catchupProgress` drives the boot overlay (`total: 0` ⇒ no catch-up, skip it);
   // `ready` fires once the first live frame is emitted (dismiss the overlay);
-  // `persistError` is a NON-FATAL autosave/storage failure (the world keeps running).
+  // `persistError` is a NON-FATAL failure that leaves the world intact. `kind` names the
+  // subsystem so the UI can say which one broke: an autosave/storage failure and a save
+  // file that could not be read are very different things to be told, and reporting the
+  // second as the first sends the user looking at their storage instead of their file.
   | { t: "catchupProgress"; done: number; total: number }
   | { t: "ready" }
-  | { t: "persistError"; reason: string }
+  | { t: "persistError"; reason: string; kind?: "autosave" | "import" }
   // The "while you were away" report (Phase 5A.3): posted once after a catch-up that
   // produced lineage events. `sinceTick`/`nowTick` frame the window (narrated by
   // generation/tick, never wall-clock). Absent ⇒ no report (no catch-up or no drama).

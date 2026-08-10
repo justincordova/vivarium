@@ -363,11 +363,17 @@ function OnboardingCaptions(): React.ReactElement | null {
  */
 function PersistErrorBadge(): React.ReactElement | null {
   const persistError = useSimStore((s) => s.persistError);
+  const persistErrorKind = useSimStore((s) => s.persistErrorKind);
   const workerCrashed = useSimStore((s) => s.workerCrashed);
   if (persistError === null) return null;
+  const label = workerCrashed
+    ? "simulation stopped · reload to recover"
+    : persistErrorKind === "import"
+      ? "couldn't read that save file"
+      : "autosave failed";
   return (
     <div className="panel pointer-events-none absolute bottom-11 left-4 px-2 py-1 text-[10px] uppercase tracking-widest text-[var(--warn)]">
-      {workerCrashed ? "simulation stopped · reload to recover" : "autosave failed"}
+      {label}
     </div>
   );
 }

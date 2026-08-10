@@ -280,7 +280,11 @@ function report(label: string, seeds: number[], runOne: (seed: number) => Outcom
     measured.length > 0
       ? measured.sort((x, y) => x - y)[Math.floor(measured.length / 2)]
       : Number.NaN;
-  const unmeasured = rows.length - measured.length;
+  // Count rows that genuinely sampled nothing, not "rows minus survivors that measured":
+  // `measured` is derived from `alive`, so subtracting it from `rows.length` counts every
+  // seed that went extinct AFTER a full series as though it had never sampled — telling
+  // the operator a valid collapse was a sampling failure.
+  const unmeasured = rows.filter((r) => !Number.isFinite(r.cv)).length;
   process.stdout.write(
     `  → ${alive.length}/${rows.length} alive; median CV ${fmt(medianCv ?? Number.NaN)}` +
       (unmeasured > 0 ? ` (over ${measured.length} measured; ${unmeasured} sampled nothing)` : "") +

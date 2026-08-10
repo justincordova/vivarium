@@ -149,7 +149,11 @@ function loadSave(blob: SaveBlob): void {
     // store's optimistic `running: false` (set when the import was dispatched) matches
     // the worker, and repaint so the blanked charts refill from the surviving world.
     stop();
-    post({ t: "persistError", reason: e instanceof Error ? e.message : "unreadable save" });
+    post({
+      t: "persistError",
+      kind: "import",
+      reason: e instanceof Error ? e.message : "unreadable save",
+    });
     emitFrame();
     emitStats();
     return;
