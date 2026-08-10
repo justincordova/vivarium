@@ -424,7 +424,12 @@ export function drawNests(ctx: CanvasRenderingContext2D, frame: RenderFrame, cam
     const sy = worldToScreenY(cam, n.y[i] as number);
     const strength = n.strengthFrac[i] as number;
     const r = Math.max(2.5, (3 + 5 * strength) * cam.zoom);
-    if (sx < -r - 6 || sy < -r - 6 || sx > cam.viewW + r + 6 || sy > cam.viewH + r + 6) continue;
+    // Cull against the FULL drawn extent: the territory ring below reaches `r * 1.8`, so a
+    // bare `r + 6` margin culls nests whose ring is still on screen (any `r > 7.5`, i.e.
+    // essentially every nest at default zoom) and the rings pop in and out while panning.
+    // Same correction the creature loop already carries.
+    const m = r * 1.8 + 6;
+    if (sx < -m || sy < -m || sx > cam.viewW + m || sy > cam.viewH + m) continue;
     const hue = n.hue[i] as number;
     ctx.save();
     // Territory ring — faint, scales with strength.

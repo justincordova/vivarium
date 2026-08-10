@@ -145,16 +145,21 @@ export function buildRenderFrame(world: World): RenderFrame {
     corpses.energyFrac[i] = clamp01(x.energy / maxCorpseE);
   }
 
-  // Water field, normalized 0..1 per cell against the field's OWN current max, for the
-  // renderer's water shading (so drought/flood dips/spikes read as gaps/brightening on
-  // top of the authored water biome). Read-only; floats are fine outside tick().
+  // Water field, normalized 0..1 per cell for the renderer's water shading (so
+  // drought/flood dips/spikes read as gaps/brightening on top of the authored water
+  // biome). Read-only; floats are fine outside tick().
+  //
+  // Normalized against the FIXED `WATER_CELL_MAX` referent — the same one the `localWater`
+  // sensor uses — not against the field's own per-frame maximum. A per-frame max makes the
+  // scale depend on the single wettest cell, so a few clicks of the flood tool (which pulls
+  // up to WATER_BRUSH_DELTA into one cell, far past a lake cell's seeded level) push every
+  // real lake below the renderer's shading threshold: adding water in one place makes all
+  // the world's water visually vanish in the same frame, inverting the tool's own feedback
+  // while `totalWater` is unchanged. A fixed basis also makes shading comparable between
+  // frames, which is what the shading is supposed to convey.
   const cells = world.fields.water.length;
   const water = new Float32Array(cells);
-  let waterMax = 1;
-  for (let i = 0; i < cells; i++) {
-    const w = world.fields.water[i] as number;
-    if (w > waterMax) waterMax = w;
-  }
+  const waterMax = Math.max(1, t.WATER_CELL_MAX);
   for (let i = 0; i < cells; i++) {
     water[i] = clamp01((world.fields.water[i] as number) / waterMax);
   }
