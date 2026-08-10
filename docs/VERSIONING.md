@@ -26,13 +26,20 @@ bump. Patch bumps are fixes within a phase. `v1.0.0` is the beta definition-of-d
 | `v0.5.0` | Phase 4 — brains | `PatchbayBrain` swapped in; same-seed A/B done; the two swap-decision instruments + heritability gate recorded. |
 | `v0.6.0` | Phase 6 — terrain foundation | Terrain generated, serialized (save v4) and modulating growth/movement; `SENSORS` raised with the golden vector re-baselined; cold-open re-evolved under the new geometry. |
 | `v0.7.0` | Phase 7 — society | Nest action, kin senses and the `sociality` gene live; nests render; **the event feed narrates pack/home formation**; cold-open re-evolved. *Gate green* — the feed landed as the plain-language chronicle (`buildEventFeed` + `src/ui/narrate.ts`), and the cold-open was re-evolved after the drink/attack seed circuits were fixed. |
-| `v1.0.0` | Phase 5A–5C — persistence closes the loop | Beta DoD met: a stranger opens a URL, sees oscillation, reads a genome, adjusts mutation, closes the tab, finds the world waiting (advanced, with a "while you were away" report). Shipped: persistence + offline catch-up + report, shareable URL/file, cold open, timeline + lineage speciation view, seasonal temperature pressure. **5D (Terrarium/Laboratory) is post-beta and deferred.** |
+| `v1.0.0` | Beta definition-of-done | A stranger opens a URL, sees oscillation, reads a genome, adjusts mutation, closes the tab, finds the world waiting (advanced, with a "while you were away" report). Requires everything above **plus** Phases 5A–5C, which shipped first chronologically: persistence + offline catch-up + report, shareable URL/file, cold open, timeline + lineage speciation view, seasonal temperature pressure. Also carries Terrarium (the first post-beta mode) and the whole-codebase hardening pass that made predation actually pay. |
+
+> **Note on ordering.** Phases were not built in numeric order: 5A–5C landed *before*
+> Phase 6 and Phase 7. Tags must increase monotonically along history, so Phase 5A–5C
+> has no standalone tag of its own — it is subsumed by `v1.0.0`, which is cut only once
+> the beta promise is true end-to-end. An earlier revision of this table assigned
+> `v1.0.0` to Phase 5A–5C directly, which would have placed it *behind* `v0.6.0` and
+> `v0.7.0` in history.
 
 Patch examples: `v0.1.1` = a Phase-0 bugfix after `v0.1.0` was tagged;
 `v0.4.2` = a second fix to the shipped sandbox.
 
-Post-beta work (Terrarium/Laboratory modes, LLM naturalist, etc. — SPEC.md
-§Non-Goals) continues as `v1.x` once it lands.
+Further post-beta work (Laboratory mode, LLM naturalist, etc. — SPEC.md §Non-Goals)
+continues as `v1.x` as it lands.
 
 ## 3. Save-format version — the serialized integer
 
