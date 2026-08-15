@@ -334,7 +334,7 @@ export type Event =
   // second as the first sends the user looking at their storage instead of their file.
   | { t: "catchupProgress"; done: number; total: number }
   | { t: "ready" }
-  | { t: "persistError"; reason: string; kind?: "autosave" | "import" }
+  | { t: "persistError"; reason: string; kind?: "autosave" | "import" | "boot" }
   // The "while you were away" report (Phase 5A.3): posted once after a catch-up that
   // produced lineage events. `sinceTick`/`nowTick` frame the window (narrated by
   // generation/tick, never wall-clock). Absent ⇒ no report (no catch-up or no drama).

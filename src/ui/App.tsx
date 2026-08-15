@@ -5,7 +5,7 @@
  * sandbox (sliders, spawn/paint, inspector depth) is Phase 3.
  */
 
-import { startWorker, useSimStore } from "@store/useSimStore";
+import { type PersistErrorKind, startWorker, useSimStore } from "@store/useSimStore";
 import { useEffect, useState } from "react";
 import { Charts } from "./Charts";
 import { ControlPanel } from "./ControlPanel";
@@ -361,16 +361,25 @@ function OnboardingCaptions(): React.ReactElement | null {
  * stopped for good and only a reload recovers. Reporting the second as the first would
  * tell the user their world is merely unsaved when it is actually dead.
  */
+const PERSIST_ERROR_LABEL: Record<PersistErrorKind, string> = {
+  autosave: "autosave failed",
+  import: "couldn't read that save file",
+  export: "couldn't save that file",
+  boot: "couldn't start the simulation",
+  worker: "lost a frame from the simulation",
+};
+
 function PersistErrorBadge(): React.ReactElement | null {
   const persistError = useSimStore((s) => s.persistError);
   const persistErrorKind = useSimStore((s) => s.persistErrorKind);
   const workerCrashed = useSimStore((s) => s.workerCrashed);
   if (persistError === null) return null;
+  // Name the subsystem that actually failed. "autosave failed" is the most alarming
+  // thing this badge can say — it tells the user their world is not being kept — so it
+  // must not be the fallback for an export, a boot throw, or a dropped frame.
   const label = workerCrashed
     ? "simulation stopped · reload to recover"
-    : persistErrorKind === "import"
-      ? "couldn't read that save file"
-      : "autosave failed";
+    : PERSIST_ERROR_LABEL[persistErrorKind];
   return (
     <div className="panel pointer-events-none absolute bottom-11 left-4 px-2 py-1 text-[10px] uppercase tracking-widest text-[var(--warn)]">
       {label}

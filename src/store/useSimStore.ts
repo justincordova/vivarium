@@ -139,6 +139,9 @@ function writeSciencePref(enabled: boolean): void {
   }
 }
 
+/** Which subsystem produced a `persistError`, so the badge can name the right one. */
+export type PersistErrorKind = "autosave" | "import" | "export" | "boot" | "worker";
+
 interface SimState {
   running: boolean;
   speed: Speed;
@@ -177,7 +180,7 @@ interface SimState {
    * user "autosave failed" when their import was unreadable sends them to look at their
    * storage instead of their file.
    */
-  persistErrorKind: "autosave" | "import";
+  persistErrorKind: PersistErrorKind;
   /**
    * Set when the worker itself died (an uncaught throw escaping its message handler).
    * Unlike `persistError` this is FATAL: the worker owns the World and the tick loop, so
@@ -437,7 +440,14 @@ export const useSimStore = create<SimState>((set, get) => ({
     requestSnapshot()
       .then((blob) => exportWorldFile(blob))
       .catch((e: unknown) => {
-        set({ persistError: e instanceof Error ? e.message : "export failed" });
+        // `kind: "export"` — a failed download is not a failed autosave, and the badge
+        // names the subsystem. Without it a double-clicked export (the second call
+        // rejects with "already in progress") tells the user their world is not being
+        // saved, which is both false and the most alarming thing the app can say.
+        set({
+          persistError: e instanceof Error ? e.message : "export failed",
+          persistErrorKind: "export",
+        });
       });
   },
   async importWorld(file) {
@@ -605,7 +615,10 @@ export function startWorker(): Worker {
   // A message that cannot be structured-cloned back out of the worker — the world keeps
   // running, but this frame/stat is lost, so surface it rather than dropping it silently.
   worker.onmessageerror = () => {
-    useSimStore.setState({ persistError: "the simulation worker sent an unreadable message" });
+    useSimStore.setState({
+      persistError: "the simulation worker sent an unreadable message",
+      persistErrorKind: "worker",
+    });
   };
 
   // Persistence-aware boot: load-or-create + optional offline catch-up. `ready` (not

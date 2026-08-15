@@ -414,7 +414,13 @@ self.onmessage = (ev: MessageEvent<Command>): void => {
       // promise would reject unhandled and the UI boot overlay would hang forever with
       // no `ready`. Surface it and still release the overlay.
       void boot(cmd.seed, cmd.config, cmd.coldOpen, cmd.source).catch((e) => {
-        post({ t: "persistError", reason: e instanceof Error ? e.message : String(e) });
+        // `kind: "boot"` — this is a startup failure, not a failed save. Without it the
+        // badge would blame autosave for a throw in createWorld/deserialize/frame-build.
+        post({
+          t: "persistError",
+          reason: e instanceof Error ? e.message : String(e),
+          kind: "boot",
+        });
         post({ t: "ready" });
         // If a world loaded but boot threw AFTER installing the autosaver yet BEFORE
         // `startAutosave()` (e.g. a frame-builder throw), the session would otherwise run
