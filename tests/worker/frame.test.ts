@@ -12,9 +12,10 @@
 import { makeConfig } from "@sim/config";
 import { recordHistory } from "@sim/history";
 import { tick } from "@sim/tick";
-import type { Creature } from "@sim/types";
+import { Biome, type Creature } from "@sim/types";
 import { createWorld } from "@sim/world";
 import { describe, expect, it } from "vitest";
+import { applyPaint } from "../../src/worker/commands";
 import {
   buildEventFeed,
   buildFlashes,
@@ -105,6 +106,58 @@ describe("frame↔palette contract", () => {
     }
     // A world seeded with water should show at least one wet cell.
     expect(Array.from(frame.water).some((w) => w > 0)).toBe(true);
+  });
+
+  it("water overlay: keeps seeded lakes off the clamp so the god-powers stay visible", () => {
+    const world = createWorld(1, makeConfig({}));
+    // A seeded water-biome cell — the only terrain where the water tools are meaningful.
+    const lake = world.terrain.biome.indexOf(Biome.Water);
+    expect(lake).toBeGreaterThanOrEqual(0);
+
+    // Saturated at 1.0 means every further change is erased by `clamp01`. Seeding
+    // concentrates ~3000 into a lake cell, so normalizing by the SENSOR's WATER_CELL_MAX
+    // (100) pinned every lake at 1.0 and made the first seven drought clicks render
+    // byte-identically.
+    const before = buildRenderFrame(world).water[lake] as number;
+    expect(before).toBeLessThan(1);
+    expect(before).toBeGreaterThan(0.55); // still above the renderer's shading threshold
+
+    // One drought click at the lake centre, with the delta/brush the UI actually sends.
+    expect(applyPaint(world, "water", lake, -400, 2)).toBe(true);
+    const drained = buildRenderFrame(world).water[lake] as number;
+    expect(drained).toBeLessThan(before);
+  });
+
+  it("water overlay: a flood click moves the rendered value too", () => {
+    const world = createWorld(1, makeConfig({}));
+    const lake = world.terrain.biome.indexOf(Biome.Water);
+    const before = buildRenderFrame(world).water[lake] as number;
+    expect(applyPaint(world, "water", lake, 400, 2)).toBe(true);
+    const flooded = buildRenderFrame(world).water[lake] as number;
+    expect(flooded).toBeGreaterThan(before);
+  });
+
+  it("water overlay: land absorbing a drought click stays below the shading threshold", () => {
+    const world = createWorld(1, makeConfig({}));
+    // A lake cell on the shore, so the brush ring lands on non-water cells.
+    const cols = world.config.gridCols;
+    let shore = -1;
+    for (let i = cols + 1; i < world.terrain.biome.length - cols - 1; i++) {
+      if (world.terrain.biome[i] !== Biome.Water) continue;
+      if (world.terrain.biome[i + 1] !== Biome.Water) {
+        shore = i;
+        break;
+      }
+    }
+    expect(shore).toBeGreaterThanOrEqual(0);
+    applyPaint(world, "water", shore, -400, 2);
+    const frame = buildRenderFrame(world);
+    // The ring cells RECEIVED the drained water. Under the old referent a land cell at
+    // ~66 crossed 0.55 and lit up, so draining a lake made the land around it read as wet.
+    for (let i = 0; i < frame.water.length; i++) {
+      if (world.terrain.biome[i] === Biome.Water) continue;
+      expect(frame.water[i] as number).toBeLessThan(0.55);
+    }
   });
 
   it("carries the per-cell authored biome map (drives the terrain render)", () => {

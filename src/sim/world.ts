@@ -284,8 +284,16 @@ export const FOUNDER_SENSE_RADIUS = 25;
 const DEME_COUNT = 4;
 /** Radius of a deme cluster, world units. */
 const DEME_RADIUS = 15;
-/** Initial water placed per grid cell (drawn into founder hydration). */
-const INITIAL_WATER_PER_CELL = 200;
+/**
+ * Initial water placed per grid cell (drawn into founder hydration).
+ *
+ * Exported because it is the only fixed handle on the field's real magnitude: seeding
+ * CONCENTRATES this into water-biome cells, so the per-lake-cell level is
+ * `cells * this / waterCells` and is map-dependent. The render overlay needs that scale
+ * to normalize against (see `waterRenderMax` in worker/frame.ts) — the `WATER_CELL_MAX`
+ * sensor constant is ~30x too small and clamps every lake to a flat 1.0.
+ */
+export const INITIAL_WATER_PER_CELL = 200;
 
 function emptyFields(cells: number): Fields {
   return {

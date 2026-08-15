@@ -17,7 +17,8 @@ import { expressTrait, TRAIT_GENES, TRAIT_RANGE } from "@sim/genetics";
 import { countExtinctionEvents, recentPopulationSeries } from "@sim/history";
 import { rankScore } from "@sim/score";
 import { type HealthHistory, worldHealth } from "@sim/stats";
-import type { Config, Creature, LineageEvent, World } from "@sim/types";
+import { Biome, type Config, type Creature, type LineageEvent, type World } from "@sim/types";
+import { INITIAL_WATER_PER_CELL } from "@sim/world";
 import type {
   CorpseFrame,
   CreatureFrame,
@@ -68,6 +69,45 @@ export function dayLight(tick: number, ticksPerDay: number): number {
  * index (never a Set/Map) so ordering is stable. Allocates fresh typed arrays sized
  * to the current counts.
  */
+/**
+ * Referent the water overlay normalizes against — the magnitude of a seeded water-biome
+ * cell, NOT the `WATER_CELL_MAX` sensor saturation point.
+ *
+ * `WATER_CELL_MAX` (100) is where the `localWater` SENSOR saturates, which is the wrong
+ * scale for rendering: seeding concentrates water into water-biome cells, so a lake cell
+ * holds ~3000 and a land cell ~50 (measured on the default map — 833 of 16384 cells are
+ * water). Dividing a lake by 100 gives 30, which `clamp01` pins at exactly 1.0 for every
+ * lake cell on every map. The overlay then cannot represent any change to a lake:
+ * `paintWaterDown` moves WATER_BRUSH_DELTA (400) out of the centre per click, and
+ * 3000→2600→…→200 all still clamp to 1.0, so the first SEVEN drought clicks in the middle
+ * of a lake render byte-identically (the ring cells absorbing the water are lake cells too,
+ * so they saturate as well) before the eighth snaps the cell from full shading to none.
+ *
+ * DERIVED, not hardcoded: the lake level depends on how much of the map the terrain
+ * generator made wet (`perWater = (total - landShare) / waterCells`), so it varies by seed
+ * — a literal that suits one map re-clamps on the next. Computed from the declared water
+ * budget and the biome map, both of which are fixed for the world's life, so the referent
+ * is still frame-STABLE. That matters: a per-frame maximum makes the scale depend on the
+ * single wettest cell, so one flood click rescales the whole world and every other lake
+ * visually vanishes in the same frame.
+ *
+ * The result sits ABOVE the seeded lake level (it ignores the share held by land, so it
+ * exceeds `perWater` by 1/[1 - 0.25(1 - waterFraction)] — between 1.14x and 1.33x for any
+ * map), which leaves headroom in BOTH directions: lakes land at 0.75–0.88, well above the
+ * renderer's 0.55 shading threshold but off the clamp, so drought AND flood both move the
+ * rendered value. Land stays far below the threshold (~0.01), including the ring cells that
+ * ABSORB a drought click — under the old referent those crossed 0.55 and lit up, so
+ * draining a lake made the land around it read as wet.
+ */
+function waterRenderMax(world: World): number {
+  const cells = world.fields.water.length;
+  let waterCells = 0;
+  for (let i = 0; i < cells; i++) if (world.terrain.biome[i] === Biome.Water) waterCells++;
+  // Degenerate map with no water biome: seeding falls back to a uniform fill.
+  if (waterCells === 0) return INITIAL_WATER_PER_CELL;
+  return Math.max(1, (cells * INITIAL_WATER_PER_CELL) / waterCells);
+}
+
 export function buildRenderFrame(world: World): RenderFrame {
   const t = world.config.tunables;
   const cs = world.creatures;
@@ -149,17 +189,17 @@ export function buildRenderFrame(world: World): RenderFrame {
   // drought/flood dips/spikes read as gaps/brightening on top of the authored water
   // biome). Read-only; floats are fine outside tick().
   //
-  // Normalized against the FIXED `WATER_CELL_MAX` referent — the same one the `localWater`
-  // sensor uses — not against the field's own per-frame maximum. A per-frame max makes the
-  // scale depend on the single wettest cell, so a few clicks of the flood tool (which pulls
-  // up to WATER_BRUSH_DELTA into one cell, far past a lake cell's seeded level) push every
-  // real lake below the renderer's shading threshold: adding water in one place makes all
-  // the world's water visually vanish in the same frame, inverting the tool's own feedback
-  // while `totalWater` is unchanged. A fixed basis also makes shading comparable between
-  // frames, which is what the shading is supposed to convey.
+  // Normalized against the FIXED `WATER_RENDER_MAX` referent (see the constant for why the
+  // sensor's `WATER_CELL_MAX` is the wrong scale), not against the field's own per-frame
+  // maximum. A per-frame max makes the scale depend on the single wettest cell, so a few
+  // clicks of the flood tool (which pulls up to WATER_BRUSH_DELTA into one cell, far past a
+  // lake cell's seeded level) push every real lake below the renderer's shading threshold:
+  // adding water in one place makes all the world's water visually vanish in the same frame,
+  // inverting the tool's own feedback while `totalWater` is unchanged. A fixed basis also
+  // makes shading comparable between frames, which is what the shading is supposed to convey.
   const cells = world.fields.water.length;
   const water = new Float32Array(cells);
-  const waterMax = Math.max(1, t.WATER_CELL_MAX);
+  const waterMax = waterRenderMax(world);
   for (let i = 0; i < cells; i++) {
     water[i] = clamp01((world.fields.water[i] as number) / waterMax);
   }
