@@ -72,6 +72,16 @@ export interface Loaded {
   meta: Meta;
 }
 
+/**
+ * The outcome of a load attempt. `absent` and `unreadable` are deliberately DISTINCT:
+ * both leave the caller without a world, but only `absent` means it is safe to start
+ * writing saves. See `loadNewest`.
+ */
+export type LoadResult =
+  | ({ status: "loaded" } & Loaded)
+  | { status: "absent" }
+  | { status: "unreadable" };
+
 /** Validate + deserialize a candidate blob; returns null if it is unusable. */
 function tryLoadBlob(blob: SaveBlob | undefined): World | null {
   if (blob === undefined || blob === null) return null;
@@ -86,21 +96,32 @@ function tryLoadBlob(blob: SaveBlob | undefined): World | null {
 }
 
 /**
- * Load the newest valid saved world, or null for a cold start. Reads `meta`, tries the
- * `newest` slot, falls back to the other slot on failure. If both are missing/corrupt,
- * returns null (the caller does a cold `createWorld`) — never throws.
+ * Load the newest valid saved world. Reads `meta`, tries the `newest` slot, falls back to
+ * the other slot on failure — never throws.
+ *
+ * Reports a THREE-way result because "there is no save" and "the save could not be read"
+ * must not be collapsed into the same answer. Conflating them is silently destructive: on
+ * a cold-start answer `boot` starts founders and seeds an Autosaver with no meta, whose
+ * rotation writes slot `a` and then, one interval later, slot `b`. So a transient
+ * IndexedDB failure on the POINTER read — disk pressure, an aborted transaction, an
+ * eviction race — would permanently overwrite a perfectly intact evolved world inside
+ * about a minute, with nothing surfaced to the user. The caller has to be able to tell
+ * the difference and decline to write.
  */
-export async function loadNewest(store: KeyValStore = idbStore): Promise<Loaded | null> {
+export async function loadNewest(store: KeyValStore = idbStore): Promise<LoadResult> {
   let meta: Meta | undefined;
   try {
     meta = await store.get<Meta>(META_KEY);
   } catch {
-    return null;
+    // The pointer is unreadable, but the SLOTS it points at may be perfectly intact.
+    // Refuse to answer "no save", which would license overwriting them.
+    return { status: "unreadable" };
   }
-  if (meta === undefined) return null;
+  if (meta === undefined) return { status: "absent" };
 
   const primary = meta.newest;
   const fallback: "a" | "b" = primary === "a" ? "b" : "a";
+  let readFailed = false;
   for (const which of [primary, fallback]) {
     // Isolate each slot READ. `store.get` can reject rather than resolve undefined — an
     // IndexedDB read error under disk pressure, an aborted transaction, or a
@@ -113,16 +134,25 @@ export async function loadNewest(store: KeyValStore = idbStore): Promise<Loaded 
     try {
       blob = await store.get<SaveBlob>(slotKey(which));
     } catch {
+      readFailed = true;
       continue;
     }
     const world = tryLoadBlob(blob);
     if (world !== null) {
       // Report the meta as if `which` is newest, so the Autosaver rotates to the OTHER
       // slot first — the first post-load save never overwrites the slot we loaded from.
-      return { world, lastSavedRealTime: meta.lastSavedRealTime, meta: { ...meta, newest: which } };
+      return {
+        status: "loaded",
+        world,
+        lastSavedRealTime: meta.lastSavedRealTime,
+        meta: { ...meta, newest: which },
+      };
     }
   }
-  return null;
+  // `meta` said a save exists but no slot produced a world. If a read REJECTED, the bytes
+  // may still be fine and must not be overwritten; if every slot merely returned data that
+  // failed to deserialize, the save really is unusable and may be replaced.
+  return readFailed ? { status: "unreadable" } : { status: "absent" };
 }
 
 /**

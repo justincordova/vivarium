@@ -17,6 +17,8 @@ import {
   autosave,
   hasSavedWorld,
   type KeyValStore,
+  type Loaded,
+  type LoadResult,
   loadNewest,
   META_KEY,
   type Meta,
@@ -55,6 +57,12 @@ function crashingStore(
   return s;
 }
 
+/** Narrow a `LoadResult` to the loaded case, failing loudly on any other status. */
+function mustLoad(r: LoadResult): Loaded {
+  if (r.status !== "loaded") throw new Error(`expected a loaded save, got "${r.status}"`);
+  return r;
+}
+
 describe("persistence — rotating slots", () => {
   it("first save writes slot A and flips meta to 'a'", async () => {
     const store = memStore();
@@ -85,12 +93,11 @@ describe("persistence — rotating slots", () => {
     const w = createWorld(3, makeConfig({}));
     for (let i = 0; i < 25; i++) tick(w);
     await autosave(store, w, null, 5000);
-    const loaded = await loadNewest(store);
-    expect(loaded).not.toBeNull();
-    expect(loaded?.lastSavedRealTime).toBe(5000);
-    expect(loaded?.world.tick).toBe(w.tick);
-    expect(loaded?.world.creatures.length).toBe(w.creatures.length);
-    expect(loaded?.meta.newest).toBe("a");
+    const loaded = mustLoad(await loadNewest(store));
+    expect(loaded.lastSavedRealTime).toBe(5000);
+    expect(loaded.world.tick).toBe(w.tick);
+    expect(loaded.world.creatures.length).toBe(w.creatures.length);
+    expect(loaded.meta.newest).toBe("a");
   });
 
   it("after loading from fallback, the next save rotates to the OTHER slot", async () => {
@@ -102,15 +109,15 @@ describe("persistence — rotating slots", () => {
     // Corrupt newest (B) → load falls back to A; reported meta.newest must be 'a' so
     // the next save writes B (older), not A (the slot we just loaded).
     store.map.set(SLOT_B, { garbage: true } as unknown as SaveBlob);
-    const loaded = await loadNewest(store);
-    expect(loaded?.meta.newest).toBe("a");
-    const next = await autosave(store, loaded?.world ?? w, loaded?.meta ?? null, 3000);
+    const loaded = mustLoad(await loadNewest(store));
+    expect(loaded.meta.newest).toBe("a");
+    const next = await autosave(store, loaded.world, loaded.meta, 3000);
     expect(next.newest).toBe("b"); // rotated away from the loaded slot
   });
 
-  it("cold start: no meta → loadNewest returns null", async () => {
+  it("cold start: no meta → 'absent' (nothing saved, so writing is safe)", async () => {
     const store = memStore();
-    expect(await loadNewest(store)).toBeNull();
+    expect((await loadNewest(store)).status).toBe("absent");
   });
 });
 
@@ -132,9 +139,8 @@ describe("persistence — crash safety (write-older-then-flip)", () => {
     expect(metaNow.newest).toBe("a");
 
     // loadNewest must return the still-valid slot A (the pre-crash world).
-    const loaded = await loadNewest(store);
-    expect(loaded).not.toBeNull();
-    expect(loaded?.lastSavedRealTime).toBe(m1.lastSavedRealTime);
+    const loaded = mustLoad(await loadNewest(store));
+    expect(loaded.lastSavedRealTime).toBe(m1.lastSavedRealTime);
   });
 
   it("newest slot corrupt → falls back to the other slot", async () => {
@@ -146,20 +152,19 @@ describe("persistence — crash safety (write-older-then-flip)", () => {
 
     // Corrupt the newest slot (B).
     store.map.set(SLOT_B, { garbage: true } as unknown as SaveBlob);
-    const loaded = await loadNewest(store);
+    const loaded = mustLoad(await loadNewest(store));
     // Falls back to A (older but valid).
-    expect(loaded).not.toBeNull();
-    expect(loaded?.world.creatures.length).toBeGreaterThan(0);
+    expect(loaded.world.creatures.length).toBeGreaterThan(0);
   });
 
-  it("both slots corrupt → cold start (null), never throws", async () => {
+  it("both slots corrupt → 'absent' (the bytes really are unusable), never throws", async () => {
     const store = memStore();
     const w = createWorld(2, makeConfig({}));
     await autosave(store, w, null, 1000);
     store.map.set(SLOT_A, { junk: 1 } as unknown as SaveBlob);
     store.map.set(SLOT_B, undefined);
     const loaded = await loadNewest(store);
-    expect(loaded).toBeNull();
+    expect(loaded.status).toBe("absent");
   });
 
   // A slot READ can reject, not merely resolve undefined (IndexedDB read error under disk
@@ -180,17 +185,38 @@ describe("persistence — crash safety (write-older-then-flip)", () => {
         key === SLOT_B ? Promise.reject(new Error("IDB read failed")) : base<T>(key),
       set: store.set,
     };
-    const loaded = await loadNewest(failing);
-    expect(loaded).not.toBeNull();
-    expect(loaded?.world.creatures.length).toBeGreaterThan(0);
+    const loaded = mustLoad(await loadNewest(failing));
+    expect(loaded.world.creatures.length).toBeGreaterThan(0);
   });
 
-  it("every read rejecting → cold start (null), never throws", async () => {
+  // "Could not read" must NOT be reported as "nothing saved". The caller acts on that
+  // difference: on an absent store `boot` starts founders and seeds an Autosaver with no
+  // meta, whose rotation writes slot a and then slot b — so answering "absent" here means
+  // a transient IndexedDB failure permanently overwrites an intact evolved world inside
+  // about a minute. Both slots may be perfectly good; we simply could not see them.
+  it("every read rejecting → 'unreadable', not 'absent' (never throws)", async () => {
     const failing: KeyValStore = {
       get: <T>(): Promise<T | undefined> => Promise.reject(new Error("IDB unavailable")),
       set: async (): Promise<void> => undefined,
     };
-    await expect(loadNewest(failing)).resolves.toBeNull();
+    await expect(loadNewest(failing)).resolves.toEqual({ status: "unreadable" });
+  });
+
+  it("the META read rejecting → 'unreadable', even though the slots are intact", async () => {
+    const store = memStore();
+    const w = createWorld(4, makeConfig({}));
+    await autosave(store, w, null, 1000); // slot A holds a real world
+
+    // Only the pointer read fails; the slot bytes are untouched and still loadable.
+    const base = store.get.bind(store);
+    const failing: KeyValStore = {
+      get: <T>(key: string): Promise<T | undefined> =>
+        key === META_KEY ? Promise.reject(new Error("IDB read failed")) : base<T>(key),
+      set: store.set,
+    };
+    expect((await loadNewest(failing)).status).toBe("unreadable");
+    // And the world really was recoverable — proving "absent" would have been a lie.
+    expect(mustLoad(await loadNewest(store)).world.creatures.length).toBeGreaterThan(0);
   });
 });
 

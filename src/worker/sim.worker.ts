@@ -206,19 +206,27 @@ async function boot(
 
   let loadedRealTime: number | null = null;
   let loadedMeta: Meta | null = null;
+  // Storage answered "I could not read", not "there is nothing here". A cold start is
+  // still the only thing we can DISPLAY, but it must not be persisted over the slots.
+  let storageUnreadable = false;
   if (!bypassSave) {
     try {
       const loaded = await loadNewest(idbStore);
       // A newer world-swap command arrived during the await → this boot is superseded.
       if (gen !== bootGen) return;
-      if (loaded !== null) {
+      if (loaded.status === "loaded") {
         world = loaded.world;
         loadedRealTime = loaded.lastSavedRealTime;
         loadedMeta = loaded.meta;
+      } else if (loaded.status === "unreadable") {
+        storageUnreadable = true;
       }
     } catch {
       if (gen !== bootGen) return;
-      // Storage read failed — fall through to a cold start.
+      // `loadNewest` is documented never to throw, so reaching here means storage failed
+      // in a way it did not model. Treat it as unreadable, NOT as an empty store: the
+      // difference decides whether we are allowed to overwrite the user's world.
+      storageUnreadable = true;
       world = null;
     }
   }
@@ -243,7 +251,21 @@ async function boot(
   // Seed the autosaver with the loaded meta so the first save rotates to the OLDER
   // slot and never overwrites the slot we just loaded from (a cold start seeds null →
   // rotation begins at slot A).
-  autosaver = new Autosaver(idbStore, loadedMeta);
+  //
+  // When storage was UNREADABLE, leave it null: `saveNow` no-ops without an autosaver, so
+  // this session runs unsaved rather than rotating a founder world over two slots that
+  // probably still hold the user's evolved one. Losing an unsaved fresh start is
+  // recoverable; overwriting an evolved world is not. Say so, since a silently unsaved
+  // session is its own trap.
+  if (storageUnreadable) {
+    autosaver = null;
+    post({
+      t: "persistError",
+      reason: "storage could not be read — autosave is off so the existing save is not overwritten",
+    });
+  } else {
+    autosaver = new Autosaver(idbStore, loadedMeta);
+  }
 
   // Offline catch-up: replay ticks owed since the save, capped, with progress. Capture
   // the tick BEFORE catch-up so the report can frame the window, and sink the events
