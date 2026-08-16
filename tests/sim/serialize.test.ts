@@ -222,3 +222,104 @@ describe("serialize — forward-compatible defaulting", () => {
     expect(Array.from(round.terrain.elevation).every((e) => e === 0)).toBe(true);
   });
 });
+
+describe("serialize — stale tunables in an old blob", () => {
+  // Built once: the key-sweep below strips all 88 tunables in turn, and re-ticking a
+  // fresh world per key costs minutes for no added coverage.
+  let base: string | null = null;
+
+  /** A world serialized, JSON round-tripped, and downgraded to an older save version. */
+  function staleBlob(version: number, mutate: (t: Record<string, unknown>) => void) {
+    if (base === null) {
+      const w = createWorld(1, makeConfig({}));
+      for (let i = 0; i < 200; i++) tick(w);
+      base = JSON.stringify(serialize(w));
+    }
+    const blob = JSON.parse(base);
+    blob.version = version;
+    mutate(blob.config.tunables);
+    return blob;
+  }
+
+  // A tunable is routinely added WITHOUT a SAVE_VERSION bump (the blob's shape does not
+  // change), so no `migrateVNtoVN1` step can be responsible for defaulting it. Absent, it
+  // reads `undefined`, arithmetic turns it into NaN, and a NaN cell index makes the
+  // typed-array credit a silent no-op while the matching debit still lands — quanta are
+  // destroyed rather than moved, on a world the autosaver then writes back.
+  it("backfills every tunable the blob predates", () => {
+    const blob = staleBlob(SAVE_VERSION - 1, (t) => {
+      delete t.ATTACK_DAMAGE_COEF;
+      delete t.TEMP_SEASON_AMPLITUDE;
+      delete t.MUT_GLOBAL;
+    });
+    const w = deserialize(blob);
+    const def = makeConfig({}).tunables;
+    expect(w.config.tunables.ATTACK_DAMAGE_COEF).toBe(def.ATTACK_DAMAGE_COEF);
+    expect(w.config.tunables.TEMP_SEASON_AMPLITUDE).toBe(def.TEMP_SEASON_AMPLITUDE);
+    expect(w.config.tunables.MUT_GLOBAL).toBe(def.MUT_GLOBAL);
+  });
+
+  // The invariant the leak actually violates, asserted at its source and over the WHOLE
+  // key set rather than the one tunable that happens to be missing today. Waiting for the
+  // ledger to visibly drift needs ~2000 ticks (the NaN has to reach a landed attack, then
+  // a death at a NaN position), which is far past the test timeout — and this is the
+  // stronger statement anyway: no tunable may be non-finite after a load, ever.
+  it("leaves no non-finite tunable, whatever the blob is missing", () => {
+    const complete = makeConfig({}).tunables as unknown as Record<string, unknown>;
+    for (const missing of Object.keys(complete)) {
+      const blob = staleBlob(SAVE_VERSION - 1, (t) => {
+        delete t[missing];
+      });
+      const loaded = deserialize(blob).config.tunables as unknown as Record<string, unknown>;
+      for (const key of Object.keys(complete)) {
+        const v = loaded[key];
+        // Two tunables are nested per-gene sigma tables rather than numbers.
+        if (typeof complete[key] === "object" && complete[key] !== null) {
+          for (const gene of Object.keys(complete[key] as Record<string, number>)) {
+            const g = (v as Record<string, unknown>)?.[gene];
+            expect(Number.isFinite(g), `${key}.${gene} after dropping ${missing}`).toBe(true);
+          }
+        } else {
+          expect(Number.isFinite(v), `${key} after dropping ${missing}`).toBe(true);
+        }
+      }
+    }
+  });
+
+  // Save files are user-supplied (`.viv` import), so a hand-edited or truncated tunable is
+  // reachable. A non-number is the same defect class as an absent one: it becomes NaN.
+  it("rejects a non-finite tunable from an edited save file", () => {
+    const blob = staleBlob(SAVE_VERSION, (t) => {
+      t.ATTACK_DAMAGE_COEF = "2.0";
+      t.METABOLIC_COST_COEF = null;
+      t.MUT_GLOBAL = Number.NaN;
+    });
+    const w = deserialize(blob);
+    const def = makeConfig({}).tunables;
+    expect(w.config.tunables.ATTACK_DAMAGE_COEF).toBe(def.ATTACK_DAMAGE_COEF);
+    expect(w.config.tunables.METABOLIC_COST_COEF).toBe(def.METABOLIC_COST_COEF);
+    expect(w.config.tunables.MUT_GLOBAL).toBe(def.MUT_GLOBAL);
+  });
+
+  // The backfill must not clobber a real override — a shared `#mut=5` world or a slider
+  // edit is legitimately persisted config, and resetting it on load would silently undo
+  // the user's world.
+  it("preserves a legitimately saved override", () => {
+    const w = createWorld(1, makeConfig({ tunables: { MUT_GLOBAL: 5 } }));
+    const blob = JSON.parse(JSON.stringify(serialize(w)));
+    expect(deserialize(blob).config.tunables.MUT_GLOBAL).toBe(5);
+  });
+
+  // The nested sigma tables are objects, so a number-only backfill silently swaps a saved
+  // world's mutation sigmas for the defaults — a config reset nothing would report.
+  it("preserves a saved override inside a nested sigma table", () => {
+    const base = makeConfig({}).tunables.TRAIT_MUT_SIGMA;
+    const gene = Object.keys(base)[0] as keyof typeof base;
+    const w = createWorld(1, makeConfig({ tunables: { TRAIT_MUT_SIGMA: { [gene]: 0.375 } } }));
+    const blob = JSON.parse(JSON.stringify(serialize(w)));
+    const loaded = deserialize(blob).config.tunables.TRAIT_MUT_SIGMA;
+    expect(loaded[gene]).toBe(0.375);
+    // and the sibling entries survive the merge
+    expect(Object.keys(loaded).length).toBe(Object.keys(base).length);
+  });
+});

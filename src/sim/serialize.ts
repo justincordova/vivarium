@@ -13,6 +13,7 @@
  * Pure — no DOM/IndexedDB (those are worker/Phase 5 concerns). Part of `sim/`.
  */
 
+import { makeDefaultConfig } from "./config";
 import { ACTIONS, ARROWS, INFLUENCE_MAX } from "./constants";
 import { deserializeRng, serializeRng } from "./rng";
 import {
@@ -27,6 +28,7 @@ import {
   type PlantGenome,
   type RngBundle,
   type Terrain,
+  type Tunables,
   type World,
 } from "./types";
 
@@ -393,6 +395,55 @@ function deActionWindow(saved: number[] | undefined): Float32Array {
   return w;
 }
 
+/**
+ * Fill in tunables the blob predates, and reject non-finite ones.
+ *
+ * The per-version `migrateVNtoVN1` steps cannot carry this: a tunable is routinely added
+ * WITHOUT a `SAVE_VERSION` bump (nothing about the blob's shape changed), so there is no
+ * version boundary to hang the default on — a `version: 5` blob written before
+ * `ATTACK_DAMAGE_COEF` existed is indistinguishable from one written after. `Tunables`
+ * requires every key, so an absent one is always a stale-blob artifact, never a choice.
+ *
+ * Left unfilled it does not throw: `undefined` flows into arithmetic as `NaN`, and `NaN`
+ * silently destroys ledger quanta (a `NaN` cell index makes the typed-array credit a
+ * no-op while the debit still lands), breaking the closed-ledger invariant on a world the
+ * autosaver then writes back over the rotation.
+ *
+ * Iterate the DEFAULTS keys, never the blob's — that pins insertion order to a fixed set
+ * regardless of what an imported file contains, and drops unknown keys. The finiteness
+ * check also guards the untrusted-import path, where a hand-edited `.viv` can carry a
+ * string or null where a number belongs.
+ *
+ * Two tunables (`TRAIT_MUT_SIGMA`, `PLANT_MUT_SIGMA`) are nested per-gene tables rather
+ * than numbers, and they get the same treatment one level down. Taking the default table
+ * wholesale instead would quietly reset a saved world's mutation sigmas on every load.
+ */
+function reconcileTunables(loaded: Tunables | undefined): Tunables {
+  const defaults = makeDefaultConfig().tunables;
+  const out: Tunables = { ...defaults };
+  // `Tunables` is a fixed 88-key interface with no index signature; one narrow view lets
+  // us assign by string key without weakening the return type.
+  const view = out as unknown as Record<string, unknown>;
+  const src = (loaded ?? {}) as Record<string, unknown>;
+  const base = defaults as unknown as Record<string, unknown>;
+  for (const key of Object.keys(defaults)) {
+    const def = base[key];
+    const v = src[key];
+    if (typeof def === "object" && def !== null) {
+      const table: Record<string, number> = { ...(def as Record<string, number>) };
+      const savedTable = (typeof v === "object" && v !== null ? v : {}) as Record<string, unknown>;
+      for (const gene of Object.keys(table)) {
+        const g = savedTable[gene];
+        if (typeof g === "number" && Number.isFinite(g)) table[gene] = g;
+      }
+      view[key] = table;
+    } else if (typeof v === "number" && Number.isFinite(v)) {
+      view[key] = v;
+    }
+  }
+  return out;
+}
+
 export function deserialize(data: SaveBlob): World {
   const blob = migrate(data);
   // Deep-copy `config` so two `deserialize` calls on one blob never alias it. Nested
@@ -400,6 +451,7 @@ export function deserialize(data: SaveBlob): World {
   // reference would cross-corrupt two worlds loaded from the same blob — the same
   // class of aliasing bug the `ruleState` spread-copy below guards against.
   const config = structuredClone(blob.config);
+  config.tunables = reconcileTunables(config.tunables);
   const hidden = config.hidden;
 
   const creatures: Creature[] = (blob.creatures ?? []).map((c) => ({
