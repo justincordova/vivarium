@@ -161,6 +161,12 @@ interface SimState {
   /** Live tunable overrides applied via sliders (for UI reflection). */
   params: Record<string, number>;
   /**
+   * The tunables baked into this world at boot (from a shared `#seed=..&t.KEY=..` link).
+   * Distinct from `params`, which also accumulates mid-run slider edits: this is the
+   * INITIAL config, so it is what a share link may encode. Never written by `setParam`.
+   */
+  initialTunables: Record<string, number>;
+  /**
    * True once a god-power/live param change has detached the world from its shareable
    * URL (the URL encodes only the initial config; SPEC.md Task 3.1). Surfaced in the UI.
    */
@@ -294,6 +300,7 @@ export const useSimStore = create<SimState>((set, get) => ({
   inspected: null,
   ready: false,
   params: {},
+  initialTunables: {},
   detached: false,
   tool: "inspect",
   followId: null,
@@ -357,6 +364,9 @@ export const useSimStore = create<SimState>((set, get) => ({
       followId: null,
       detached: false,
       params: {},
+      // `reinit` sends `makeConfig({})` — the new world carries no link tunables, so the
+      // share link must stop advertising the old ones.
+      initialTunables: {},
       // Null `stats` too: it backs the Timeline scrubber and trait histogram. Without
       // this the previous world's whole-run timeline/traits stay on screen until the new
       // (paused) world emits its first stats — which never happens if the user doesn't
@@ -633,13 +643,18 @@ export function startWorker(): Worker {
   const shared = typeof location !== "undefined" ? parseHash(location.hash) : null;
   const seed = shared?.seed ?? useSimStore.getState().seed;
   if (shared !== null) useSimStore.setState({ seed });
-  // Mirror the link's tunables into `params`, not just into the worker's config. `params`
-  // is what the control panel DISPLAYS (`s.params[key] ?? def.def`) and what `copyShare`
-  // rebuilds the link from. Left empty, a `#seed=7&mut=5` world runs at mutation rate 5
-  // while the slider reads the 1.0 default, and re-sharing that link emits a bare
-  // `#seed=7` with the override stripped — handing the next person a materially different
-  // world, which is exactly the reproducibility the hash exists to provide.
-  if (shared?.tunables !== undefined) useSimStore.setState({ params: { ...shared.tunables } });
+  // Mirror the link's tunables into BOTH `params` and `initialTunables`. `params` is what
+  // the control panel DISPLAYS (`s.params[key] ?? def.def`) — left empty, a `#seed=7&mut=5`
+  // world runs at mutation rate 5 while the slider reads the 1.0 default. `initialTunables`
+  // is what `copyShare` re-encodes: it must not pick up the slider edits that `params`
+  // accumulates later, or a re-shared link would carry hand edits the detached badge
+  // explicitly promises it does not.
+  if (shared?.tunables !== undefined) {
+    useSimStore.setState({
+      params: { ...shared.tunables },
+      initialTunables: { ...shared.tunables },
+    });
+  }
   const config = makeConfig(shared?.tunables ? { tunables: shared.tunables } : {});
   const { catchupEnabled } = useSimStore.getState();
 

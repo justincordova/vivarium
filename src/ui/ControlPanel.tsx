@@ -109,7 +109,8 @@ export function ControlPanel(): React.ReactElement {
   const setScienceMode = useSimStore((s) => s.setScienceMode);
   const terrarium = useSimStore((s) => s.terrarium);
   const setTerrarium = useSimStore((s) => s.setTerrarium);
-  const params = useSimStore((s) => s.params);
+  // Only the INITIAL tunables are shareable — see `copyShare`.
+  const initialTunables = useSimStore((s) => s.initialTunables);
   // The worker owns world time; once it is dead the transport cannot do anything.
   const workerCrashed = useSimStore((s) => s.workerCrashed);
   const exportWorld = useSimStore((s) => s.exportWorld);
@@ -119,10 +120,12 @@ export function ControlPanel(): React.ReactElement {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const copyShare = (): void => {
-    // The URL encodes the INITIAL config (seed + mutation-rate override) — a fresh
-    // reproducible world, not the current evolved snapshot (that travels by export).
-    const mut = params.MUT_GLOBAL;
-    const url = shareUrl({ seed, tunables: mut !== undefined ? { MUT_GLOBAL: mut } : undefined });
+    // The URL encodes the INITIAL config — a fresh reproducible world, not the current
+    // evolved snapshot (that travels by export). Read `initialTunables`, NOT `params`:
+    // `params` also holds mid-run slider edits, and the detached badge promises the user
+    // that a share link "only reproduces the original starting point".
+    const tunables = Object.keys(initialTunables).length > 0 ? initialTunables : undefined;
+    const url = shareUrl({ seed, tunables });
     const flash = (): void => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
