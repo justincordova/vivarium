@@ -366,6 +366,16 @@ function migrate(blob: SaveBlob): SaveBlob {
   let b = blob;
   // A blob with no version predates versioning entirely — treat as v1.
   if (b.version === undefined) b = { ...b, version: 1 };
+  // Migration is forward-only, so a blob from a NEWER build cannot be understood: its
+  // fields mean whatever that build decided, and reading it as v6 silently reinterprets
+  // them. Refuse instead. Both callers already handle the throw correctly — the autosave
+  // read (`tryLoadBlob`) turns it into "unreadable", which now leaves the autosaver off
+  // rather than overwriting the newer save with an older world, and the file import
+  // surfaces the message. Reachable without a v7 existing yet: a cached or rolled-back
+  // bundle can serve an older build to a user who already has a newer save.
+  if (b.version > SAVE_VERSION) {
+    throw new Error(`save was written by a newer version of Vivarium (v${b.version})`);
+  }
   if (b.version < 2) b = migrateV1toV2(b);
   if (b.version < 3) b = migrateV2toV3(b);
   if (b.version < 4) b = migrateV3toV4(b);

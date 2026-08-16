@@ -323,3 +323,23 @@ describe("serialize — stale tunables in an old blob", () => {
     expect(Object.keys(loaded).length).toBe(Object.keys(base).length);
   });
 });
+
+describe("serialize — a blob from a newer build", () => {
+  // Migration is forward-only, so v7+ fields cannot be reinterpreted as v6. Refusing is
+  // what lets `tryLoadBlob` classify it "unreadable" (autosaver stays off, newer save
+  // preserved) and what gives the file import a message instead of a wrong world.
+  it("refuses a version above SAVE_VERSION rather than loading it as current", () => {
+    const w = createWorld(1, makeConfig({}));
+    const blob = JSON.parse(JSON.stringify(serialize(w)));
+    blob.version = SAVE_VERSION + 1;
+    expect(() => deserialize(blob)).toThrow(/newer version/);
+  });
+
+  it("still loads the current version and every older one", () => {
+    const w = createWorld(1, makeConfig({}));
+    const blob = JSON.parse(JSON.stringify(serialize(w)));
+    for (let v = 1; v <= SAVE_VERSION; v++) {
+      expect(() => deserialize({ ...blob, version: v })).not.toThrow();
+    }
+  });
+});
