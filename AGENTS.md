@@ -83,10 +83,16 @@ committing.** (lefthook runs `biome check` on staged files automatically.)
   worker attaches it outside the sim. The `sim/` event log is `{tick, event}` only;
   typed `lineageEvents` (extinction/boom/dominance) are detected on the history
   cadence and narrated by tick/generation, never wall-clock.
-- **Save format is `version: 3`** with a forward-migration chain in `serialize.ts`
-  (v1→v2 added `brainKind`; v2→v3 added lineage identity/events). A `version: N` reader
+- **Save format is `version: 6`** with a forward-migration chain in `serialize.ts`
+  (v1→v2 `brainKind`; v2→v3 lineage identity/events; v3→v4 terrain; v4→v5 nests +
+  `sociality` + the 380→420 brain geometry; v5→v6 `influence`). A `version: N` reader
   loads any `version: <N` blob (every field optional/defaulted). Bump + migrate on any
   breaking schema change; never tie the save integer to a git tag.
+- **Adding a tunable does NOT bump `SAVE_VERSION`** (the blob's shape is unchanged), so
+  no migration step can default it. `deserialize` reconciles `config.tunables` against
+  the current defaults instead — that is what makes an old blob total. Never bypass it:
+  a missing tunable reads `undefined`, and NaN silently destroys ledger quanta rather
+  than throwing.
 - **Offline catch-up must be bit-identical to live ticks** — it calls the same
   `tick()`+`recordHistory()`, stripping only observation (no frame/stats emission).
   `tests/sim/catchup.test.ts` is the guard; never sneak a side effect into a
